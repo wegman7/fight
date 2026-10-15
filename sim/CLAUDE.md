@@ -11,5 +11,8 @@
   `tests/gameplay.rs` asserting it in frame-exact terms.
 - New move → add a `MoveId` variant, a `static MoveData` in `moves.rs`, and pick it in
   `Fighter::step`. Hitbox `x` is mirrored by facing automatically.
+- CPU players (`cpu.rs`) read `&World` and return an `Input`, nothing else. Their
+  randomness comes from the `rng` field (xorshift), never from time or the OS, so CPU
+  matches replay identically. Behaviour changes need a test in `tests/cpu.rs`.
 - Run `cargo test -p fight_sim` after every change. `rollback_resimulation_is_bit_identical`
   guards determinism.

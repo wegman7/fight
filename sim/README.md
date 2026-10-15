@@ -16,6 +16,11 @@ world.fighters[1].state;     // State::Ground, State::Hitstun { .. }, ...
 world.events;                // Event::Hit / Event::Ko from the last step
 world.active_hitboxes();     // for debug drawing
 let snapshot = world.clone(); // full save state (rollback, replays)
+
+// A computer player is just another input source:
+let mut cpu = Cpu::easy(1);   // drives fighter 1
+let p2_input = cpu.think(&world);
+world.step(&[p1_input, p2_input]);
 ```
 
 ## Modules
@@ -28,6 +33,7 @@ let snapshot = world.clone(); // full save state (rollback, replays)
 | `moves.rs` | Frame data for each move: timing, hitboxes, damage, angles |
 | `stage.rs` | Platforms, blast zones, spawn points |
 | `world.rs` | `World::step`: fighters → hit detection → blast zones |
+| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. Difficulty knobs in `CpuLevel` (only `EASY` so far). |
 
 ## Units
 
@@ -45,9 +51,11 @@ cargo test -p fight_sim -- --nocapture
 
 ## Writing tests
 
-Gameplay tests live in `tests/gameplay.rs`. The helpers at the top (`world()`,
-`press()`, `stick()`, `run()`) keep tests short. The pattern is: set up, feed
-inputs frame by frame, then assert.
+Gameplay tests live in `tests/gameplay.rs`. CPU behaviour tests (engages,
+recovers, doesn't self-destruct, stays deterministic) live in `tests/cpu.rs`.
+The helpers at the top of `gameplay.rs` (`world()`, `press()`, `stick()`,
+`run()`) keep tests short. The pattern is: set up, feed inputs frame by frame,
+then assert.
 
 ```rust
 #[test]

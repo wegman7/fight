@@ -67,6 +67,17 @@ Neutral attack = jab, sideways = forward tilt, up = up tilt, in the air = nair.
 Tap down on a platform to drop through, or in the air to fast-fall. Release jump
 before liftoff for a short hop.
 
+Up and down (W/S, arrows, stick) don't move you on their own. Movement is
+left/right only, and they just change other actions:
+
+| Input | Effect |
+|---|---|
+| Up alone | Nothing. Jump is its own button (no tap jump yet). |
+| Up + attack | Up tilt |
+| Down alone on the main stage | Nothing (no crouch yet) |
+| Down tap on a floating platform | Drop through it |
+| Down tap while falling | Fast-fall |
+
 **C** (pad: View/Back) toggles P2 between human and CPU and starts a new match.
 **R** (pad: Menu/Start) resets the match.
 
@@ -87,6 +98,6 @@ joypad's name to the console at startup and whenever one connects.
 
 ## Not built yet
 
-Shield, grabs, ledges, specials, smash attacks, DI, teching, multiple
+Shield, grabs, ledges, crouch, tap jump (up to jump), specials, smash attacks, DI, teching, multiple
 characters, real models/animations (Blender → glTF), move data in hot-reloadable
-files, menus, rollback netcode.
+files, menus, harder CPU levels, rollback netcode.

@@ -26,9 +26,22 @@ If `cargo` isn't on PATH, prefix with `. "$HOME/.cargo/env";`.
   hits, damage, timers), it's in the sim and has a test. `gdext` only builds `Input`s
   and draws state.
 - **The sim is deterministic.** No floats, no `HashMap` iteration, no time or
-  randomness inside `sim/`. `World` must stay `Clone + PartialEq` (rollback snapshots).
+  OS randomness inside `sim/` (a seeded PRNG stored in the struct, like `Cpu`'s, is fine).
+  `World` must stay `Clone + PartialEq` (rollback snapshots).
+- **CPU players live in `sim/src/cpu.rs`** and only produce `Input`s; they never
+  change fighter state directly. `gdext` just calls `Cpu::think` for CPU slots.
 - Frame data uses Smash conventions: 1-based frames, angles in degrees (0 = forward,
   90 = up), knockback with Melee/Brawl formula constants.
+
+## Docs
+
+**Keep the docs current as part of every change, not as a follow-up.** The docs are
+`CLAUDE.md` and `README.md` at the root and in each crate (`sim/`, `gdext/`). Before
+calling a task done, check each one the change touches: commands, env vars, controls,
+file/module tables, test locations, "where things live", "not built yet", and rules.
+Fix anything stale, and delete statements that are no longer true. If a new directory,
+crate or subsystem needs its own explanation, add a `README.md` (for people) and/or a
+`CLAUDE.md` (rules for agents) there and link it from the root docs.
 
 ## Known quirks
 
