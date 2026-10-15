@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["sim", "gdext"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+# Keep dependencies (godot-rust especially) reasonably fast in debug builds.
+[profile.dev.package."*"]
+opt-level = 2

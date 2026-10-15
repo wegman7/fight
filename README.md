@@ -1,0 +1,92 @@
+# Fight
+
+A 2.5D platform fighter: 3D graphics in Godot 4, with gameplay in a pure-Rust deterministic simulation.
+
+```
+sim/      fight_sim — all gameplay rules: fixed-point physics, state machines,
+          frame data, hitboxes, Smash knockback formula. No engine deps.
+gdext/    fight_gd — Godot extension (godot-rust): input → sim → 3D nodes
+godot/    Godot project (main.tscn, lighting, camera)
+```
+
+The sim steps at a fixed 60 Hz from a list of per-player `Input`s. It uses only
+integer (Q16.16) math, so the same inputs give bit-identical results on
+Mac, Windows and Linux. That makes replays and rollback netcode possible later.
+The Godot layer only reads the sim state and draws it.
+
+More detail: [`sim/README.md`](sim/README.md), [`gdext/README.md`](gdext/README.md).
+
+## Setup (once)
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
+brew install --cask godot                                          # Godot 4.7+
+```
+
+If a terminal says `cargo: command not found`, run `. "$HOME/.cargo/env"` or open a new terminal.
+
+## Run
+
+```sh
+cargo build                       # builds target/debug/libfight_gd.dylib
+godot --path godot                # play
+FIGHT_CPU=1 godot --path godot    # you (P1) vs an easy CPU
+FIGHT_DEMO=1 godot --path godot   # two easy CPUs fight, hitboxes shown
+godot -e --path godot             # open the editor (F5 runs the game)
+```
+
+Rebuild with `cargo build` after every Rust change. The editor hot-reloads the extension.
+
+On a fresh clone, Godot needs to import the project once so it registers the
+extension. Opening the editor does this, or run `godot --headless --path godot --import`.
+
+## Test
+
+```sh
+cargo test                        # all sim tests (milliseconds, no window)
+cargo test jab                    # only tests whose name contains "jab"
+cargo test -- --nocapture         # show println! output
+cargo clippy --workspace --all-targets
+```
+
+Tests live in `sim/tests/gameplay.rs` and `sim/tests/cpu.rs` (plus unit tests in `sim/src/fixed.rs`).
+See [`sim/README.md`](sim/README.md#writing-tests) for how to write one.
+
+For feel, playtest with the debug keys below: **H** to see hitboxes, then
+**P** / **F** to step a move frame by frame.
+
+## Controls
+
+| | Move | Attack | Jump |
+|---|---|---|---|
+| P1 keyboard | WASD | J | K / Space |
+| P2 keyboard | Arrows | , | . |
+| Gamepads (in order to human players) | Left stick / D-pad | A (bottom) | X / Y |
+
+Neutral attack = jab, sideways = forward tilt, up = up tilt, in the air = nair.
+Tap down on a platform to drop through, or in the air to fast-fall. Release jump
+before liftoff for a short hop.
+
+**C** (pad: View/Back) toggles P2 between human and CPU and starts a new match.
+**R** (pad: Menu/Start) resets the match.
+
+Debug: **H** hitboxes · **P** pause · **F** frame-advance · **Esc** quit
+
+Xbox, PlayStation and Switch Pro pads all work (Godot uses SDL's mappings). On
+macOS, pair Xbox One/Series pads over Bluetooth. The game prints each detected
+joypad's name to the console at startup and whenever one connects.
+
+## Where things live
+
+- Character tuning: `FighterParams::DEFAULT` in `sim/src/fighter.rs`
+- Moves and frame data: `sim/src/moves.rs`
+- Stage layout and blast zones: `Stage::battlefield()` in `sim/src/stage.rs`
+- Knockback / hitstun / hitlag formulas: bottom of `sim/src/fighter.rs`
+- CPU opponent: `sim/src/cpu.rs` (`CpuLevel::EASY` holds the difficulty knobs)
+- Controls, camera, visuals: `gdext/src/lib.rs`
+
+## Not built yet
+
+Shield, grabs, ledges, specials, smash attacks, DI, teching, multiple
+characters, real models/animations (Blender → glTF), move data in hot-reloadable
+files, menus, rollback netcode.

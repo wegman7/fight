@@ -1,0 +1,12 @@
+[package]
+name = "fight_gd"
+description = "Godot bindings: renders and drives fight_sim"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fight_sim = { path = "../sim" }
+godot = { version = "0.5.5", features = ["api-4-7"] }

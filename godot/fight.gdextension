@@ -1,0 +1,12 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.7
+reloadable = true
+
+[libraries]
+macos.debug = "res://../target/debug/libfight_gd.dylib"
+macos.release = "res://../target/release/libfight_gd.dylib"
+windows.debug.x86_64 = "res://../target/debug/fight_gd.dll"
+windows.release.x86_64 = "res://../target/release/fight_gd.dll"
+linux.debug.x86_64 = "res://../target/debug/libfight_gd.so"
+linux.release.x86_64 = "res://../target/release/libfight_gd.so"

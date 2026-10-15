@@ -1,0 +1,18 @@
+# Rust build output
+/target
+
+# Godot editor cache and imports (regenerated on open / --import)
+godot/.godot/
+godot/android/
+*.tmp
+
+# Movie/frame dumps from --write-movie
+*.avi
+/frames/
+
+# OS / editor clutter
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

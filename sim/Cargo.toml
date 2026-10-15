@@ -1,0 +1,7 @@
+[package]
+name = "fight_sim"
+description = "Deterministic platform-fighter simulation (no engine dependencies)"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
