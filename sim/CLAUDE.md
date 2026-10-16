@@ -9,11 +9,15 @@
   apply, so simultaneous hits trade regardless of player index. Keep it that way.
 - New state or mechanic → new variant/fields on `Fighter`/`State`, plus a test in
   `tests/gameplay.rs` asserting it in frame-exact terms.
-- New move → add a `MoveId` variant, a `static MoveData` in `moves.rs` (start from
-  `..BASE`), and pick it in `Fighter::step` (`ground_attack`, `aerial`, `start_special`,
-  the `Holding` branch...). Hitbox/grab box/motion/projectile/throw `x` are forward
-  offsets, mirrored by facing automatically. Its `name` needs a matching animation in
-  `art/fighter/build_fighter.py`.
+- New move → add a `MoveId` variant and a `static MoveData` in `moves.rs` (start from
+  `..BASE`), then put it in a character's `Moveset` (`character.rs`) or reach it as a
+  follow-up (`combo`, `Landing::Into`, `Counter::into`). `Fighter::step` picks moves
+  through `self.moveset()`; never name a `MoveId` there. Hitbox/grab box/motion/projectile/
+  throw `x` are forward offsets, mirrored by facing automatically. Its `name` needs a
+  matching animation in that character's model script (`art/fighter/build_fighter.py`,
+  `art/pug/build_pug.py`).
+- New character → a `Character` variant with its `FighterParams`, `Moveset` and name,
+  added to `Character::ALL`; its tests go in their own file like `tests/pug.rs`.
 - Anything that happens once on a move frame (firing a projectile, applying a throw)
   must check `Fighter::frame_advanced`. The frame number alone repeats during hitlag
   and while a smash attack charges.

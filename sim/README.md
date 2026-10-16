@@ -6,7 +6,7 @@ I/O, so everything can be tested in milliseconds with `cargo test`.
 ## API in one screen
 
 ```rust
-let mut world = World::new(Stage::battlefield(), /* players */ 2, /* stocks */ 3);
+let mut world = World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], /* stocks */ 3);
 
 // Once per frame (60 Hz), one Input per player:
 world.step(&[p1_input, p2_input]);
@@ -14,8 +14,8 @@ world.step(&[p1_input, p2_input]);
 world.fighters[1].percent;   // damage
 world.fighters[1].state;     // State::Ground, State::Shield, State::Attack { mv, .. }, ...
 world.fighters[1].shield;    // shield health, out of SHIELD_MAX
-world.projectiles;           // energy shots in flight
-world.events;                // Event::Hit / ShieldHit / ShieldBreak / Grab / Ko from the last step
+world.projectiles;           // energy shots and sneeze clouds in flight
+world.events;                // Event::Hit / ShieldHit / ShieldBreak / Grab / Counter / Ko from the last step
 world.active_hitboxes();     // hitboxes and grab boxes, for debug drawing
 let snapshot = world.clone(); // full save state (rollback, replays)
 
@@ -31,8 +31,9 @@ world.step(&[p1_input, p2_input]);
 |---|---|
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
-| `fighter.rs` | `FighterParams` (tuning), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
-| `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, scripted motion, projectiles, throws, landing behaviour, charge frame, jab combos), plus dodge timings (`DodgeData`) |
+| `character.rs` | `Character` (Mannequin, Pug): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
+| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
+| `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
 | `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, and recovers with double jump then up special. Difficulty knobs in `CpuLevel` (only `EASY` so far). |
@@ -42,13 +43,28 @@ world.step(&[p1_input, p2_input]);
 A move is a `MoveId` plus a `static MoveData`. While it runs the fighter is in
 `State::Attack { mv, frame, .. }`, and the frame counts up from 1. Everything else is data:
 
-- `hitboxes` / `grabbox`: active frame ranges and offsets from the feet.
+- `hitboxes` / `grabbox`: active frame ranges and offsets from the feet. A grab box
+  with `misses_shields` doesn't catch shielding fighters. With `on_grab`, a catch
+  starts that move instead of holding (a command grab: the pug's tackle → ride).
 - `motion`: overrides velocity on some frames (lunges, the uppercut's rise, the
   ground pound's plunge). A `vy` also turns gravity off for that frame.
-- `projectile`: fired once, on the frame it names. `throw`: applied once to the
-  held fighter (a pummel just deals damage).
+- `projectile`: fired once, on the frame it names. If the move was charged, its
+  `growth` adds radius, damage, knockback and lifetime in proportion to the charge, and
+  can push the shooter back (`Projectile::radius()` / `damage()` / `base_kb()`).
+- `throws`: each applied once to the held fighter on its frame. A pummel only deals
+  damage; a releasing throw launches and ends the hold, so later entries are skipped.
+  Several in one move make a multi-hit ride (the pug's tackle).
 - `landing`: keep going, landing lag (aerials, specials), or switch to another move.
-- `charge_frame` (smash attacks), `combo` (jab chains), `special_fall` (helpless afterwards).
+- `charge_frame`: holding `charge_with` (attack or smash by default; special for the
+  pug's sneeze) freezes the move there for up to `MAX_CHARGE` frames.
+- `combo` (jab chains; a move can chain into itself,
+  like the pug's nibbles), `special_fall` (helpless afterwards).
+- `counter`: hit during its window, the fighter takes nothing, turns toward the
+  attacker and switches to another move, briefly intangible (the pug's play dead →
+  pounce). Handled in `World::resolve_hits`, which sends `Event::Counter`.
+
+Which move an input starts depends on the fighter's `Character`: `Fighter::step`
+reads the input, then picks the slot from `character.moveset()`.
 
 Dodges are `State::Dodge { kind, frame }` with timings in `DodgeData`.
 
@@ -72,7 +88,8 @@ cargo test -p fight_sim -- --nocapture
 
 ## Writing tests
 
-Gameplay tests live in `tests/gameplay.rs`. CPU behaviour tests (engages,
+Gameplay tests live in `tests/gameplay.rs` (the mannequin) and `tests/pug.rs` (the pug's
+moves, tuning and play-dead counter). CPU behaviour tests (engages,
 recovers with and without a double jump, doesn't self-destruct, mashes out of grabs,
 grabs, shields, stays deterministic) live in `tests/cpu.rs`.
 The helpers at the top of `gameplay.rs` (`world()`, `press()`, `stick()`,

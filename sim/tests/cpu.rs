@@ -1,7 +1,7 @@
-use fight_sim::{Cpu, Event, Fx, Input, MoveId, Stage, State, World};
+use fight_sim::{Character, Cpu, Event, Fx, Input, MoveId, Stage, State, World};
 
 fn world() -> World {
-    World::new(Stage::battlefield(), 2, 3)
+    World::new(Stage::battlefield(), &[Character::Mannequin; 2], 3)
 }
 
 /// Runs P1 idle against an easy CPU as P2. Returns (attacks started, hits landed).
@@ -133,4 +133,33 @@ fn easy_cpu_shields_some_attacks() {
         shielded += w.events.iter().filter(|e| matches!(e, Event::ShieldHit { defender: 1, .. })).count();
     }
     assert!(shielded > 0, "never shielded");
+}
+
+fn pug_cpu_world() -> World {
+    World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], 3)
+}
+
+#[test]
+fn easy_cpu_lands_hits_as_the_pug() {
+    let (mut w, mut cpu) = (pug_cpu_world(), Cpu::easy(1));
+    let (_, hits) = vs_idle(&mut w, &mut cpu, 600);
+    assert!(hits > 0, "never hit an idle opponent in 10 s");
+}
+
+#[test]
+fn easy_cpu_pug_ear_copters_back_without_air_jumps() {
+    for x in [-85, 85] {
+        let (mut w, mut cpu) = (pug_cpu_world(), Cpu::easy(1));
+        let f = &mut w.fighters[1];
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
+        let mut used_ear_copter = false;
+        for _ in 0..300 {
+            let input = cpu.think(&w);
+            w.step(&[Input::default(), input]);
+            used_ear_copter |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::PugEarCopter, .. });
+        }
+        assert!(used_ear_copter, "from x={x}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
+        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+    }
 }

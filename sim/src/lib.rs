@@ -6,6 +6,7 @@
 //! fixed-point so the same inputs produce bit-identical results on every
 //! platform — a prerequisite for replays and rollback netcode.
 
+pub mod character;
 pub mod cpu;
 pub mod fighter;
 pub mod fixed;
@@ -14,10 +15,11 @@ pub mod moves;
 pub mod stage;
 pub mod world;
 
+pub use character::{Character, Moveset};
 pub use cpu::{Cpu, CpuLevel};
-pub use fighter::{Fighter, FighterParams, SHIELD_MAX, State};
+pub use fighter::{Fighter, FighterParams, SHIELD_MAX, STATE_ANIMS, State};
 pub use fixed::Fx;
 pub use input::Input;
-pub use moves::{DodgeKind, Hitbox, MoveData, MoveId};
+pub use moves::{Counter, DodgeKind, Hitbox, MoveData, MoveId};
 pub use stage::{Platform, Stage};
 pub use world::{ActiveHitbox, Event, Projectile, World};

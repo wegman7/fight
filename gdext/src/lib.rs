@@ -2,7 +2,7 @@
 //! `physics_process`, and mirrors the simulation onto 3D nodes in `process`.
 //! No gameplay rules live here — if it affects who wins, it belongs in the sim.
 
-use fight_sim::{Cpu, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, Stage, State, World};
+use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, STATE_ANIMS, Stage, State, World};
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
@@ -31,9 +31,23 @@ const STICK_DEADZONE: f32 = 0.15;
 /// Right stick pushed this far acts as the C-stick: one smash attack (or aerial) in its direction.
 const CSTICK_THRESHOLD: f32 = 0.5;
 const TRIGGER_THRESHOLD: f32 = 0.3;
-/// Rigged fighter model, built by `art/fighter/build_fighter.py`. One animation per
-/// `Fighter::anim()` name, keyed at 60 fps.
-const FIGHTER_MODEL: &str = "res://models/fighter.glb";
+/// How a sim `Character` is drawn.
+struct Look {
+    /// Rigged model with an animation for every name its character's `Fighter::anim()`
+    /// can return, keyed at 60 fps.
+    model: &'static str,
+    /// Neutral-special projectile color, mixed with the player's color. `None` = player color.
+    projectile: Option<Color>,
+}
+
+fn look(character: Character) -> Look {
+    match character {
+        // Built by art/fighter/build_fighter.py.
+        Character::Mannequin => Look { model: "res://models/fighter.glb", projectile: None },
+        // Built by art/pug/build_pug.py. Its projectile is a sneeze cloud.
+        Character::Pug => Look { model: "res://models/pug.glb", projectile: Some(Color::from_rgb(0.85, 0.95, 0.8)) },
+    }
+}
 /// Surfaces with this material name get the player's color.
 const TINTED_MATERIAL: &str = "Body";
 /// The model faces +X. Turning it this far toward the camera shows a 3/4 view, as in Smash.
@@ -77,6 +91,8 @@ pub struct FightWorld {
     shake: f32,
     time: f64,
     show_hitboxes: bool,
+    /// Per player: who they play. Changing it starts a new match.
+    characters: Vec<Character>,
     /// `Some` for players driven by the computer instead of a controller.
     cpus: Vec<Option<Cpu>>,
     /// Per player: right stick was out last frame, so it only fires once per push.
@@ -90,9 +106,11 @@ pub struct FightWorld {
 #[godot_api]
 impl INode3D for FightWorld {
     fn init(base: Base<Node3D>) -> Self {
+        // P1 starts as the mannequin, P2 as the pug; 1 / 2 cycle them in game.
+        let characters: Vec<Character> = (0..PLAYERS).map(|p| Character::ALL[p % Character::ALL.len()]).collect();
         Self {
             base,
-            world: World::new(Stage::battlefield(), PLAYERS, STOCKS),
+            world: World::new(Stage::battlefield(), &characters, STOCKS),
             views: Vec::new(),
             hitbox_pool: Vec::new(),
             projectile_pool: Vec::new(),
@@ -104,6 +122,7 @@ impl INode3D for FightWorld {
             shake: 0.0,
             time: 0.0,
             show_hitboxes: false,
+            characters,
             cpus: vec![None; PLAYERS],
             cstick_out: vec![false; PLAYERS],
             joypads: None,
@@ -166,6 +185,10 @@ impl INode3D for FightWorld {
                     godot_print!("P{} shield break!", fighter + 1);
                 }
                 Event::Grab { .. } => {}
+                Event::Counter { x, y, .. } => {
+                    self.spawn_spark(to_godot(x, y), 0.6);
+                    self.shake = self.shake.max(0.15);
+                }
                 Event::Ko { fighter } => {
                     self.shake = 0.6;
                     godot_print!("P{} KO'd ({} stocks left)", fighter + 1, self.world.fighters[fighter].stocks);
@@ -211,6 +234,8 @@ impl INode3D for FightWorld {
             }
             Key::R => self.new_match(),
             Key::C => self.toggle_cpu(),
+            Key::KEY_1 => self.next_character(0),
+            Key::KEY_2 => self.next_character(1),
             Key::ESCAPE => self.base().get_tree().quit(),
             _ => {}
         }
@@ -219,7 +244,7 @@ impl INode3D for FightWorld {
 
 impl FightWorld {
     fn new_match(&mut self) {
-        self.world = World::new(Stage::battlefield(), PLAYERS, STOCKS);
+        self.world = World::new(Stage::battlefield(), &self.characters, STOCKS);
         for (p, cpu) in self.cpus.iter_mut().enumerate() {
             if cpu.is_some() {
                 *cpu = Some(Cpu::easy(p));
@@ -257,35 +282,63 @@ impl FightWorld {
     }
 
     fn build_fighters(&mut self) {
-        let scene = load::<PackedScene>(FIGHTER_MODEL);
         for i in 0..self.world.fighters.len() {
-            let color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
-            let mut material = StandardMaterial3D::new_gd();
-            material.set_albedo(color);
-            material.set_roughness(0.6);
+            let view = self.build_view(i);
+            self.views.push(view);
+        }
+    }
 
-            let model = scene.instantiate_as::<Node3D>();
-            for node in model.find_children_ex("*").type_("MeshInstance3D").done().iter_shared() {
-                let mut mesh_node = node.cast::<MeshInstance3D>();
-                let Some(mesh) = mesh_node.get_mesh() else { continue };
-                for s in 0..mesh.get_surface_count() {
-                    if mesh.surface_get_material(s).is_some_and(|m| m.get_name() == TINTED_MATERIAL) {
-                        mesh_node.set_surface_override_material(s, &material);
-                    }
+    fn build_view(&mut self, i: usize) -> FighterView {
+        let character = self.characters[i];
+        let color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+        let mut material = StandardMaterial3D::new_gd();
+        material.set_albedo(color);
+        material.set_roughness(0.6);
+
+        let model = load::<PackedScene>(look(character).model).instantiate_as::<Node3D>();
+        for node in model.find_children_ex("*").type_("MeshInstance3D").done().iter_shared() {
+            let mut mesh_node = node.cast::<MeshInstance3D>();
+            let Some(mesh) = mesh_node.get_mesh() else { continue };
+            for s in 0..mesh.get_surface_count() {
+                if mesh.surface_get_material(s).is_some_and(|m| m.get_name() == TINTED_MATERIAL) {
+                    mesh_node.set_surface_override_material(s, &material);
                 }
             }
-            // Posed by hand from the sim state every frame (see `update_fighters`), never free-running.
-            let mut anim = model.get_node_as::<AnimationPlayer>("AnimationPlayer");
-            anim.set_callback_mode_process(AnimationCallbackModeProcess::MANUAL);
-
-            let mut root = Node3D::new_alloc();
-            root.add_child(&model);
-            self.base_mut().add_child(&root);
-
-            let (shield, shield_material) = sphere_instance(Color { a: 0.35, ..color });
-            self.base_mut().add_child(&shield);
-            self.views.push(FighterView { root, model, anim, material, shield, shield_material, color });
         }
+        // Posed by hand from the sim state every frame (see `update_fighters`), never free-running.
+        let mut anim = model.get_node_as::<AnimationPlayer>("AnimationPlayer");
+        anim.set_callback_mode_process(AnimationCallbackModeProcess::MANUAL);
+        let moves = character.moves();
+        let names = STATE_ANIMS.iter().copied().chain(moves.iter().map(|m| m.data().name)).chain(DodgeKind::ALL.iter().map(|d| d.data().name));
+        for name in names {
+            if !anim.has_animation(name) {
+                godot_error!("{} has no animation '{name}': that pose won't show", look(character).model);
+            }
+        }
+
+        let mut root = Node3D::new_alloc();
+        root.add_child(&model);
+        self.base_mut().add_child(&root);
+
+        let (shield, shield_material) = sphere_instance(Color { a: 0.35, ..color });
+        self.base_mut().add_child(&shield);
+        FighterView { root, model, anim, material, shield, shield_material, color }
+    }
+
+    /// Switches player `p` to the next character and starts a new match, since
+    /// characters play differently.
+    fn next_character(&mut self, p: usize) {
+        if p >= self.views.len() {
+            return;
+        }
+        let next = (Character::ALL.iter().position(|&c| c == self.characters[p]).unwrap_or(0) + 1) % Character::ALL.len();
+        self.characters[p] = Character::ALL[next];
+        let mut view = self.build_view(p);
+        std::mem::swap(&mut self.views[p], &mut view);
+        view.root.queue_free();
+        view.shield.queue_free();
+        self.new_match();
+        godot_print!("P{} is now the {}", p + 1, self.characters[p].name());
     }
 
     fn build_hud(&mut self) {
@@ -306,7 +359,8 @@ impl FightWorld {
             "P1: WASD move · J attack · K jump · L special · ; shield · U grab · I smash\n\
              P2: arrows · , attack · . jump · / special · M shield · N grab · B smash\n\
              Pads: stick · A attack · B special · X/Y jump · LT/RT shield · LB/RB grab · right stick smash\n\
-             C (pad: View) toggle P2 human/CPU · R (pad: Menu) reset · H hitboxes · P pause · F frame-advance · Esc quit",
+             C (pad: View) toggle P2 human/CPU · 1 / 2 change P1 / P2 character · R (pad: Menu) reset\n\
+             H hitboxes · P pause · F frame-advance · Esc quit",
         );
         help.set_position(Vector2::new(16.0, 12.0));
         layer.add_child(&help);
@@ -379,7 +433,7 @@ impl FightWorld {
         }
     }
 
-    /// Glowing balls in the owner's color.
+    /// Glowing balls in the owner's color (the pug's sneeze is a pale puff).
     fn update_projectiles(&mut self) {
         let projectiles = self.world.projectiles.clone();
         while self.projectile_pool.len() < projectiles.len() {
@@ -392,10 +446,15 @@ impl FightWorld {
         for (i, (node, mat)) in self.projectile_pool.iter_mut().enumerate() {
             match projectiles.get(i) {
                 Some(p) => {
-                    let color = PLAYER_COLORS[p.owner % PLAYER_COLORS.len()].lightened(0.4);
+                    let player = PLAYER_COLORS[p.owner % PLAYER_COLORS.len()];
+                    let tint = look(self.world.fighters[p.owner].character).projectile;
+                    let color = match tint {
+                        Some(tint) => tint.lerp(player, 0.2),
+                        None => player.lightened(0.4),
+                    };
                     let pulse = 1.0 + 0.1 * ((self.time * 30.0).sin() as f32);
                     node.set_position(to_godot(p.x, p.y));
-                    node.set_scale(Vector3::splat(p.data().radius.to_f32() * 2.0 * SCALE * pulse));
+                    node.set_scale(Vector3::splat(p.radius().to_f32() * 2.0 * SCALE * pulse));
                     node.set_visible(true);
                     mat.set_albedo(color);
                     mat.set_emission(color);
@@ -434,7 +493,7 @@ impl FightWorld {
         let names: Vec<String> = (0..self.world.fighters.len()).map(|p| self.player_name(p)).collect();
         for ((label, f), name) in self.hud.iter_mut().zip(&self.world.fighters).zip(&names) {
             let stocks = "● ".repeat(f.stocks as usize);
-            label.set_text(&format!("{name}  {}%\n{}", f.percent, stocks));
+            label.set_text(&format!("{name} {}  {}%\n{}", f.character.name(), f.percent, stocks));
         }
         let alive: Vec<usize> = (0..self.world.fighters.len())
             .filter(|&i| self.world.fighters[i].state != State::Eliminated)

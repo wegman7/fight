@@ -1,10 +1,10 @@
 use fight_sim::fighter::knockback;
-use fight_sim::{DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stage, State, World};
+use fight_sim::{Character, DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stage, State, World};
 
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
 fn world() -> World {
-    World::new(Stage::battlefield(), 2, 3)
+    World::new(Stage::battlefield(), &[Character::Mannequin; 2], 3)
 }
 
 fn press(buttons: u8) -> Input {

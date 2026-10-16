@@ -35,12 +35,13 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
 - **Animation names = `Fighter::anim()` names.** States: `idle`, `walk`, `run`,
   `crouch`, `jumpsquat`, `air`, `specialfall`, `land`, `hitstun`, `shield`, `dizzy`,
   `grab_hold`, `grabbed`. Dodges (`DodgeData::name`): `spotdodge`, `roll_f`, `roll_b`,
-  `airdodge`. Every move's `MoveData::name`: `jab`, `jab2`, `jab3`, `ftilt`, `utilt`,
+  `airdodge`. Every mannequin move's `MoveData::name` (`Character::Mannequin.moves()`): `jab`, `jab2`, `jab3`, `ftilt`, `utilt`,
   `dtilt`, `dashattack`, `fsmash`, `usmash`, `dsmash`, `nair`, `fair`, `bair`, `uair`,
   `dair`, `special_n`, `special_s`, `special_u`, `special_d`, `special_d_land`, `grab`,
   `dashgrab`, `pummel`, `fthrow`, `bthrow`, `uthrow`, `dthrow`. A pose with no
-  animation stays frozen on its last frame. A new move needs a new action with the
-  same name.
+  animation stays frozen on its last frame, and the game logs an `ERROR` for it at
+  startup. A new move needs a new action with the same name. (Other characters'
+  models, like the pug, have their own move names.)
 - **60 fps, frame 1 = sim frame 1.** Moves are keyed on their sim frames (Blender
   frame 5 of `ftilt` is FTilt's frame 5). The export slides each action so frame 1
   is time 0. `godot/models/fighter.glb.import` has `animation/fps=60`; Godot's

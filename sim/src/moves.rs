@@ -3,6 +3,7 @@
 //! Offsets are from the fighter's feet with `x` pointing forward (mirrored by facing).
 
 use crate::fixed::Fx;
+use crate::input::Input;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MoveId {
@@ -34,6 +35,37 @@ pub enum MoveId {
     BThrow,
     UThrow,
     DThrow,
+    // The pug's moves (see `character.rs` for which input starts each).
+    PugBite,
+    PugBite2,
+    PugNibbles,
+    PugPawSwipe,
+    PugHeadToss,
+    PugScoot,
+    PugBellySlide,
+    PugRam,
+    PugHowl,
+    PugShake,
+    PugTailSpin,
+    PugAirHeadbutt,
+    PugBuck,
+    PugSnap,
+    PugPancake,
+    PugSneeze,
+    PugTackle,
+    /// The tackle after it caught someone: rides and bites them.
+    PugTackleRide,
+    PugEarCopter,
+    PugPlayDead,
+    /// The play-dead counter's answer: springs up and pounces on the attacker.
+    PugPounce,
+    PugBiteGrab,
+    PugDashBiteGrab,
+    PugNom,
+    PugToss,
+    PugTugSpin,
+    PugFlingUp,
+    PugSit,
 }
 
 #[derive(Debug)]
@@ -52,7 +84,7 @@ pub struct Hitbox {
     pub kb_growth: i32,
 }
 
-/// Catches instead of hitting. Grabs go through shields.
+/// Catches instead of hitting. Grabs go through shields, unless `misses_shields`.
 #[derive(Debug)]
 pub struct GrabBox {
     pub first: u16,
@@ -60,6 +92,8 @@ pub struct GrabBox {
     pub x: Fx,
     pub y: Fx,
     pub radius: Fx,
+    /// Shielding fighters aren't caught (the pug's tackle).
+    pub misses_shields: bool,
 }
 
 /// Sets the fighter's velocity on frames `first..=last`. `vx` is forward (mirrored
@@ -86,6 +120,20 @@ pub struct ProjectileData {
     pub angle: i32,
     pub base_kb: i32,
     pub kb_growth: i32,
+    /// For a move with a `charge_frame`: what the projectile gains when fully charged.
+    pub growth: Option<ProjectileGrowth>,
+}
+
+/// Added to a projectile at full charge (`MAX_CHARGE` frames), in proportion to how
+/// long the move was charged.
+#[derive(Debug)]
+pub struct ProjectileGrowth {
+    pub radius: Fx,
+    pub damage: i32,
+    pub base_kb: i32,
+    pub lifetime: u16,
+    /// Pushes the shooter backward at this speed when it fires.
+    pub recoil: Fx,
 }
 
 /// Applied to the held opponent on `frame`. A pummel (`release: false`) only deals
@@ -99,6 +147,16 @@ pub struct Throw {
     pub angle: i32,
     pub base_kb: i32,
     pub kb_growth: i32,
+}
+
+/// A counter: hit by an attack (or projectile) on frames `first..=last`, the fighter
+/// takes no damage or knockback, turns to face the attacker and switches to `into`,
+/// briefly intangible.
+#[derive(Debug)]
+pub struct Counter {
+    pub first: u16,
+    pub last: u16,
+    pub into: MoveId,
 }
 
 /// What happens when the fighter lands partway through the move.
@@ -119,16 +177,24 @@ pub struct MoveData {
     /// Earlier entries win when several hitboxes touch the same target.
     pub hitboxes: &'static [Hitbox],
     pub grabbox: Option<GrabBox>,
+    /// When the grab box catches someone, start this move instead of holding (a
+    /// command grab). Without it, the grabber holds and picks a pummel or throw.
+    pub on_grab: Option<MoveId>,
     pub motion: &'static [Motion],
     pub projectile: Option<ProjectileData>,
-    pub throw: Option<Throw>,
+    /// Pummels and throws, in frame order. Once one releases, the rest are skipped.
+    pub throws: &'static [Throw],
     pub landing: Landing,
-    /// Smash attacks: holding the button freezes the move on this frame to charge it.
+    /// Holding `charge_with` freezes the move on this frame to charge it (smash
+    /// attacks, the pug's sneeze).
     pub charge_frame: Option<u16>,
+    /// The buttons that keep charging: attack or smash for smash attacks.
+    pub charge_with: u8,
     /// Pressing attack from this frame on cancels into the next hit of a combo.
     pub combo: Option<(MoveId, u16)>,
     /// Ends in helpless special fall when it finishes in the air.
     pub special_fall: bool,
+    pub counter: Option<Counter>,
 }
 
 const BASE: MoveData = MoveData {
@@ -136,13 +202,16 @@ const BASE: MoveData = MoveData {
     total_frames: 0,
     hitboxes: &[],
     grabbox: None,
+    on_grab: None,
     motion: &[],
     projectile: None,
-    throw: None,
+    throws: &[],
     landing: Landing::Continue,
     charge_frame: None,
+    charge_with: Input::ATTACK | Input::SMASH,
     combo: None,
     special_fall: false,
+    counter: None,
 };
 
 impl MoveId {
@@ -175,6 +244,34 @@ impl MoveId {
             MoveId::BThrow => &BTHROW,
             MoveId::UThrow => &UTHROW,
             MoveId::DThrow => &DTHROW,
+            MoveId::PugBite => &PUG_BITE,
+            MoveId::PugBite2 => &PUG_BITE2,
+            MoveId::PugNibbles => &PUG_NIBBLES,
+            MoveId::PugPawSwipe => &PUG_PAW_SWIPE,
+            MoveId::PugHeadToss => &PUG_HEAD_TOSS,
+            MoveId::PugScoot => &PUG_SCOOT,
+            MoveId::PugBellySlide => &PUG_BELLY_SLIDE,
+            MoveId::PugRam => &PUG_RAM,
+            MoveId::PugHowl => &PUG_HOWL,
+            MoveId::PugShake => &PUG_SHAKE,
+            MoveId::PugTailSpin => &PUG_TAIL_SPIN,
+            MoveId::PugAirHeadbutt => &PUG_AIR_HEADBUTT,
+            MoveId::PugBuck => &PUG_BUCK,
+            MoveId::PugSnap => &PUG_SNAP,
+            MoveId::PugPancake => &PUG_PANCAKE,
+            MoveId::PugSneeze => &PUG_SNEEZE,
+            MoveId::PugTackle => &PUG_TACKLE,
+            MoveId::PugTackleRide => &PUG_TACKLE_RIDE,
+            MoveId::PugEarCopter => &PUG_EAR_COPTER,
+            MoveId::PugPlayDead => &PUG_PLAY_DEAD,
+            MoveId::PugPounce => &PUG_POUNCE,
+            MoveId::PugBiteGrab => &PUG_BITE_GRAB,
+            MoveId::PugDashBiteGrab => &PUG_DASH_BITE_GRAB,
+            MoveId::PugNom => &PUG_NOM,
+            MoveId::PugToss => &PUG_TOSS,
+            MoveId::PugTugSpin => &PUG_TUG_SPIN,
+            MoveId::PugFlingUp => &PUG_FLING_UP,
+            MoveId::PugSit => &PUG_SIT,
         }
     }
 }
@@ -338,6 +435,7 @@ static NEUTRAL_SPECIAL: MoveData = MoveData {
         angle: 40,
         base_kb: 20,
         kb_growth: 50,
+        growth: None,
     }),
     landing: Landing::Lag(8),
     ..BASE
@@ -399,7 +497,7 @@ static DOWN_SPECIAL_LANDING: MoveData = MoveData {
 static GRAB: MoveData = MoveData {
     name: "grab",
     total_frames: 30,
-    grabbox: Some(GrabBox { first: 7, last: 8, x: int(7), y: int(6), radius: int(4) }),
+    grabbox: Some(GrabBox { first: 7, last: 8, x: int(7), y: int(6), radius: int(4), misses_shields: false }),
     ..BASE
 };
 
@@ -407,21 +505,21 @@ static GRAB: MoveData = MoveData {
 static DASH_GRAB: MoveData = MoveData {
     name: "dashgrab",
     total_frames: 40,
-    grabbox: Some(GrabBox { first: 9, last: 10, x: int(9), y: int(6), radius: half(9) }),
+    grabbox: Some(GrabBox { first: 9, last: 10, x: int(9), y: int(6), radius: half(9), misses_shields: false }),
     ..BASE
 };
 
 static PUMMEL: MoveData = MoveData {
     name: "pummel",
     total_frames: 16,
-    throw: Some(Throw { frame: 3, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 }),
+    throws: &[Throw { frame: 3, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 }],
     ..BASE
 };
 
 static FTHROW: MoveData = MoveData {
     name: "fthrow",
     total_frames: 30,
-    throw: Some(Throw { frame: 12, release: true, x: int(9), damage: 8, angle: 45, base_kb: 60, kb_growth: 60 }),
+    throws: &[Throw { frame: 12, release: true, x: int(9), damage: 8, angle: 45, base_kb: 60, kb_growth: 60 }],
     ..BASE
 };
 
@@ -429,14 +527,14 @@ static FTHROW: MoveData = MoveData {
 static BTHROW: MoveData = MoveData {
     name: "bthrow",
     total_frames: 36,
-    throw: Some(Throw { frame: 15, release: true, x: int(-9), damage: 10, angle: 135, base_kb: 55, kb_growth: 75 }),
+    throws: &[Throw { frame: 15, release: true, x: int(-9), damage: 10, angle: 135, base_kb: 55, kb_growth: 75 }],
     ..BASE
 };
 
 static UTHROW: MoveData = MoveData {
     name: "uthrow",
     total_frames: 34,
-    throw: Some(Throw { frame: 14, release: true, x: int(2), damage: 7, angle: 90, base_kb: 65, kb_growth: 65 }),
+    throws: &[Throw { frame: 14, release: true, x: int(2), damage: 7, angle: 90, base_kb: 65, kb_growth: 65 }],
     ..BASE
 };
 
@@ -444,7 +542,289 @@ static UTHROW: MoveData = MoveData {
 static DTHROW: MoveData = MoveData {
     name: "dthrow",
     total_frames: 32,
-    throw: Some(Throw { frame: 13, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }),
+    throws: &[Throw { frame: 13, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }],
+    ..BASE
+};
+
+// --- Pug --------------------------------------------------------------------
+// A short fighter (hurtbox 9 tall), so most hitboxes sit lower than the mannequin's.
+
+/// Snap bite. Press attack again for a second bite, then keep pressing for nibbles.
+static PUG_BITE: MoveData = MoveData {
+    name: "bite",
+    total_frames: 14,
+    hitboxes: &[hit(3, 4, int(6), int(6), half(7), 3, 50, 8, 50)],
+    combo: Some((MoveId::PugBite2, 5)),
+    ..BASE
+};
+
+static PUG_BITE2: MoveData = MoveData {
+    name: "bite2",
+    total_frames: 16,
+    hitboxes: &[hit(3, 4, half(13), int(6), half(7), 2, 50, 8, 50)],
+    combo: Some((MoveId::PugNibbles, 5)),
+    ..BASE
+};
+
+/// Rapid nibbles: chains into itself for as long as attack keeps being pressed.
+/// Tiny knockback that drifts the target away, so it can't lock forever.
+static PUG_NIBBLES: MoveData = MoveData {
+    name: "nibbles",
+    total_frames: 12,
+    hitboxes: &[hit(2, 3, int(6), int(5), int(4), 1, 60, 6, 30)],
+    combo: Some((MoveId::PugNibbles, 5)),
+    ..BASE
+};
+
+/// Quick low paw swipe.
+static PUG_PAW_SWIPE: MoveData = MoveData {
+    name: "paw_swipe",
+    total_frames: 24,
+    hitboxes: &[hit(5, 7, int(7), int(4), int(4), 8, 40, 25, 95)],
+    ..BASE
+};
+
+/// Tosses the head up: a juggle starter.
+static PUG_HEAD_TOSS: MoveData = MoveData {
+    name: "head_toss",
+    total_frames: 26,
+    hitboxes: &[hit(6, 10, int(3), int(10), half(9), 7, 88, 35, 100)],
+    ..BASE
+};
+
+/// Butt scoot: sits and drags itself forward along the floor, popping targets up.
+static PUG_SCOOT: MoveData = MoveData {
+    name: "scoot",
+    total_frames: 30,
+    hitboxes: &[hit(4, 16, int(4), half(3), int(4), 5, 75, 30, 50)],
+    motion: &[Motion { first: 4, last: 16, vx: Some(Fx::ONE), vy: None }],
+    ..BASE
+};
+
+/// Belly slide out of a run, strong early and weaker as it slows down.
+static PUG_BELLY_SLIDE: MoveData = MoveData {
+    name: "belly_slide",
+    total_frames: 36,
+    hitboxes: &[hit(5, 10, int(5), int(3), half(9), 9, 60, 40, 70), hit(11, 18, int(5), int(3), int(4), 5, 65, 30, 50)],
+    motion: &[
+        Motion { first: 4, last: 10, vx: Some(Fx::int(2)), vy: None },
+        Motion { first: 11, last: 18, vx: Some(Fx::ONE), vy: None },
+    ],
+    ..BASE
+};
+
+/// A charging headbutt that lunges forward as it hits.
+static PUG_RAM: MoveData = MoveData {
+    name: "ram",
+    total_frames: 46,
+    hitboxes: &[hit(13, 15, int(8), int(5), int(5), 16, 35, 32, 100)],
+    motion: &[Motion { first: 12, last: 15, vx: Some(Fx::ratio(22, 10)), vy: None }],
+    charge_frame: Some(9),
+    ..BASE
+};
+
+/// Rears up and howls: a tall blast of noise straight up.
+static PUG_HOWL: MoveData = MoveData {
+    name: "howl",
+    total_frames: 44,
+    hitboxes: &[hit(10, 16, int(2), int(12), int(6), 13, 90, 30, 100)],
+    charge_frame: Some(6),
+    ..BASE
+};
+
+/// Wet-dog shake: flings spray both ways.
+static PUG_SHAKE: MoveData = MoveData {
+    name: "shake",
+    total_frames: 42,
+    hitboxes: &[hit(8, 10, int(6), int(3), int(5), 12, 30, 25, 100), hit(8, 10, int(-6), int(3), int(5), 12, 150, 25, 100)],
+    charge_frame: Some(4),
+    ..BASE
+};
+
+/// Chases its own tail in a curled-up spin: strong early, weaker after.
+static PUG_TAIL_SPIN: MoveData = MoveData {
+    name: "tail_spin",
+    total_frames: 32,
+    hitboxes: &[hit(4, 8, int(0), int(5), int(6), 9, 45, 15, 100), hit(9, 20, int(0), int(5), half(11), 5, 45, 5, 80)],
+    landing: Landing::Lag(8),
+    ..BASE
+};
+
+static PUG_AIR_HEADBUTT: MoveData = MoveData {
+    name: "air_headbutt",
+    total_frames: 36,
+    hitboxes: &[hit(7, 9, int(6), int(4), half(9), 11, 40, 25, 95)],
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// Double back kick, bucking with both hind legs.
+static PUG_BUCK: MoveData = MoveData {
+    name: "buck",
+    total_frames: 32,
+    hitboxes: &[hit(6, 8, int(-6), int(4), half(9), 12, 140, 25, 100)],
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Snaps at the sky.
+static PUG_SNAP: MoveData = MoveData {
+    name: "snap",
+    total_frames: 30,
+    hitboxes: &[hit(5, 8, int(1), int(11), half(9), 9, 85, 25, 95)],
+    landing: Landing::Lag(8),
+    ..BASE
+};
+
+/// Belly flop that meteors, with a lot of landing lag.
+static PUG_PANCAKE: MoveData = MoveData {
+    name: "pancake",
+    total_frames: 40,
+    hitboxes: &[hit(10, 14, int(0), int(0), int(6), 13, 270, 20, 90)],
+    landing: Landing::Lag(18),
+    ..BASE
+};
+
+/// Ah... ah... CHOO. Hold special during the "ah" to build it up: a tap is a small,
+/// short puff; a full charge is a big cloud that launches hard and knocks the pug back.
+static PUG_SNEEZE: MoveData = MoveData {
+    name: "sneeze",
+    total_frames: 42,
+    projectile: Some(ProjectileData {
+        frame: 16,
+        x: int(6),
+        y: int(6),
+        speed: Fx::ONE,
+        lifetime: 28,
+        radius: int(3),
+        damage: 4,
+        angle: 45,
+        base_kb: 20,
+        kb_growth: 60,
+        growth: Some(ProjectileGrowth { radius: int(3), damage: 12, base_kb: 45, lifetime: 22, recoil: Fx::ratio(15, 10) }),
+    }),
+    charge_frame: Some(13),
+    charge_with: Input::SPECIAL,
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Pounce tackle: a leap that latches onto whoever it catches (not through a shield)
+/// and rides them (`PUG_TACKLE_RIDE`). Once per airtime, like every side special.
+static PUG_TACKLE: MoveData = MoveData {
+    name: "tackle",
+    total_frames: 40,
+    grabbox: Some(GrabBox { first: 8, last: 18, x: int(5), y: int(5), radius: half(9), misses_shields: true }),
+    on_grab: Some(MoveId::PugTackleRide),
+    motion: &[
+        Motion { first: 1, last: 6, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 7, last: 10, vx: Some(Fx::ratio(24, 10)), vy: Some(Fx::ratio(12, 10)) },
+        Motion { first: 11, last: 18, vx: Some(Fx::ratio(24, 10)), vy: None },
+    ],
+    landing: Landing::Lag(14),
+    ..BASE
+};
+
+/// Clinging on: three bites, then it kicks off and hops back. Both stay put meanwhile,
+/// even in the air.
+static PUG_TACKLE_RIDE: MoveData = MoveData {
+    name: "tackle_ride",
+    total_frames: 54,
+    throws: &[
+        Throw { frame: 10, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 },
+        Throw { frame: 20, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 },
+        Throw { frame: 30, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 },
+        Throw { frame: 40, release: true, x: int(9), damage: 4, angle: 80, base_kb: 45, kb_growth: 50 },
+    ],
+    motion: &[
+        Motion { first: 1, last: 40, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 41, last: 44, vx: Some(Fx::ratio(-16, 10)), vy: Some(Fx::ratio(14, 10)) },
+    ],
+    landing: Landing::Lag(6),
+    ..BASE
+};
+
+/// Ear copter, the recovery: flaps its ears for a slow, steerable climb of about
+/// 45 units, swatting anyone above. Helpless afterwards.
+static PUG_EAR_COPTER: MoveData = MoveData {
+    name: "ear_copter",
+    total_frames: 56,
+    hitboxes: &[hit(8, 50, int(0), int(10), int(5), 3, 85, 45, 20)],
+    motion: &[
+        Motion { first: 1, last: 5, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 6, last: 50, vx: None, vy: Some(Fx::ONE) },
+    ],
+    landing: Landing::Lag(20),
+    special_fall: true,
+    ..BASE
+};
+
+/// Play dead: flops over belly-up. Hit on frames 6-26, it shrugs it off and pounces.
+static PUG_PLAY_DEAD: MoveData = MoveData {
+    name: "play_dead",
+    total_frames: 44,
+    counter: Some(Counter { first: 6, last: 26, into: MoveId::PugPounce }),
+    ..BASE
+};
+
+static PUG_POUNCE: MoveData = MoveData {
+    name: "pounce",
+    total_frames: 30,
+    hitboxes: &[hit(4, 8, int(6), int(4), half(11), 12, 40, 45, 95)],
+    motion: &[Motion { first: 2, last: 8, vx: Some(Fx::int(2)), vy: None }],
+    ..BASE
+};
+
+/// Grabs with its mouth: shorter reach than the mannequin's hands.
+static PUG_BITE_GRAB: MoveData = MoveData {
+    name: "bite_grab",
+    total_frames: 28,
+    grabbox: Some(GrabBox { first: 6, last: 7, x: int(6), y: int(5), radius: half(7), misses_shields: false }),
+    ..BASE
+};
+
+static PUG_DASH_BITE_GRAB: MoveData = MoveData {
+    name: "dash_bite_grab",
+    total_frames: 38,
+    grabbox: Some(GrabBox { first: 8, last: 9, x: int(8), y: int(5), radius: int(4), misses_shields: false }),
+    ..BASE
+};
+
+static PUG_NOM: MoveData = MoveData {
+    name: "nom",
+    total_frames: 14,
+    throws: &[Throw { frame: 3, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 }],
+    ..BASE
+};
+
+/// Shakes them like a toy, then lets go forward.
+static PUG_TOSS: MoveData = MoveData {
+    name: "toss",
+    total_frames: 30,
+    throws: &[Throw { frame: 14, release: true, x: int(8), damage: 7, angle: 40, base_kb: 65, kb_growth: 55 }],
+    ..BASE
+};
+
+/// The kill throw: spins around like a tug-of-war and flings them out behind.
+static PUG_TUG_SPIN: MoveData = MoveData {
+    name: "tug_spin",
+    total_frames: 40,
+    throws: &[Throw { frame: 20, release: true, x: int(-9), damage: 11, angle: 140, base_kb: 60, kb_growth: 80 }],
+    ..BASE
+};
+
+static PUG_FLING_UP: MoveData = MoveData {
+    name: "fling_up",
+    total_frames: 32,
+    throws: &[Throw { frame: 12, release: true, x: int(2), damage: 6, angle: 88, base_kb: 70, kb_growth: 60 }],
+    ..BASE
+};
+
+/// Sits on them, popping them up in front: the combo throw.
+static PUG_SIT: MoveData = MoveData {
+    name: "sit",
+    total_frames: 34,
+    throws: &[Throw { frame: 16, release: true, x: int(6), damage: 7, angle: 80, base_kb: 45, kb_growth: 35 }],
     ..BASE
 };
 
@@ -475,6 +855,8 @@ pub struct DodgeData {
 }
 
 impl DodgeKind {
+    pub const ALL: [DodgeKind; 5] = [DodgeKind::Spot, DodgeKind::RollForward, DodgeKind::RollBack, DodgeKind::Air, DodgeKind::AirDirectional];
+
     pub fn data(self) -> &'static DodgeData {
         match self {
             DodgeKind::Spot => &SPOT_DODGE,

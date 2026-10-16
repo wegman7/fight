@@ -1,3 +1,4 @@
+use crate::character::{Character, Moveset};
 use crate::fixed::{Fx, cos_deg, sin_deg};
 use crate::input::Input;
 use crate::moves::{DodgeKind, Landing, MoveData, MoveId};
@@ -30,7 +31,7 @@ pub struct FighterParams {
 }
 
 impl FighterParams {
-    pub const DEFAULT: FighterParams = FighterParams {
+    pub const MANNEQUIN: FighterParams = FighterParams {
         weight: 100,
         walk_speed: Fx::ratio(11, 10),
         run_speed: Fx::ratio(15, 10),
@@ -49,6 +50,29 @@ impl FighterParams {
         air_jumps: 1,
         landing_lag: 4,
         height: Fx::int(12),
+        radius: Fx::int(4),
+    };
+
+    /// Light and short, quick on the ground, with lower jumps but two air jumps.
+    pub const PUG: FighterParams = FighterParams {
+        weight: 82,
+        walk_speed: Fx::ratio(12, 10),
+        run_speed: Fx::ratio(18, 10),
+        ground_accel: Fx::ratio(25, 100),
+        traction: Fx::ratio(7, 100),
+        air_speed: Fx::ratio(8, 10),
+        air_accel: Fx::ratio(5, 100),
+        air_friction: Fx::ratio(2, 100),
+        gravity: Fx::ratio(1, 10),
+        max_fall: Fx::ratio(18, 10),
+        fast_fall: Fx::ratio(25, 10),
+        jump_squat: 3,
+        full_hop: Fx::ratio(21, 10),
+        short_hop: Fx::ratio(14, 10),
+        double_jump: Fx::ratio(18, 10),
+        air_jumps: 2,
+        landing_lag: 4,
+        height: Fx::int(9),
         radius: Fx::int(4),
     };
 }
@@ -132,6 +156,8 @@ const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Fighter {
+    pub character: Character,
+    /// `character.params()`, kept at hand.
     pub params: &'static FighterParams,
     pub state: State,
     /// Position of the fighter's feet.
@@ -200,9 +226,11 @@ impl Intent {
 }
 
 impl Fighter {
-    pub fn new(params: &'static FighterParams, x: Fx, y: Fx, facing: i32, stage: &Stage, stocks: u8) -> Fighter {
+    pub fn new(character: Character, x: Fx, y: Fx, facing: i32, stage: &Stage, stocks: u8) -> Fighter {
         let grounded_on = stage.platform_under(x, y);
+        let params = character.params();
         Fighter {
+            character,
             params,
             state: if grounded_on.is_some() { State::Ground } else { State::Air },
             x,
@@ -240,6 +268,17 @@ impl Fighter {
         }
     }
 
+    fn moveset(&self) -> &'static Moveset {
+        self.character.moveset()
+    }
+
+    /// The move a counter switches to, if a hit landing now would be countered.
+    pub(crate) fn counter_move(&self) -> Option<MoveId> {
+        let State::Attack { mv, frame, .. } = self.state else { return None };
+        let counter = mv.data().counter.as_ref()?;
+        (counter.first..=counter.last).contains(&frame).then_some(counter.into)
+    }
+
     pub fn grounded(&self) -> bool {
         self.grounded_on.is_some()
     }
@@ -264,7 +303,7 @@ impl Fighter {
         matches!(self.state, State::Shield | State::ShieldStun { .. })
     }
 
-    /// Holding a smash attack's charge right now.
+    /// Holding a charge (smash attack, sneeze) right now.
     pub fn charging(&self) -> bool {
         matches!(self.state, State::Attack { mv, frame, .. } if self.charge > 0 && mv.data().charge_frame == Some(frame))
     }
@@ -289,7 +328,9 @@ impl Fighter {
         dx * dx + dy * dy <= reach * reach
     }
 
-    /// A short name for the current pose, for the renderer to pick animations.
+    /// A short name for the current pose, for the renderer to pick animations: one of
+    /// [`STATE_ANIMS`], a move's name (`Character::moves`) or a dodge's
+    /// (`DodgeKind::ALL`), or "respawning" / "eliminated", which aren't drawn.
     pub fn anim(&self) -> &'static str {
         match self.state {
             State::Ground if self.vx.abs() > self.params.walk_speed => "run",
@@ -385,7 +426,7 @@ impl Fighter {
                     if take(&mut self.special_buffer) {
                         self.start_special(&intent);
                     } else if take(&mut self.attack_buffer) {
-                        self.start_attack(aerial(&intent, self.facing));
+                        self.start_attack(aerial(self.moveset(), &intent, self.facing));
                     }
                     self.air_control(sx, intent.down_tap);
                 }
@@ -403,7 +444,7 @@ impl Fighter {
                     self.air_control(sx, intent.down_tap);
                 }
                 let combo = data.combo.filter(|&(_, from)| frame >= from && self.attack_buffer > 0 && !self.attack_is_smash);
-                let holding_charge = input.held(Input::ATTACK) || input.held(Input::SMASH);
+                let holding_charge = input.held(data.charge_with);
                 if let Some((next, _)) = combo {
                     self.attack_buffer = 0;
                     self.start_attack(next);
@@ -459,18 +500,19 @@ impl Fighter {
             }
             State::Holding { frame } => {
                 self.vx = self.vx.approach(Fx::ZERO, p.traction);
+                let moves = self.moveset();
                 let throw = match intent.vertical() {
-                    Some(1) => Some(MoveId::UThrow),
-                    Some(_) => Some(MoveId::DThrow),
-                    None if sx.abs() >= TILT_THRESHOLD && sx.signum() == self.facing => Some(MoveId::FThrow),
-                    None if sx.abs() >= TILT_THRESHOLD => Some(MoveId::BThrow),
+                    Some(1) => Some(moves.uthrow),
+                    Some(_) => Some(moves.dthrow),
+                    None if sx.abs() >= TILT_THRESHOLD && sx.signum() == self.facing => Some(moves.fthrow),
+                    None if sx.abs() >= TILT_THRESHOLD => Some(moves.bthrow),
                     None => None,
                 };
                 if let Some(throw) = throw {
                     self.attack_buffer = 0;
                     self.start_attack(throw);
                 } else if take(&mut self.attack_buffer) {
-                    self.start_attack(MoveId::Pummel);
+                    self.start_attack(moves.pummel);
                 } else {
                     self.state = State::Holding { frame: frame.saturating_add(1) };
                 }
@@ -528,7 +570,8 @@ impl Fighter {
         if take(&mut self.jump_buffer) {
             self.state = State::JumpSquat { frame: 0 };
         } else if take(&mut self.grab_buffer) || (shield_held && take(&mut self.attack_buffer)) {
-            self.start_attack(if running { MoveId::DashGrab } else { MoveId::Grab });
+            let moves = self.moveset();
+            self.start_attack(if running { moves.dash_grab } else { moves.grab });
         } else if shield_held {
             // Pressing shield with the stick already pushed dodges straight away.
             let fresh = take(&mut self.shield_buffer);
@@ -560,38 +603,40 @@ impl Fighter {
 
     fn ground_attack(&mut self, intent: &Intent, running: bool) -> MoveId {
         let sx = intent.sx;
+        let moves = self.moveset();
         match intent.vertical() {
-            Some(1) if self.attack_is_smash => MoveId::USmash,
-            Some(_) if self.attack_is_smash => MoveId::DSmash,
+            Some(1) if self.attack_is_smash => moves.usmash,
+            Some(_) if self.attack_is_smash => moves.dsmash,
             None if self.attack_is_smash => {
                 if sx.abs() >= DEADZONE {
                     self.facing = sx.signum();
                 }
-                MoveId::FSmash
+                moves.fsmash
             }
-            _ if running => MoveId::DashAttack,
-            Some(1) => MoveId::UTilt,
-            Some(_) => MoveId::DTilt,
+            _ if running => moves.dash_attack,
+            Some(1) => moves.utilt,
+            Some(_) => moves.dtilt,
             None if sx.abs() >= TILT_THRESHOLD => {
                 self.facing = sx.signum();
-                MoveId::FTilt
+                moves.ftilt
             }
-            None => MoveId::Jab,
+            None => moves.jab,
         }
     }
 
     fn shield_action(&mut self, input: Input, intent: &Intent) {
         let up = intent.vertical() == Some(1);
+        let moves = self.moveset();
         if take(&mut self.jump_buffer) {
             self.state = State::JumpSquat { frame: 0 };
         } else if up && take(&mut self.special_buffer) {
-            self.start_attack(MoveId::UpSpecial);
+            self.start_attack(moves.up_special);
         } else if take(&mut self.attack_buffer) {
             // Up smash straight out of shield; any other attack button grabs.
             let smash = self.attack_is_smash && up;
-            self.start_attack(if smash { MoveId::USmash } else { MoveId::Grab });
+            self.start_attack(if smash { moves.usmash } else { moves.grab });
         } else if take(&mut self.grab_buffer) {
-            self.start_attack(MoveId::Grab);
+            self.start_attack(moves.grab);
         } else if !input.held(Input::SHIELD) {
             self.state = State::ShieldDrop { frames_left: SHIELD_DROP_FRAMES };
         } else if intent.dodge_x {
@@ -602,9 +647,10 @@ impl Fighter {
     }
 
     fn start_special(&mut self, intent: &Intent) {
+        let moves = self.moveset();
         let mv = match intent.vertical() {
-            Some(1) => MoveId::UpSpecial,
-            Some(_) => MoveId::DownSpecial,
+            Some(1) => moves.up_special,
+            Some(_) => moves.down_special,
             None if intent.sx.abs() >= TILT_THRESHOLD => {
                 if !self.grounded() {
                     if self.side_special_used {
@@ -613,14 +659,14 @@ impl Fighter {
                     self.side_special_used = true;
                 }
                 self.facing = intent.sx.signum();
-                MoveId::SideSpecial
+                moves.side_special
             }
-            None => MoveId::NeutralSpecial,
+            None => moves.neutral_special,
         };
         self.start_attack(mv);
     }
 
-    fn start_attack(&mut self, mv: MoveId) {
+    pub(crate) fn start_attack(&mut self, mv: MoveId) {
         self.state = State::Attack { mv, frame: 1, hit_mask: 0 };
         self.charge = 0;
         self.frame_advanced = true;
@@ -839,6 +885,12 @@ impl Fighter {
         self.state = State::ShieldBreak { frames_left: SHIELD_BREAK_FRAMES };
     }
 
+    /// Pushed backward at `speed` (a big sneeze's recoil), slowing like shield pushback.
+    pub(crate) fn recoil(&mut self, speed: Fx) {
+        self.kb_x = -speed * self.facing;
+        self.kb_decay_x = SHIELD_PUSHBACK_DECAY;
+    }
+
     /// This fighter caught `victim`.
     pub(crate) fn start_holding(&mut self, victim: usize) {
         self.holding = Some(victim);
@@ -907,6 +959,11 @@ impl Fighter {
     }
 }
 
+/// The names `Fighter::anim` gives states other than moves and dodges. Every model
+/// needs an animation for each.
+pub const STATE_ANIMS: [&str; 13] =
+    ["idle", "walk", "run", "crouch", "jumpsquat", "air", "specialfall", "land", "shield", "dizzy", "grab_hold", "grabbed", "hitstun"];
+
 /// Uses up a buffered press, if there is one.
 fn take(buffer: &mut u8) -> bool {
     let buffered = *buffer > 0;
@@ -915,13 +972,13 @@ fn take(buffer: &mut u8) -> bool {
 }
 
 /// Aerials go by stick direction relative to where the fighter faces.
-fn aerial(intent: &Intent, facing: i32) -> MoveId {
+fn aerial(moves: &Moveset, intent: &Intent, facing: i32) -> MoveId {
     match intent.vertical() {
-        Some(1) => MoveId::Uair,
-        Some(_) => MoveId::Dair,
-        None if intent.sx.abs() < TILT_THRESHOLD => MoveId::Nair,
-        None if intent.sx.signum() == facing => MoveId::Fair,
-        None => MoveId::Bair,
+        Some(1) => moves.uair,
+        Some(_) => moves.dair,
+        None if intent.sx.abs() < TILT_THRESHOLD => moves.nair,
+        None if intent.sx.signum() == facing => moves.fair,
+        None => moves.bair,
     }
 }
 

@@ -1,10 +1,13 @@
-use crate::fighter::{Fighter, FighterParams, GRAB_HOLD_DISTANCE, State, hitlag_frames, knockback};
+use crate::character::Character;
+use crate::fighter::{Fighter, GRAB_HOLD_DISTANCE, MAX_CHARGE, State, hitlag_frames, knockback};
 use crate::fixed::Fx;
 use crate::input::Input;
 use crate::moves::{GrabBox, Hitbox, MoveId, ProjectileData};
 use crate::stage::Stage;
 
 pub const MAX_FIGHTERS: usize = 4;
+/// After countering, the fighter can't be hit for this many frames (covers its answer's startup).
+const COUNTER_INTANGIBLE_FRAMES: u16 = 10;
 
 /// Things that happened during the last [`World::step`], for effects and sound.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -14,6 +17,8 @@ pub enum Event {
     ShieldHit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32 },
     ShieldBreak { fighter: usize },
     Grab { attacker: usize, defender: usize },
+    /// `fighter` countered a hit from `attacker` (the pug playing dead) at x, y.
+    Counter { fighter: usize, attacker: usize, x: Fx, y: Fx },
     Ko { fighter: usize },
 }
 
@@ -27,7 +32,8 @@ pub struct ActiveHitbox {
     pub grab: bool,
 }
 
-/// A projectile in flight. Its numbers come from `mv`'s [`ProjectileData`].
+/// A projectile in flight. Its numbers come from `mv`'s [`ProjectileData`], grown by
+/// `charge` if the move was charged.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Projectile {
     pub owner: usize,
@@ -36,12 +42,32 @@ pub struct Projectile {
     pub y: Fx,
     pub vx: Fx,
     pub frames_left: u16,
+    /// Frames the move was charged before firing, 0..=MAX_CHARGE.
+    pub charge: u8,
 }
 
 impl Projectile {
     pub fn data(&self) -> &'static ProjectileData {
         self.mv.data().projectile.as_ref().expect("projectile move without ProjectileData")
     }
+
+    pub fn radius(&self) -> Fx {
+        let growth = self.data().growth.as_ref().map_or(Fx::ZERO, |g| g.radius * Fx::int(self.charge as i32) / Fx::int(MAX_CHARGE as i32));
+        self.data().radius + growth
+    }
+
+    pub fn damage(&self) -> i32 {
+        self.data().damage + self.data().growth.as_ref().map_or(0, |g| grown(g.damage, self.charge))
+    }
+
+    pub fn base_kb(&self) -> i32 {
+        self.data().base_kb + self.data().growth.as_ref().map_or(0, |g| grown(g.base_kb, self.charge))
+    }
+}
+
+/// `full` scaled by how much of a full charge `charge` is.
+fn grown(full: i32, charge: u8) -> i32 {
+    full * charge as i32 / MAX_CHARGE as i32
 }
 
 /// The whole game state. Cloning it is a complete snapshot (for rollback).
@@ -70,13 +96,16 @@ struct Strike {
 }
 
 impl World {
-    pub fn new(stage: Stage, players: usize, stocks: u8) -> World {
-        assert!(players <= MAX_FIGHTERS && players <= stage.spawns.len());
-        let fighters = (0..players)
-            .map(|i| {
+    /// One fighter per entry of `characters`, at the stage's spawn points in order.
+    pub fn new(stage: Stage, characters: &[Character], stocks: u8) -> World {
+        assert!(characters.len() <= MAX_FIGHTERS && characters.len() <= stage.spawns.len());
+        let fighters = characters
+            .iter()
+            .enumerate()
+            .map(|(i, &character)| {
                 let (x, y) = stage.spawns[i];
                 let facing = if x <= Fx::ZERO { 1 } else { -1 };
-                Fighter::new(&FighterParams::DEFAULT, x, y, facing, &stage, stocks)
+                Fighter::new(character, x, y, facing, &stage, stocks)
             })
             .collect();
         World { frame: 0, stage, fighters, projectiles: Vec::new(), events: Vec::new() }
@@ -118,7 +147,7 @@ impl World {
             let (holder, victim) = pair_mut(&mut self.fighters, i, v);
             let holder_ok = match holder.state {
                 State::Holding { .. } => true,
-                State::Attack { mv, .. } => mv.data().throw.is_some(),
+                State::Attack { mv, .. } => !mv.data().throws.is_empty(),
                 _ => false,
             };
             let victim_ok = matches!(victim.state, State::Held { by, .. } if by as usize == i);
@@ -156,8 +185,9 @@ impl World {
         for i in 0..self.fighters.len() {
             let f = &self.fighters[i];
             let State::Attack { mv, frame, .. } = f.state else { continue };
-            let (Some(throw), Some(v)) = (&mv.data().throw, f.holding) else { continue };
-            if !f.frame_advanced || throw.frame != frame {
+            let Some(v) = f.holding else { continue };
+            let Some(throw) = mv.data().throws.iter().find(|t| t.frame == frame) else { continue };
+            if !f.frame_advanced {
                 continue;
             }
             let (holder, victim) = pair_mut(&mut self.fighters, i, v);
@@ -186,18 +216,25 @@ impl World {
     }
 
     fn fire_projectiles(&mut self) {
-        for (owner, f) in self.fighters.iter().enumerate() {
+        for (owner, f) in self.fighters.iter_mut().enumerate() {
             let State::Attack { mv, frame, .. } = f.state else { continue };
             let Some(data) = &mv.data().projectile else { continue };
             if f.frame_advanced && data.frame == frame {
+                let growth = data.growth.as_ref();
                 self.projectiles.push(Projectile {
                     owner,
                     mv,
                     x: f.x + data.x * f.facing,
                     y: f.y + data.y,
                     vx: data.speed * f.facing,
-                    frames_left: data.lifetime,
+                    frames_left: data.lifetime + growth.map_or(0, |g| grown(g.lifetime as i32, f.charge) as u16),
+                    charge: f.charge,
                 });
+                if let Some(g) = growth
+                    && f.charge > 0
+                {
+                    f.recoil(g.recoil * Fx::int(f.charge as i32) / Fx::int(MAX_CHARGE as i32));
+                }
             }
         }
     }
@@ -233,7 +270,7 @@ impl World {
             let data = p.data();
             let target = (0..self.fighters.len()).find(|&di| {
                 let d = &self.fighters[di];
-                di != p.owner && d.hittable() && d.hurtbox_overlaps(p.x, p.y, data.radius)
+                di != p.owner && d.hittable() && d.hurtbox_overlaps(p.x, p.y, p.radius())
             });
             if let Some(di) = target {
                 strikes.push(Strike {
@@ -241,9 +278,9 @@ impl World {
                     defender: di,
                     x: p.x,
                     y: p.y,
-                    damage: data.damage,
+                    damage: p.damage(),
                     angle: data.angle,
-                    base_kb: data.base_kb,
+                    base_kb: p.base_kb(),
                     kb_growth: data.kb_growth,
                     direction: p.vx.signum(),
                     projectile: Some(pi),
@@ -256,7 +293,7 @@ impl World {
             let Some((gb, x, y)) = active_grabbox(attacker) else { continue };
             let victim = (0..self.fighters.len()).find(|&di| {
                 let d = &self.fighters[di];
-                di != ai && d.grabbable() && d.hurtbox_overlaps(x, y, gb.radius)
+                di != ai && d.grabbable() && !(gb.misses_shields && d.shielding()) && d.hurtbox_overlaps(x, y, gb.radius)
             });
             if let Some(di) = victim {
                 grabs.push((ai, di));
@@ -275,7 +312,12 @@ impl World {
         });
 
         let mut spent_projectiles = Vec::new();
+        // Fighters that countered a strike this frame ignore the rest of them.
+        let mut countered = 0u8;
         for s in strikes {
+            if countered & (1 << s.defender) != 0 {
+                continue;
+            }
             let lag = hitlag_frames(s.damage);
             match s.projectile {
                 Some(pi) => spent_projectiles.push(pi),
@@ -290,6 +332,15 @@ impl World {
 
             let defender = &mut self.fighters[s.defender];
             defender.hitlag = lag;
+            if let Some(into) = defender.counter_move() {
+                // The strike came from the side opposite the way it sends.
+                defender.facing = -s.direction;
+                defender.start_attack(into);
+                defender.intangible = COUNTER_INTANGIBLE_FRAMES;
+                countered |= 1 << s.defender;
+                self.events.push(Event::Counter { fighter: s.defender, attacker: s.attacker, x: s.x, y: s.y });
+                continue;
+            }
             if defender.shielding() {
                 let broke = defender.block(s.damage, s.direction);
                 self.events.push(Event::ShieldHit { attacker: s.attacker, defender: s.defender, x: s.x, y: s.y, damage: s.damage });
@@ -305,7 +356,14 @@ impl World {
         }
 
         for (ai, di) in grabs {
+            let command = match self.fighters[ai].state {
+                State::Attack { mv, .. } => mv.data().on_grab,
+                _ => None,
+            };
             self.fighters[ai].start_holding(di);
+            if let Some(next) = command {
+                self.fighters[ai].start_attack(next);
+            }
             self.fighters[di].get_held(ai);
             self.events.push(Event::Grab { attacker: ai, defender: di });
         }

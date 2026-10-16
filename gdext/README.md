@@ -41,16 +41,26 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
-- Fighters are instances of `res://models/fighter.glb` (made in Blender, see
-  [`art/fighter/README.md`](../art/fighter/README.md)). The `AnimationPlayer` is in
+- Each player plays a `fight_sim::Character` (`FightWorld::characters`, passed to
+  `World::new`). `look()` maps it to a model, `res://models/fighter.glb` or
+  `res://models/pug.glb` (made in Blender, see
+  [`art/fighter/README.md`](../art/fighter/README.md) and
+  [`art/pug/README.md`](../art/pug/README.md)). Player `i` starts as
+  `Character::ALL[i % 2]`, and **1** / **2** cycle P1 / P2 (`next_character` rebuilds
+  that view and starts a new match, since characters play differently). When a model
+  loads, `build_view` logs an `ERROR` for every animation its character can need
+  (`STATE_ANIMS`, `Character::moves()`, dodges) that it lacks. The HUD shows each
+  player's character. The `AnimationPlayer` is in
   manual mode. `pose()` plays the clip named `Fighter::anim()` and seeks it to the
   sim's frame, so visuals match frame data, freeze in hitlag and pause, and work after a
   rollback. Clips switch instantly (no blending yet). The `Body` material is
   replaced per player for the color and state tints: white hit flash, pale blue
   while a dodge is invincible, flashing while charging a smash attack (the model also
-  shakes), yellow flicker when dizzy.
+  shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
   Projectiles come from `World::projectiles` and are drawn from a pool of glowing
-  spheres. With **H**, hitboxes are red and grab boxes purple.
+  spheres, in the owner's color or their character's `projectile` color (the pug's
+  sneeze is a pale puff), sized by `Projectile::radius()`, which grows with charge. `Event::Counter` (the pug's play dead) makes a spark and a
+  small shake. With **H**, hitboxes are red and grab boxes purple.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600`. It
   should print no `ERROR` lines.
