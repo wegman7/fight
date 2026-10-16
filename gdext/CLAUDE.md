@@ -8,5 +8,7 @@
   and no AI: CPU slots (`FightWorld::cpus`) call `fight_sim::Cpu::think`.
 - Sim stepping happens in `physics_process` (60 Hz, set in `godot/project.godot`).
   Visual updates happen in `process`. Don't step the sim from `process`.
+- Never let the fighter `AnimationPlayer` advance on its own. Pose comes from sim
+  state via `pose()` (seek to frame), which keeps it deterministic and rollback-safe.
 - After changing anything here, run `cargo build`, then the headless smoke test from the
   root `CLAUDE.md`. For visual changes, render frames with `--write-movie` and look at them.

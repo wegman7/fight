@@ -2,11 +2,12 @@
 //! `physics_process`, and mirrors the simulation onto 3D nodes in `process`.
 //! No gameplay rules live here — if it affects who wins, it belongs in the sim.
 
-use fight_sim::{Cpu, Event, Fx, Input as SimInput, Stage, State, World};
+use fight_sim::{Cpu, Event, Fighter, Fx, Input as SimInput, Stage, State, World};
+use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
-    BoxMesh, Camera3D, CanvasLayer, CapsuleMesh, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
-    MeshInstance3D, Node3D, SphereMesh, StandardMaterial3D,
+    AnimationPlayer, BoxMesh, Camera3D, CanvasLayer, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
+    MeshInstance3D, Node3D, PackedScene, SphereMesh, StandardMaterial3D,
 };
 use godot::global::{JoyAxis, JoyButton, Key};
 use godot::prelude::*;
@@ -27,6 +28,14 @@ const PLAYER_COLORS: [Color; 4] = [
     Color::from_rgb(0.30, 0.80, 0.35),
 ];
 const STICK_DEADZONE: f32 = 0.15;
+/// Rigged fighter model, built by `art/fighter/build_fighter.py`. One animation per
+/// `Fighter::anim()` name, keyed at 60 fps.
+const FIGHTER_MODEL: &str = "res://models/fighter.glb";
+/// Surfaces with this material name get the player's color.
+const TINTED_MATERIAL: &str = "Body";
+/// The model faces +X. Turning it this far toward the camera shows a 3/4 view, as in Smash.
+const MODEL_YAW_TO_CAMERA: f32 = 25.0;
+const ANIM_FPS: f64 = 60.0;
 
 fn to_godot(x: Fx, y: Fx) -> Vector3 {
     Vector3::new(x.to_f32() * SCALE, y.to_f32() * SCALE, 0.0)
@@ -34,6 +43,7 @@ fn to_godot(x: Fx, y: Fx) -> Vector3 {
 
 struct FighterView {
     root: Gd<Node3D>,
+    anim: Gd<AnimationPlayer>,
     material: Gd<StandardMaterial3D>,
     color: Color,
 }
@@ -228,28 +238,31 @@ impl FightWorld {
     }
 
     fn build_fighters(&mut self) {
+        let scene = load::<PackedScene>(FIGHTER_MODEL);
         for i in 0..self.world.fighters.len() {
-            let params = self.world.fighters[i].params;
-            let (height, radius) = (params.height.to_f32() * SCALE, params.radius.to_f32() * SCALE);
             let color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+            let mut material = StandardMaterial3D::new_gd();
+            material.set_albedo(color);
+            material.set_roughness(0.6);
+
+            let model = scene.instantiate_as::<Node3D>();
+            for node in model.find_children_ex("*").type_("MeshInstance3D").done().iter_shared() {
+                let mut mesh_node = node.cast::<MeshInstance3D>();
+                let Some(mesh) = mesh_node.get_mesh() else { continue };
+                for s in 0..mesh.get_surface_count() {
+                    if mesh.surface_get_material(s).is_some_and(|m| m.get_name() == TINTED_MATERIAL) {
+                        mesh_node.set_surface_override_material(s, &material);
+                    }
+                }
+            }
+            // Posed by hand from the sim state every frame (see `update_fighters`), never free-running.
+            let mut anim = model.get_node_as::<AnimationPlayer>("AnimationPlayer");
+            anim.set_callback_mode_process(AnimationCallbackModeProcess::MANUAL);
 
             let mut root = Node3D::new_alloc();
-            let mut capsule = CapsuleMesh::new_gd();
-            capsule.set_radius(radius);
-            capsule.set_height(height);
-            let (mut body, material) = mesh_instance(capsule.upcast(), color);
-            body.set_position(Vector3::new(0.0, height * 0.5, 0.0));
-            root.add_child(&body);
-
-            // A "nose" so you can see which way the fighter faces.
-            let mut nose_mesh = BoxMesh::new_gd();
-            nose_mesh.set_size(Vector3::new(radius * 0.8, radius * 0.5, radius * 0.5));
-            let (mut nose, _) = mesh_instance(nose_mesh.upcast(), Color::from_rgb(0.95, 0.95, 0.95));
-            nose.set_position(Vector3::new(radius * 0.9, height * 0.72, 0.0));
-            root.add_child(&nose);
-
+            root.add_child(&model);
             self.base_mut().add_child(&root);
-            self.views.push(FighterView { root, material, color });
+            self.views.push(FighterView { root, anim, material, color });
         }
     }
 
@@ -283,13 +296,11 @@ impl FightWorld {
             let blinking = f.intangible > 0 && (frame / 4).is_multiple_of(2);
             view.root.set_visible(!hidden && !blinking);
             view.root.set_position(to_godot(f.x, f.y));
-            view.root.set_rotation_degrees(Vector3::new(0.0, if f.facing < 0 { 180.0 } else { 0.0 }, 0.0));
-
-            let squash = match f.state {
-                State::JumpSquat { .. } | State::Landing { .. } => Vector3::new(1.15, 0.8, 1.15),
-                _ => Vector3::ONE,
-            };
-            view.root.set_scale(squash);
+            let yaw = if f.facing < 0 { 180.0 + MODEL_YAW_TO_CAMERA } else { -MODEL_YAW_TO_CAMERA };
+            view.root.set_rotation_degrees(Vector3::new(0.0, yaw, 0.0));
+            if !hidden {
+                pose(&mut view.anim, f, frame);
+            }
 
             let color = match f.state {
                 State::Hitstun { .. } if f.hitlag > 0 => Color::WHITE,
@@ -402,6 +413,26 @@ impl FightWorld {
         camera.set_position(eye);
         camera.look_at(Vector3::new(self.camera_focus.x, self.camera_focus.y, 0.0) + jitter);
     }
+}
+
+/// Shows the animation named by `Fighter::anim()` at the frame the sim is on, so the
+/// pose always matches the frame data (and survives rollback). Moves are keyed on
+/// their 1-based sim frames; poses without a frame counter loop on the world clock.
+fn pose(anim: &mut Gd<AnimationPlayer>, f: &Fighter, world_frame: u32) {
+    let name = StringName::from(f.anim());
+    let Some(clip) = anim.get_animation(&name) else { return };
+    let length = (clip.get_length() * ANIM_FPS).round() as u32;
+    let frame = match f.state {
+        State::Attack { frame, .. } => u32::from(frame).saturating_sub(1),
+        State::JumpSquat { frame } => u32::from(frame),
+        // Counts down, so play the clip's end: it always finishes back on the idle pose.
+        State::Landing { frames_left } => length.saturating_sub(u32::from(frames_left)),
+        _ => world_frame % length.max(1),
+    };
+    if anim.get_current_animation() != name {
+        anim.play_ex().name(&name).done();
+    }
+    anim.seek_ex(f64::from(frame.min(length)) / ANIM_FPS).update(true).done();
 }
 
 fn mesh_instance(mesh: Gd<Mesh>, color: Color) -> (Gd<MeshInstance3D>, Gd<StandardMaterial3D>) {

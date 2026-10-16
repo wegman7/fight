@@ -10,9 +10,15 @@ godot/android/
 *.avi
 /frames/
 
+# Blender save backups
+*.blend1
+
 # OS / editor clutter
 .DS_Store
 .idea/
 .vscode/
 *.swp
 *~
+
+# Python bytecode (Blender scripts)
+__pycache__/

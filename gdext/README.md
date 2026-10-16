@@ -8,8 +8,8 @@ Each frame:
 
 1. `physics_process` (fixed 60 Hz) builds one `fight_sim::Input` per player, from the
    keyboard and gamepads for humans or from `Cpu::think` for CPU slots, and calls `World::step`.
-2. `process` (every rendered frame) mirrors the sim state onto 3D nodes: fighter
-   capsules, hitbox spheres, hit sparks, HUD, and the Smash-style camera that zooms
+2. `process` (every rendered frame) mirrors the sim state onto 3D nodes: the fighter
+   model posed by `pose()`, hitbox spheres, hit sparks, HUD, and the Smash-style camera that zooms
    to fit everyone.
 
 Gameplay logic doesn't belong here. This layer only reads the sim, except that it builds the inputs.
@@ -37,5 +37,11 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
+- Fighters are instances of `res://models/fighter.glb` (made in Blender, see
+  [`art/fighter/README.md`](../art/fighter/README.md)). The `AnimationPlayer` is in
+  manual mode. `pose()` plays the clip named `Fighter::anim()` and seeks it to the
+  sim's frame, so visuals match frame data, freeze in hitlag and pause, and work after a
+  rollback. Clips switch instantly (no blending yet). The `Body` material is
+  replaced per player for the color and the hit flash.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600`. It
   should print no `ERROR` lines.
