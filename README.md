@@ -60,26 +60,40 @@ For feel, playtest with the debug keys below: **H** to see hitboxes, then
 
 ## Controls
 
-| | Move | Attack | Jump |
-|---|---|---|---|
-| P1 keyboard | WASD | J | K / Space |
-| P2 keyboard | Arrows | , | . |
-| Gamepads (in order to human players) | Left stick / D-pad | A (bottom) | X / Y |
+| | Move | Attack | Jump | Special | Shield | Grab | Smash |
+|---|---|---|---|---|---|---|---|
+| P1 keyboard | WASD | J | K / Space | L | ; | U | I |
+| P2 keyboard | Arrows | , | . | / | M | N | B |
+| Gamepads (in order to human players) | Left stick / D-pad | A (bottom) | X / Y | B (right) | LT / RT | LB / RB | Right stick |
 
-Neutral attack = jab, sideways = forward tilt, up = up tilt, in the air = nair.
-Tap down on a platform to drop through, or in the air to fast-fall. Release jump
-before liftoff for a short hop.
+The moveset follows Smash. "Forward" is the way you face.
 
-Up and down (W/S, arrows, stick) don't move you on their own. Movement is
-left/right only, and they just change other actions:
+| Where | Input | Move |
+|---|---|---|
+| Ground | Attack (neutral) | Jab. Press again for jab 2, then jab 3. |
+| Ground | Direction + attack | Forward / up / down tilt. Down tilt also works from a crouch. |
+| Ground | Attack while running | Dash attack |
+| Ground | Flick the stick + attack together, or Smash (+ direction) | Forward / up / down smash. Hold attack (or Smash) to charge, for up to 1.4x damage. |
+| Air | Attack (+ direction) | Neutral / forward / back / up / down air. Back air is the stick pointing away from where you face. Smash or the right stick also works. |
+| Anywhere | Special (neutral) | Energy shot: a projectile |
+| Anywhere | Special + sideways | Lunge forward. Once per trip through the air. |
+| Anywhere | Special + up | Rising uppercut: the recovery move. You're helpless (special fall) until you land. |
+| Anywhere | Special + down | Ground pound. It meteors (sends straight down) on the way down and makes a shockwave on landing. Off-stage, it falls all the way. |
+| Ground | Grab (or attack while shielding) | Grab. Running makes it a dash grab. It catches shielding opponents. |
+| Holding someone | Attack / direction | Pummel / forward, back, up, down throw |
+| Being held | Mash any button or the stick | Break free sooner |
+| Ground | Hold shield | Shield. It shrinks while held and when hit, and breaks (dizzy) at zero. |
+| Shield | Jump / attack or grab / up + special / up smash | Jump, grab, up special or up smash straight out of shield |
+| Shield | Stick sideways / down | Roll forward or back / spot dodge, both invincible partway through. Pressing shield with the stick already held does the same. |
+| Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
 
-| Input | Effect |
-|---|---|
-| Up alone | Nothing. Jump is its own button (no tap jump yet). |
-| Up + attack | Up tilt |
-| Down alone on the main stage | Nothing (no crouch yet) |
-| Down tap on a floating platform | Drop through it |
-| Down tap while falling | Fast-fall |
+Tap down on a platform to drop through, or in the air to fast-fall. Hold down to
+crouch. Release jump before liftoff for a short hop. Up alone does nothing: jump is
+its own button (no tap jump yet).
+
+On a keyboard every press is a full flick. So pressing a direction and J together
+is a smash attack. Hold the direction a moment first to get a tilt, or use the
+Smash key for smash attacks on purpose.
 
 **C** (pad: View/Back) toggles P2 between human and CPU and starts a new match.
 **R** (pad: Menu/Start) resets the match.
@@ -93,15 +107,16 @@ joypad's name to the console at startup and whenever one connects.
 ## Where things live
 
 - Character tuning: `FighterParams::DEFAULT` in `sim/src/fighter.rs`
-- Moves and frame data: `sim/src/moves.rs`
+- Moves, dodges and frame data: `sim/src/moves.rs` (the picking of a move from inputs is in `Fighter::step`)
 - Stage layout and blast zones: `Stage::battlefield()` in `sim/src/stage.rs`
-- Knockback / hitstun / hitlag formulas: bottom of `sim/src/fighter.rs`
+- Knockback / hitstun / hitlag formulas: bottom of `sim/src/fighter.rs`. Shield, grab and smash-charge numbers: constants near the top.
+- Hits, grabs, throws and projectiles between fighters: `World` in `sim/src/world.rs`
 - CPU opponent: `sim/src/cpu.rs` (`CpuLevel::EASY` holds the difficulty knobs)
 - Controls, camera, visuals: `gdext/src/lib.rs`
 - Fighter model and animations: `art/fighter/build_fighter.py` → `godot/models/fighter.glb`
 
 ## Not built yet
 
-Shield, grabs, ledges, crouch, tap jump (up to jump), specials, smash attacks, DI, teching, multiple
-characters, a real character design (the model is a placeholder mannequin), animation blending, move data in hot-reloadable
+Ledges (grabbing, getup options), tap jump (up to jump), DI, teching, tilting the shield, perfect
+shield, pivots, aerial grabs, multiple characters, a real character design (the model is a placeholder mannequin), animation blending, move data in hot-reloadable
 files, menus, harder CPU levels, rollback netcode.

@@ -31,8 +31,12 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
 - The node tree is built in code: `build_stage`, `build_fighters` and `build_hud`
   in `ready()`. Only the light, environment and `Camera3D` live in `main.tscn`, so
   they can be tweaked in the editor.
-- Controls are hard-coded in `read_input`. Gamepads go to human players in order
-  (with P2 as CPU, the first pad drives P1). Debug keys and the pad Start (reset) /
+- Controls are hard-coded in `read_input` (table in the root README). Gamepads go to
+  human players in order (with P2 as CPU, the first pad drives P1). Triggers are
+  axes, so shield is "trigger past 0.3". The right stick acts as a C-stick. On the
+  frame it is pushed, it sends `SMASH` with the left-stick direction replaced by the
+  right stick's, so it gives a smash attack on the ground and an aerial in the air.
+  It needs releasing before it fires again (`FightWorld::cstick_out`). Debug keys and the pad Start (reset) /
   Back (toggle CPU) buttons are in `unhandled_input`.
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
@@ -42,6 +46,11 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
   manual mode. `pose()` plays the clip named `Fighter::anim()` and seeks it to the
   sim's frame, so visuals match frame data, freeze in hitlag and pause, and work after a
   rollback. Clips switch instantly (no blending yet). The `Body` material is
-  replaced per player for the color and the hit flash.
+  replaced per player for the color and state tints: white hit flash, pale blue
+  while a dodge is invincible, flashing while charging a smash attack (the model also
+  shakes), yellow flicker when dizzy.
+- The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
+  Projectiles come from `World::projectiles` and are drawn from a pool of glowing
+  spheres. With **H**, hitboxes are red and grab boxes purple.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600`. It
   should print no `ERROR` lines.

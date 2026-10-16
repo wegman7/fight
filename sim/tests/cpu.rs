@@ -1,4 +1,4 @@
-use fight_sim::{Cpu, Event, Fx, Input, Stage, State, World};
+use fight_sim::{Cpu, Event, Fx, Input, MoveId, Stage, State, World};
 
 fn world() -> World {
     World::new(Stage::battlefield(), 2, 3)
@@ -71,4 +71,66 @@ fn cpu_is_deterministic() {
         w
     };
     assert_eq!(play(), play());
+}
+
+#[test]
+fn easy_cpu_mashes_out_of_grabs() {
+    let (mut w, mut cpu) = (world(), Cpu::easy(1));
+    w.fighters[1].x = Fx::int(-32);
+    let grab = Input { buttons: Input::GRAB, ..Input::default() };
+    let mut held = 0;
+    for f in 0..200 {
+        let input = cpu.think(&w);
+        w.step(&[if f == 0 { grab } else { Input::default() }, input]);
+        held += matches!(w.fighters[1].state, State::Held { .. }) as usize;
+    }
+    assert!(held > 0, "never got grabbed");
+    // Sitting still it would take 90 frames.
+    assert!(held < 40, "held for {held} frames");
+}
+
+#[test]
+fn easy_cpu_up_specials_back_without_a_double_jump() {
+    for x in [-85, 85] {
+        let (mut w, mut cpu) = (world(), Cpu::easy(1));
+        let f = &mut w.fighters[1];
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
+        let mut used_up_special = false;
+        for _ in 0..240 {
+            let input = cpu.think(&w);
+            w.step(&[Input::default(), input]);
+            used_up_special |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::UpSpecial, .. });
+        }
+        assert!(used_up_special, "from x={x}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
+        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+    }
+}
+
+#[test]
+fn easy_cpu_grabs_and_throws_sometimes() {
+    let (mut w, mut cpu) = (world(), Cpu::easy(1));
+    let (mut grabs, mut throws) = (0, 0);
+    for _ in 0..60 * 120 {
+        let input = cpu.think(&w);
+        w.step(&[Input::default(), input]);
+        grabs += w.events.iter().filter(|e| matches!(e, Event::Grab { attacker: 1, .. })).count();
+        throws += matches!(w.fighters[1].state, State::Attack { mv: MoveId::FThrow, frame: 1, .. }) as usize;
+    }
+    assert!(grabs > 0 && throws > 0, "{grabs} grabs, {throws} throws in 2 minutes");
+}
+
+#[test]
+fn easy_cpu_shields_some_attacks() {
+    let (mut w, mut cpu) = (world(), Cpu::easy(1));
+    w.fighters[1].x = Fx::int(-30);
+    let mut shielded = 0;
+    for f in 0..60 * 60 {
+        // P1 keeps jabbing from where it stands.
+        let p1 = Input { buttons: if f % 30 == 0 { Input::ATTACK } else { 0 }, ..Input::default() };
+        let input = cpu.think(&w);
+        w.step(&[p1, input]);
+        shielded += w.events.iter().filter(|e| matches!(e, Event::ShieldHit { defender: 1, .. })).count();
+    }
+    assert!(shielded > 0, "never shielded");
 }

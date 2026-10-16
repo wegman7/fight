@@ -18,13 +18,18 @@ pub struct CpuLevel {
     pub approach_chance: u32,
     /// Percent chance, when in range, to swing rather than wait or back off.
     pub attack_chance: u32,
+    /// Percent of those swings that are grabs instead.
+    pub grab_chance: u32,
+    /// Percent chance to put up shield when an opponent starts an attack nearby.
+    pub shield_chance: u32,
 }
 
 impl CpuLevel {
     /// Slow to react, walks instead of running, swings at a fraction of its
     /// openings and never punishes or edge-guards. Still recovers, so it
     /// doesn't throw stocks away on its own.
-    pub const EASY: CpuLevel = CpuLevel { reaction_frames: 24, approach_chance: 70, attack_chance: 35 };
+    pub const EASY: CpuLevel =
+        CpuLevel { reaction_frames: 24, approach_chance: 70, attack_chance: 35, grab_chance: 20, shield_chance: 15 };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -35,6 +40,10 @@ enum Plan {
     Retreat,
     /// Press attack with the stick toward the target (ftilt), up (utilt) or neutral (jab).
     Attack { forward: bool, up: bool },
+    /// Grab (any catch is thrown forward, whatever the plan).
+    Grab,
+    /// Hold shield for the plan's duration.
+    Shield,
     HopAttack,
     /// Full hop plus double jump, drifting toward `goal`.
     Jump { goal: Fx },
@@ -43,6 +52,11 @@ enum Plan {
 
 /// Below the run threshold, so the CPU walks.
 const WALK: i8 = 60;
+/// Past the tilt threshold but short of a smash flick, so attacks come out as tilts.
+const TILT: i8 = 60;
+const SHIELD_FRAMES: u8 = 20;
+/// Being thrown or hit from this close counts as "nearby".
+const THREAT_RANGE: Fx = Fx::int(20);
 const ATTACK_RANGE: Fx = Fx::int(14);
 /// Targets standing higher than this above the CPU are out of utilt range.
 const UTILT_REACH: Fx = Fx::int(20);
@@ -85,8 +99,12 @@ impl Cpu {
 
     fn decide(&mut self, world: &World) -> Input {
         let me = &world.fighters[self.player];
-        if !matches!(me.state, State::Ground | State::Air | State::JumpSquat { .. } | State::Landing { .. } | State::Attack { .. }) {
-            return Input::default();
+        match me.state {
+            // Mash: a fresh press every other frame.
+            State::Held { .. } => return if self.prev.buttons == 0 { Input { buttons: Input::ATTACK, ..Input::default() } } else { Input::default() },
+            State::Holding { .. } => return Input { stick_x: me.facing as i8 * TILT, ..Input::default() },
+            State::Hitstun { .. } | State::ShieldBreak { .. } | State::Respawning { .. } | State::Eliminated => return Input::default(),
+            _ => {}
         }
         let Some(stage) = world.stage.platforms.iter().find(|p| !p.soft) else { return Input::default() };
         if !me.grounded() && (me.x < stage.left || me.x > stage.right || me.y < stage.y) {
@@ -103,7 +121,13 @@ impl Cpu {
 
         self.plan_age = self.plan_age.saturating_add(1);
         let mid_jump = matches!(self.plan, Plan::Jump { .. }) && !me.grounded();
-        if self.plan_age >= self.level.reaction_frames && !mid_jump {
+        let threatened = target.is_some_and(|t| {
+            matches!(t.state, State::Attack { frame: 1, .. }) && (t.x - me.x).abs() < THREAT_RANGE && (t.y - me.y).abs() < THREAT_RANGE
+        });
+        if threatened && me.state == State::Ground && !matches!(self.plan, Plan::Shield) && self.chance(self.level.shield_chance) {
+            self.plan = Plan::Shield;
+            self.plan_age = 0;
+        } else if self.plan_age >= self.level.reaction_frames && !mid_jump {
             self.plan = self.choose(me, target, world, stage);
             self.plan_age = 0;
         }
@@ -151,7 +175,9 @@ impl Cpu {
         let roll = self.roll(100);
         let attack = self.level.attack_chance;
         if roll < attack {
-            if dy > Fx::int(10) {
+            if dy.abs() < Fx::int(5) && self.chance(self.level.grab_chance) {
+                Plan::Grab
+            } else if dy > Fx::int(10) {
                 Plan::Attack { forward: false, up: true }
             } else if me.facing != dx.signum() || roll < attack / 3 {
                 Plan::Attack { forward: true, up: false }
@@ -180,8 +206,10 @@ impl Cpu {
             Plan::Approach { .. } => Input::default(),
             Plan::Retreat => walk(-toward),
             Plan::Attack { forward, up } if age == 0 => {
-                Input { stick_x: if forward { toward * 100 } else { 0 }, stick_y: if up { 100 } else { 0 }, buttons: Input::ATTACK }
+                Input { stick_x: if forward { toward * TILT } else { 0 }, stick_y: if up { TILT } else { 0 }, buttons: Input::ATTACK }
             }
+            Plan::Grab if age == 0 => Input { buttons: Input::GRAB, ..Input::default() },
+            Plan::Shield if age < SHIELD_FRAMES => Input { buttons: Input::SHIELD, ..Input::default() },
             Plan::HopAttack if age == 0 => Input { buttons: Input::JUMP, ..Input::default() },
             Plan::HopAttack if age == HOP_ATTACK_FRAME => Input { stick_x: toward * 40, stick_y: 0, buttons: Input::ATTACK },
             Plan::HopAttack => Input { stick_x: toward * 40, ..Input::default() },
@@ -199,15 +227,22 @@ impl Cpu {
         }
     }
 
-    /// Drift back toward the stage and double-jump once falling below it.
+    /// Drift back toward the stage and double-jump once falling below it; with
+    /// the double jump gone, up special.
     fn recover(&mut self, me: &Fighter, stage: &Platform) -> Input {
         self.plan = Plan::Wait;
         self.plan_age = 0;
         let center = (stage.left + stage.right) * Fx::ratio(1, 2);
-        let mut input = Input { stick_x: if me.x < center { 100 } else { -100 }, ..Input::default() };
-        let jump_ready = me.state == State::Air && me.air_jumps_left > 0 && !self.prev.held(Input::JUMP);
-        if jump_ready && me.vy + me.kb_y <= Fx::ZERO && me.y < stage.y + Fx::int(5) {
-            input.buttons |= Input::JUMP;
+        let toward: i8 = if me.x < center { 1 } else { -1 };
+        let mut input = Input { stick_x: toward * 100, ..Input::default() };
+        let falling_low = me.state == State::Air && me.vy + me.kb_y <= Fx::ZERO && me.y < stage.y + Fx::int(5);
+        if falling_low && !self.prev.held(Input::JUMP) && !self.prev.held(Input::SPECIAL) {
+            if me.air_jumps_left > 0 {
+                input.buttons |= Input::JUMP;
+            } else {
+                // Mostly up, so it reads as up special rather than side.
+                input = Input { stick_x: toward * 40, stick_y: 100, buttons: Input::SPECIAL };
+            }
         }
         input
     }

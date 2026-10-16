@@ -32,16 +32,22 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
 
 ## Rules the game relies on
 
-- **Animation names = `Fighter::anim()` names** (`idle`, `walk`, `run`, `jumpsquat`,
-  `air`, `land`, `hitstun`, and each move's `MoveData::name`: `jab`, `ftilt`,
-  `utilt`, `nair`). A pose with no animation stays frozen on its last frame. A new move
-  needs a new action with the same name.
+- **Animation names = `Fighter::anim()` names.** States: `idle`, `walk`, `run`,
+  `crouch`, `jumpsquat`, `air`, `specialfall`, `land`, `hitstun`, `shield`, `dizzy`,
+  `grab_hold`, `grabbed`. Dodges (`DodgeData::name`): `spotdodge`, `roll_f`, `roll_b`,
+  `airdodge`. Every move's `MoveData::name`: `jab`, `jab2`, `jab3`, `ftilt`, `utilt`,
+  `dtilt`, `dashattack`, `fsmash`, `usmash`, `dsmash`, `nair`, `fair`, `bair`, `uair`,
+  `dair`, `special_n`, `special_s`, `special_u`, `special_d`, `special_d_land`, `grab`,
+  `dashgrab`, `pummel`, `fthrow`, `bthrow`, `uthrow`, `dthrow`. A pose with no
+  animation stays frozen on its last frame. A new move needs a new action with the
+  same name.
 - **60 fps, frame 1 = sim frame 1.** Moves are keyed on their sim frames (Blender
   frame 5 of `ftilt` is FTilt's frame 5). The export slides each action so frame 1
   is time 0. `godot/models/fighter.glb.import` has `animation/fps=60`; Godot's
   default 30 would halve the precision.
-- **How each pose is timed** (`pose()` in `gdext/src/lib.rs`): moves and `jumpsquat`
-  follow the state's frame counter, `land` plays its *last* N frames as landing lag
+- **How each pose is timed** (`pose()` in `gdext/src/lib.rs`): moves, dodges and
+  `jumpsquat` follow the state's frame counter (a charging smash attack holds its
+  `charge_frame` pose), `land` plays its *last* N frames as landing lag
   counts down, and the rest loop on the world frame. Make loops start and end on the
   same pose.
 - **Scale and facing:** meters, feet at the origin, facing +X, 1.2 m tall (sim
@@ -59,5 +65,6 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
 Angles are degrees, counter-clockwise as seen by the game camera with the fighter
 facing right. `+` swings a hanging limb forward, tips the spine/head back, and raises
 the toes. Child angles are relative to the parent. `leg_ik(pose, side, foot_x)` plants a
-foot and solves the knee, so stances stay on the ground. The near (camera-side) limbs
+foot and solves the knee, so stances stay on the ground. `planted(pose, front, back)`
+re-solves both legs after moving `hips_loc`. The near (camera-side) limbs
 are `.R`.

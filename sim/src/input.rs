@@ -16,6 +16,10 @@ impl Input {
     pub const JUMP: u8 = 1 << 1;
     pub const SPECIAL: u8 = 1 << 2;
     pub const SHIELD: u8 = 1 << 3;
+    pub const GRAB: u8 = 1 << 4;
+    /// Attack as a smash attack in the stick's direction (forward if neutral).
+    /// The C-stick / "strong attack" button; flicking the stick with ATTACK does the same.
+    pub const SMASH: u8 = 1 << 5;
 
     pub fn held(&self, button: u8) -> bool {
         self.buttons & button != 0

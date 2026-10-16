@@ -2,7 +2,7 @@
 //! `physics_process`, and mirrors the simulation onto 3D nodes in `process`.
 //! No gameplay rules live here — if it affects who wins, it belongs in the sim.
 
-use fight_sim::{Cpu, Event, Fighter, Fx, Input as SimInput, Stage, State, World};
+use fight_sim::{Cpu, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, Stage, State, World};
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
@@ -28,6 +28,9 @@ const PLAYER_COLORS: [Color; 4] = [
     Color::from_rgb(0.30, 0.80, 0.35),
 ];
 const STICK_DEADZONE: f32 = 0.15;
+/// Right stick pushed this far acts as the C-stick: one smash attack (or aerial) in its direction.
+const CSTICK_THRESHOLD: f32 = 0.5;
+const TRIGGER_THRESHOLD: f32 = 0.3;
 /// Rigged fighter model, built by `art/fighter/build_fighter.py`. One animation per
 /// `Fighter::anim()` name, keyed at 60 fps.
 const FIGHTER_MODEL: &str = "res://models/fighter.glb";
@@ -43,8 +46,12 @@ fn to_godot(x: Fx, y: Fx) -> Vector3 {
 
 struct FighterView {
     root: Gd<Node3D>,
+    /// The model under `root`, jittered while charging a smash attack.
+    model: Gd<Node3D>,
     anim: Gd<AnimationPlayer>,
     material: Gd<StandardMaterial3D>,
+    shield: Gd<MeshInstance3D>,
+    shield_material: Gd<StandardMaterial3D>,
     color: Color,
 }
 
@@ -60,7 +67,8 @@ pub struct FightWorld {
     base: Base<Node3D>,
     world: World,
     views: Vec<FighterView>,
-    hitbox_pool: Vec<Gd<MeshInstance3D>>,
+    hitbox_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
+    projectile_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
     sparks: Vec<Spark>,
     hud: Vec<Gd<Label>>,
     banner: Option<Gd<Label>>,
@@ -71,6 +79,8 @@ pub struct FightWorld {
     show_hitboxes: bool,
     /// `Some` for players driven by the computer instead of a controller.
     cpus: Vec<Option<Cpu>>,
+    /// Per player: right stick was out last frame, so it only fires once per push.
+    cstick_out: Vec<bool>,
     /// Joypads seen last frame, to log (dis)connections. `None` before the first frame.
     joypads: Option<Vec<i32>>,
     paused: bool,
@@ -85,6 +95,7 @@ impl INode3D for FightWorld {
             world: World::new(Stage::battlefield(), PLAYERS, STOCKS),
             views: Vec::new(),
             hitbox_pool: Vec::new(),
+            projectile_pool: Vec::new(),
             sparks: Vec::new(),
             hud: Vec::new(),
             banner: None,
@@ -94,6 +105,7 @@ impl INode3D for FightWorld {
             time: 0.0,
             show_hitboxes: false,
             cpus: vec![None; PLAYERS],
+            cstick_out: vec![false; PLAYERS],
             joypads: None,
             paused: false,
             advance_one_frame: false,
@@ -136,7 +148,7 @@ impl INode3D for FightWorld {
         for p in 0..PLAYERS {
             inputs.push(match &mut self.cpus[p] {
                 Some(cpu) => cpu.think(&self.world),
-                None => read_input(p, pads.next()),
+                None => read_input(p, pads.next(), &mut self.cstick_out[p]),
             });
         }
         self.world.step(&inputs);
@@ -148,6 +160,12 @@ impl INode3D for FightWorld {
                     self.spawn_spark(to_godot(x, y), 0.3 + kb / 150.0);
                     self.shake = self.shake.max((kb - 40.0).max(0.0) / 400.0);
                 }
+                Event::ShieldHit { x, y, .. } => self.spawn_spark(to_godot(x, y), 0.25),
+                Event::ShieldBreak { fighter } => {
+                    self.shake = 0.4;
+                    godot_print!("P{} shield break!", fighter + 1);
+                }
+                Event::Grab { .. } => {}
                 Event::Ko { fighter } => {
                     self.shake = 0.6;
                     godot_print!("P{} KO'd ({} stocks left)", fighter + 1, self.world.fighters[fighter].stocks);
@@ -160,6 +178,7 @@ impl INode3D for FightWorld {
         self.time += delta;
         self.update_fighters();
         self.update_hitboxes();
+        self.update_projectiles();
         self.update_sparks();
         self.update_hud();
         self.update_camera(delta as f32);
@@ -262,7 +281,10 @@ impl FightWorld {
             let mut root = Node3D::new_alloc();
             root.add_child(&model);
             self.base_mut().add_child(&root);
-            self.views.push(FighterView { root, anim, material, color });
+
+            let (shield, shield_material) = sphere_instance(Color { a: 0.35, ..color });
+            self.base_mut().add_child(&shield);
+            self.views.push(FighterView { root, model, anim, material, shield, shield_material, color });
         }
     }
 
@@ -281,7 +303,9 @@ impl FightWorld {
 
         let mut help = styled_label(16, Color::from_rgba(1.0, 1.0, 1.0, 0.7));
         help.set_text(
-            "P1: WASD move · J attack · K jump    P2: arrows · , attack · . jump    Pads: stick · A attack · X/Y jump\n\
+            "P1: WASD move · J attack · K jump · L special · ; shield · U grab · I smash\n\
+             P2: arrows · , attack · . jump · / special · M shield · N grab · B smash\n\
+             Pads: stick · A attack · B special · X/Y jump · LT/RT shield · LB/RB grab · right stick smash\n\
              C (pad: View) toggle P2 human/CPU · R (pad: Menu) reset · H hitboxes · P pause · F frame-advance · Esc quit",
         );
         help.set_position(Vector2::new(16.0, 12.0));
@@ -291,6 +315,7 @@ impl FightWorld {
 
     fn update_fighters(&mut self) {
         let frame = self.world.frame;
+        let flash = (frame / 3).is_multiple_of(2);
         for (view, f) in self.views.iter_mut().zip(&self.world.fighters) {
             let hidden = matches!(f.state, State::Respawning { .. } | State::Eliminated);
             let blinking = f.intangible > 0 && (frame / 4).is_multiple_of(2);
@@ -301,35 +326,79 @@ impl FightWorld {
             if !hidden {
                 pose(&mut view.anim, f, frame);
             }
+            // Shake in place while charging a smash attack.
+            let jitter = if f.charging() { if flash { 0.02 } else { -0.02 } } else { 0.0 };
+            view.model.set_position(Vector3::new(jitter, 0.0, 0.0));
 
             let color = match f.state {
                 State::Hitstun { .. } if f.hitlag > 0 => Color::WHITE,
                 State::Hitstun { .. } => view.color.lerp(Color::WHITE, 0.35),
+                _ if f.dodge_invincible() => view.color.lerp(Color::from_rgb(0.7, 0.9, 1.0), 0.6),
+                _ if f.charging() && flash => view.color.lightened(0.45),
+                State::ShieldBreak { .. } if flash => view.color.lerp(Color::from_rgb(1.0, 0.9, 0.2), 0.5),
                 State::Attack { .. } => view.color.lightened(0.15),
                 _ => view.color,
             };
             view.material.set_albedo(color);
+
+            // The shield bubble shrinks as it takes damage, like Smash's.
+            view.shield.set_visible(!hidden && f.shielding());
+            if f.shielding() {
+                let health = (f.shield.to_f32() / SHIELD_MAX.to_f32()).clamp(0.0, 1.0);
+                let diameter = (f.params.height.to_f32() + 3.0) * SCALE * (0.35 + 0.65 * health);
+                let center = to_godot(f.x, f.y + f.params.height / Fx::int(2));
+                view.shield.set_position(center);
+                view.shield.set_scale(Vector3::splat(diameter));
+                let stunned = matches!(f.state, State::ShieldStun { .. });
+                let alpha = if stunned { 0.6 } else { 0.25 + 0.2 * health };
+                view.shield_material.set_albedo(Color { a: alpha, ..view.color.lightened(0.3) });
+            }
         }
     }
 
+    /// Debug view: hitboxes red, grab boxes purple.
     fn update_hitboxes(&mut self) {
         let active = if self.show_hitboxes { self.world.active_hitboxes() } else { Vec::new() };
         while self.hitbox_pool.len() < active.len() {
-            let mut sphere = SphereMesh::new_gd();
-            sphere.set_radius(0.5);
-            sphere.set_height(1.0);
-            let (node, mut mat) = mesh_instance(sphere.upcast(), Color::from_rgba(1.0, 0.1, 0.1, 0.5));
+            let (node, mut mat) = sphere_instance(Color::from_rgba(1.0, 0.1, 0.1, 0.5));
             mat.set_flag(Flags::DISABLE_DEPTH_TEST, true);
             self.base_mut().add_child(&node);
-            self.hitbox_pool.push(node);
+            self.hitbox_pool.push((node, mat));
         }
-        for (i, node) in self.hitbox_pool.iter_mut().enumerate() {
+        for (i, (node, mat)) in self.hitbox_pool.iter_mut().enumerate() {
             match active.get(i) {
                 Some(hb) => {
                     let diameter = hb.radius.to_f32() * 2.0 * SCALE;
                     node.set_position(to_godot(hb.x, hb.y));
                     node.set_scale(Vector3::splat(diameter));
                     node.set_visible(true);
+                    mat.set_albedo(if hb.grab { Color::from_rgba(0.7, 0.2, 1.0, 0.5) } else { Color::from_rgba(1.0, 0.1, 0.1, 0.5) });
+                }
+                None => node.set_visible(false),
+            }
+        }
+    }
+
+    /// Glowing balls in the owner's color.
+    fn update_projectiles(&mut self) {
+        let projectiles = self.world.projectiles.clone();
+        while self.projectile_pool.len() < projectiles.len() {
+            let (node, mut mat) = sphere_instance(Color::WHITE);
+            mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
+            mat.set_emission_energy_multiplier(3.0);
+            self.base_mut().add_child(&node);
+            self.projectile_pool.push((node, mat));
+        }
+        for (i, (node, mat)) in self.projectile_pool.iter_mut().enumerate() {
+            match projectiles.get(i) {
+                Some(p) => {
+                    let color = PLAYER_COLORS[p.owner % PLAYER_COLORS.len()].lightened(0.4);
+                    let pulse = 1.0 + 0.1 * ((self.time * 30.0).sin() as f32);
+                    node.set_position(to_godot(p.x, p.y));
+                    node.set_scale(Vector3::splat(p.data().radius.to_f32() * 2.0 * SCALE * pulse));
+                    node.set_visible(true);
+                    mat.set_albedo(color);
+                    mat.set_emission(color);
                 }
                 None => node.set_visible(false),
             }
@@ -337,10 +406,7 @@ impl FightWorld {
     }
 
     fn spawn_spark(&mut self, at: Vector3, size: f32) {
-        let mut sphere = SphereMesh::new_gd();
-        sphere.set_radius(0.5);
-        sphere.set_height(1.0);
-        let (mut node, mut mat) = mesh_instance(sphere.upcast(), Color::from_rgba(1.0, 0.9, 0.4, 0.9));
+        let (mut node, mut mat) = sphere_instance(Color::from_rgba(1.0, 0.9, 0.4, 0.9));
         mat.set_emission_energy_multiplier(4.0);
         mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
         mat.set_emission(Color::from_rgb(1.0, 0.7, 0.2));
@@ -425,6 +491,7 @@ fn pose(anim: &mut Gd<AnimationPlayer>, f: &Fighter, world_frame: u32) {
     let frame = match f.state {
         State::Attack { frame, .. } => u32::from(frame).saturating_sub(1),
         State::JumpSquat { frame } => u32::from(frame),
+        State::Dodge { frame, .. } => u32::from(frame).saturating_sub(1),
         // Counts down, so play the clip's end: it always finishes back on the idle pose.
         State::Landing { frames_left } => length.saturating_sub(u32::from(frames_left)),
         _ => world_frame % length.max(1),
@@ -433,6 +500,14 @@ fn pose(anim: &mut Gd<AnimationPlayer>, f: &Fighter, world_frame: u32) {
         anim.play_ex().name(&name).done();
     }
     anim.seek_ex(f64::from(frame.min(length)) / ANIM_FPS).update(true).done();
+}
+
+/// A unit-diameter sphere; scale it to size.
+fn sphere_instance(color: Color) -> (Gd<MeshInstance3D>, Gd<StandardMaterial3D>) {
+    let mut sphere = SphereMesh::new_gd();
+    sphere.set_radius(0.5);
+    sphere.set_height(1.0);
+    mesh_instance(sphere.upcast(), color)
 }
 
 fn mesh_instance(mesh: Gd<Mesh>, color: Color) -> (Gd<MeshInstance3D>, Gd<StandardMaterial3D>) {
@@ -457,22 +532,34 @@ fn styled_label(size: i32, color: Color) -> Gd<Label> {
     label
 }
 
-/// Merges keyboard and (optionally) a gamepad into one sim input.
-fn read_input(player: usize, joypad: Option<i32>) -> SimInput {
+/// Merges keyboard and (optionally) a gamepad into one sim input. `cstick_out`
+/// remembers whether the right stick was pushed last frame.
+fn read_input(player: usize, joypad: Option<i32>, cstick_out: &mut bool) -> SimInput {
     let input = Input::singleton();
     let key = |k: Key| input.is_physical_key_pressed(k);
-    let (left, right, up, down, attack, jump) = match player {
-        0 => (Key::A, Key::D, Key::W, Key::S, Key::J, Key::K),
-        _ => (Key::LEFT, Key::RIGHT, Key::UP, Key::DOWN, Key::COMMA, Key::PERIOD),
+    // left, right, up, down, attack, jump, special, shield, grab, smash
+    let keys = match player {
+        0 => [Key::A, Key::D, Key::W, Key::S, Key::J, Key::K, Key::L, Key::SEMICOLON, Key::U, Key::I],
+        _ => [Key::LEFT, Key::RIGHT, Key::UP, Key::DOWN, Key::COMMA, Key::PERIOD, Key::SLASH, Key::M, Key::N, Key::B],
     };
-    let mut x = key(right) as i32 as f32 - key(left) as i32 as f32;
-    let mut y = key(up) as i32 as f32 - key(down) as i32 as f32;
-    let mut attack = key(attack);
-    let mut jump = key(jump) || (player == 0 && key(Key::SPACE));
+    let [left, right, up, down, attack, jump, special, shield, grab, smash] = keys.map(key);
+    let mut x = right as i32 as f32 - left as i32 as f32;
+    let mut y = up as i32 as f32 - down as i32 as f32;
+    let mut buttons = [
+        (attack, SimInput::ATTACK),
+        (jump || (player == 0 && key(Key::SPACE)), SimInput::JUMP),
+        (special, SimInput::SPECIAL),
+        (shield, SimInput::SHIELD),
+        (grab, SimInput::GRAB),
+        (smash, SimInput::SMASH),
+    ]
+    .into_iter()
+    .fold(0, |bits, (held, bit)| if held { bits | bit } else { bits });
 
     if let Some(device) = joypad {
         let button = |b: JoyButton| input.is_joy_button_pressed(device, b);
-        let (jx, jy) = (input.get_joy_axis(device, JoyAxis::LEFT_X), -input.get_joy_axis(device, JoyAxis::LEFT_Y));
+        let axis = |a: JoyAxis| input.get_joy_axis(device, a);
+        let (jx, jy) = (axis(JoyAxis::LEFT_X), -axis(JoyAxis::LEFT_Y));
         let dx = button(JoyButton::DPAD_RIGHT) as i32 as f32 - button(JoyButton::DPAD_LEFT) as i32 as f32;
         let dy = button(JoyButton::DPAD_UP) as i32 as f32 - button(JoyButton::DPAD_DOWN) as i32 as f32;
         // Whichever source is pushed furthest wins.
@@ -481,17 +568,26 @@ fn read_input(player: usize, joypad: Option<i32>) -> SimInput {
         };
         x = strongest(x, [jx, dx]);
         y = strongest(y, [jy, dy]);
-        attack |= button(JoyButton::A);
-        jump |= button(JoyButton::X) || button(JoyButton::Y);
+        let pad = [
+            (button(JoyButton::A), SimInput::ATTACK),
+            (button(JoyButton::B), SimInput::SPECIAL),
+            (button(JoyButton::X) || button(JoyButton::Y), SimInput::JUMP),
+            (axis(JoyAxis::TRIGGER_LEFT) > TRIGGER_THRESHOLD || axis(JoyAxis::TRIGGER_RIGHT) > TRIGGER_THRESHOLD, SimInput::SHIELD),
+            (button(JoyButton::LEFT_SHOULDER) || button(JoyButton::RIGHT_SHOULDER), SimInput::GRAB),
+        ];
+        buttons = pad.into_iter().fold(buttons, |bits, (held, bit)| if held { bits | bit } else { bits });
+
+        // C-stick: on the frame it's pushed, a smash press aimed by the right stick
+        // instead of the left. Holding it does nothing more (C-stick smashes don't charge).
+        let (cx, cy) = (axis(JoyAxis::RIGHT_X), -axis(JoyAxis::RIGHT_Y));
+        let out = cx.abs().max(cy.abs()) > CSTICK_THRESHOLD;
+        if out && !*cstick_out {
+            buttons |= SimInput::SMASH;
+            (x, y) = if cx.abs() > cy.abs() { (cx.signum(), 0.0) } else { (0.0, cy.signum()) };
+        }
+        *cstick_out = out;
     }
 
     let axis = |v: f32| (v.clamp(-1.0, 1.0) * 100.0).round() as i8;
-    let mut buttons = 0;
-    if attack {
-        buttons |= SimInput::ATTACK;
-    }
-    if jump {
-        buttons |= SimInput::JUMP;
-    }
     SimInput { stick_x: axis(x), stick_y: axis(y), buttons }
 }

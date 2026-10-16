@@ -15,9 +15,9 @@ pub mod stage;
 pub mod world;
 
 pub use cpu::{Cpu, CpuLevel};
-pub use fighter::{Fighter, FighterParams, State};
+pub use fighter::{Fighter, FighterParams, SHIELD_MAX, State};
 pub use fixed::Fx;
 pub use input::Input;
-pub use moves::{Hitbox, MoveData, MoveId};
+pub use moves::{DodgeKind, Hitbox, MoveData, MoveId};
 pub use stage::{Platform, Stage};
-pub use world::{ActiveHitbox, Event, World};
+pub use world::{ActiveHitbox, Event, Projectile, World};

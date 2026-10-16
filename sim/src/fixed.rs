@@ -48,6 +48,12 @@ impl Fx {
         self.0.signum()
     }
 
+    /// Length of the vector (x, y), via an integer square root.
+    pub fn hypot(x: Fx, y: Fx) -> Fx {
+        let (x, y) = (x.0 as i64, y.0 as i64);
+        Fx(isqrt(x * x + y * y) as i32)
+    }
+
     /// Moves `self` toward `target` by at most `step` (which must be >= 0).
     pub fn approach(self, target: Fx, step: Fx) -> Fx {
         if self < target {
@@ -118,6 +124,20 @@ impl SubAssign for Fx {
     }
 }
 
+/// floor(sqrt(n)) for n >= 0, by Newton's method on integers.
+fn isqrt(n: i64) -> i64 {
+    if n < 2 {
+        return n.max(0);
+    }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
+}
+
 /// sin(0..=90 degrees) in Q16.16, precomputed so trig is a table lookup.
 const SIN_TABLE: [i32; 91] = [
     0, 1144, 2287, 3430, 4572, 5712, 6850, 7987, 9121, 10252, //
@@ -158,6 +178,8 @@ mod tests {
         assert_eq!(Fx::ratio(-3, 2).floor_to_int(), -2);
         assert_eq!(Fx::int(5).approach(Fx::ZERO, Fx::int(2)), Fx::int(3));
         assert_eq!(Fx::int(1).approach(Fx::ZERO, Fx::int(2)), Fx::ZERO);
+        assert_eq!(Fx::hypot(Fx::int(3), Fx::int(-4)), Fx::int(5));
+        assert!((Fx::hypot(Fx::ONE, Fx::ONE).to_f32() - core::f32::consts::SQRT_2).abs() < 1e-4);
     }
 
     #[test]
