@@ -1,6 +1,6 @@
 # Pug model
 
-A cute, somewhat realistic black pug on four legs, rigged and animated in Blender,
+A realistic black pug on four legs, rigged and animated in Blender,
 exported to `godot/models/pug.glb`. It draws `Character::Pug`, which has its own
 moveset in the sim (`sim/src/character.rs`, frame data at the end of
 `sim/src/moves.rs`; the root README lists the moves). Press **1** / **2** in game to play it.
@@ -35,14 +35,26 @@ the ground at the origin, and the model is visual only.
 
 - **Fur** is one surface made of metaballs (`fur_blob`), so the body, legs and head
   blend like flesh. It's converted to a mesh, decimated, and skinned with Blender's
-  automatic (heat) weights. Face detail (the nose roll, forehead wrinkles, worried brows,
-  eye sockets) comes from small positive and negative metaballs.
-- **Rigid parts** each follow one bone: eyes with catchlights, nose with nostrils,
-  button ears, the curled tail, the lower jaw (its own blob, so the mouth can open
-  onto the mouth interior and tongue), and the collar with its tag.
+  automatic (heat) weights. Face detail (the nose roll draped over the nose, forehead
+  wrinkles, worried brows, muzzle pads, flews, eye sockets) comes from small positive
+  and negative metaballs. Positions shared with the rigid parts (`NOSE`, `NOSE_ROLL`,
+  the toes) are constants at the top of the mesh section.
+- **Rigid parts** each follow one bone: the eyes (pupil, dark iris and a sliver of
+  white inside an almond opening, black lids, a small catchlight), the flat-fronted nose
+  with nostrils, the button ears, the tail (a tight double curl lying on the hip), black
+  nails on every toe, the lower jaw (its own blob, so the mouth can open onto the mouth
+  interior and tongue), and the flat collar band with its tag. The ears are laid onto
+  the finished fur surface (`Surface`, a nearest-point lookup), so they follow the
+  skull wherever the head's metaballs put it.
 - **Materials:** `Body` is the collar, which gets the player's color in game. `Fur`,
-  `Nose`, `Eye`, `Catchlight`, `Tongue`, `Mouth` and `Accent` (the gold tag) keep their own.
-  Hit flashes and other state tints only show on the collar.
+  `Nose`, `Skin` (eyelids), `Nail`, `Eye` (the pupil), `Iris`, `Sclera`, `Catchlight`,
+  `Tongue`, `Mouth` and `Accent` (the gold tag) keep their own. Hit flashes and other
+  state tints only show on the collar.
+- **Fur shading in game:** `godot/models/pug.glb.import` swaps the `Fur` material for
+  `godot/models/pug_fur.tres`, which uses `godot/shaders/fur.gdshader` (a soft sheen and
+  a fuzzy, lighter silhouette instead of a plastic highlight). The Blender `Fur`
+  material only matters for the `.blend` and the exported fallback. Keep that
+  `_subresources` entry when changing the import settings.
 - **Size:** about 0.8 m tall at the top of the head and 0.85 m from rump to nose,
   close to the pug's 0.9 × 0.8 m hurtbox capsule (`FighterParams::PUG`). Attack poses put
   the head or paws roughly where the sim's hitboxes are (comments in `ANIMATIONS` give

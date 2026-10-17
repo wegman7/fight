@@ -20,6 +20,7 @@ import sys
 import bmesh
 import bpy
 from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -39,8 +40,8 @@ HIP, STIFLE, HOCK, ANKLE, HTOE = (-0.17, 0.105, 0.40), (-0.075, 0.105, 0.25), (-
 
 def ear_frame(s):
     """Root, tip, and the direction away from the skull of one ear (s=1 left)."""
-    root = Vector((0.375, s * 0.125, 0.785))
-    tip = Vector((0.445, s * 0.175, 0.705))
+    root = Vector((0.37, s * 0.128, 0.785))
+    tip = Vector((0.445, s * 0.162, 0.7))
     down = (tip - root).normalized()
     out = Vector((0.1, s * 1.0, 0.55))
     return root, tip, (out - down * out.dot(down)).normalized()
@@ -78,13 +79,18 @@ PLANAR = [b[0] for b in BONES if not b[0].startswith("ear")]
 # Material name -> (base color, roughness, metallic). Godot replaces "Body" (the
 # collar) with the player's color; the rest keep their own.
 MATERIALS = {
-    "Fur": ((0.03, 0.028, 0.028, 1), 0.72, 0.0),
+    # A black pug's short coat: near-black with a warm undertone and a soft sheen.
+    "Fur": ((0.022, 0.019, 0.018, 1), 0.7, 0.0),
     "Body": ((0.8, 0.15, 0.15, 1), 0.45, 0.0),
     "Accent": ((1.0, 0.72, 0.28, 1), 0.25, 1.0),
-    "Nose": ((0.012, 0.010, 0.010, 1), 0.28, 0.0),
-    "Eye": ((0.018, 0.008, 0.004, 1), 0.03, 0.0),
+    "Nose": ((0.012, 0.010, 0.010, 1), 0.45, 0.0),
+    "Skin": ((0.016, 0.013, 0.013, 1), 0.45, 0.0),  # eyelid rims
+    "Nail": ((0.035, 0.03, 0.028, 1), 0.3, 0.0),
+    "Sclera": ((0.6, 0.5, 0.44, 1), 0.08, 0.0),
+    "Iris": ((0.024, 0.011, 0.006, 1), 0.04, 0.0),
+    "Eye": ((0.004, 0.003, 0.003, 1), 0.03, 0.0),  # the pupil
     "Catchlight": ((1, 1, 1, 1), 0.3, 0.0),
-    "Tongue": ((0.85, 0.30, 0.36, 1), 0.32, 0.0),
+    "Tongue": ((0.6, 0.22, 0.26, 1), 0.3, 0.0),
     "Mouth": ((0.16, 0.025, 0.035, 1), 0.5, 0.0),
 }
 
@@ -92,7 +98,7 @@ MATERIALS = {
 # --- Mesh -------------------------------------------------------------------
 # The fur is one smooth surface made of metaballs (so the body, legs and head blend
 # like flesh), converted to a mesh and skinned with automatic weights. Small parts
-# (eyes, nose, ears, tail, collar) are separate rigid pieces on one bone each.
+# (eyes, nose, ears, tail, nails, collar) are separate rigid pieces on one bone each.
 
 
 def stiff_k(stiffness, threshold=0.6):
@@ -137,6 +143,16 @@ class Blob:
         return e
 
 
+# Toes as (sideways offset, x): the middle two reach a little further forward.
+FRONT_TOES = [(dy, WRIST[0] + 0.065 + (0.007 if abs(dy) < 0.01 else 0)) for dy in (-0.025, -0.009, 0.009, 0.025)]
+HIND_TOES = [(dy, ANKLE[0] + 0.07 + (0.006 if abs(dy) < 0.01 else 0)) for dy in (-0.022, -0.008, 0.008, 0.022)]
+
+
+NOSE = (0.549, 0, 0.624)
+# The nose roll's arch as (y, x, z) points: highest over the middle of the nose.
+NOSE_ROLL = [(y, 0.552 - abs(y) * 0.45, 0.666 - 9 * y * y) for y in (-0.064 + 0.016 * i for i in range(9))]
+
+
 def fur_blob():
     b = Blob(resolution=0.005)
     # Torso: broad barrel chest, round rump.
@@ -146,44 +162,54 @@ def fur_blob():
     # Neck, thick and short, and a dewlap fold under it.
     b.cap((0.19, 0, 0.47), (0.31, 0, 0.585), 0.11)
     b.ell((0.27, 0, 0.455), (0.07, 0.085, 0.05), stiffness=3)
-    # Head: big round skull, flat face, cheeks, a very short muzzle.
-    b.ell((0.375, 0, 0.665), (0.145, 0.155, 0.138))
-    b.ell((0.455, 0, 0.625), (0.09, 0.135, 0.108))
+    # Head: a big round skull, broader than it is tall, on a flat face with full
+    # cheeks and a muzzle so short the nose sits between the eyes.
+    b.ell((0.37, 0, 0.668), (0.145, 0.162, 0.125))
+    b.ell((0.452, 0, 0.632), (0.092, 0.148, 0.108))
     for s in (1, -1):
-        b.ell((0.478, s * 0.072, 0.585), (0.07, 0.058, 0.045), stiffness=2.5)  # jowls
-        b.ell((0.41, s * 0.125, 0.63), (0.07, 0.04, 0.07), stiffness=3)  # cheekbones
+        # Flews: the loose upper lips hanging past the lower jaw at each side.
+        b.ell((0.488, s * 0.072, 0.566), (0.062, 0.062, 0.05), stiffness=2.5)
+        b.ell((0.415, s * 0.128, 0.625), (0.07, 0.042, 0.075), stiffness=3)  # cheeks
         # Brows: soft, the inner ends raised (the worried pug look).
-        b.ell((0.478, s * 0.07, 0.74), (0.026, 0.038, 0.012), stiffness=3, rot=Quaternion((1, 0, 0), math.radians(-18 * s)))
+        b.ell((0.48, s * 0.075, 0.738), (0.026, 0.04, 0.012), stiffness=3, rot=Quaternion((1, 0, 0), math.radians(-18 * s)))
         # Eye sockets, so the eyes sit in the face rather than on it.
-        b.ball((0.5, s * 0.08, 0.675), 0.03, stiffness=4, negative=True)
-    b.ell((0.522, 0, 0.608), (0.04, 0.07, 0.044), stiffness=3)  # muzzle
-    b.ell((0.515, 0, 0.572), (0.04, 0.065, 0.03), stiffness=3)  # upper lip
-    # The nose roll: a fold of skin arching over the nose, with a deep crease under it.
-    for y in (-0.05, -0.03, -0.01, 0.01, 0.03, 0.05):
-        b.ball((0.548 - abs(y) * 0.35, y, 0.66 - 4 * y * y), 0.019, stiffness=5)
-    b.cap((0.552, -0.055, 0.637), (0.552, 0.055, 0.637), 0.009, stiffness=6, negative=True)
-    # Forehead wrinkles: a V of grooves between the brows and a line across.
-    b.cap((0.495, -0.03, 0.79), (0.522, -0.004, 0.74), 0.008, stiffness=6, negative=True)
-    b.cap((0.495, 0.03, 0.79), (0.522, 0.004, 0.74), 0.008, stiffness=6, negative=True)
-    b.cap((0.47, -0.06, 0.785), (0.485, 0, 0.795), 0.007, stiffness=6, negative=True)
-    b.cap((0.485, 0, 0.795), (0.47, 0.06, 0.785), 0.007, stiffness=6, negative=True)
+        b.ball((0.5, s * 0.085, 0.672), 0.028, stiffness=4, negative=True)
+        # Muzzle pads either side of the lip, under the nose.
+        b.ell((0.534, s * 0.036, 0.584), (0.036, 0.042, 0.034), stiffness=3)
+    b.ell((0.515, 0, 0.568), (0.04, 0.066, 0.03), stiffness=3)  # upper lip
+    # The nose roll: a thick fold of skin draped over the top of the nose, its ends
+    # running down beside it, with deep creases above and below.
+    for y, x, z in NOSE_ROLL:
+        b.ball((x, y, z), 0.023, stiffness=5)
+    for (y0, x0, z0), (y1, x1, z1) in zip(NOSE_ROLL, NOSE_ROLL[1:]):
+        b.cap((x0 + 0.004, y0, z0 - 0.027), (x1 + 0.004, y1, z1 - 0.027), 0.008, stiffness=6, negative=True)
+        b.cap((x0 - 0.012, y0, z0 + 0.026), (x1 - 0.012, y1, z1 + 0.026), 0.006, stiffness=6, negative=True)
+    # Forehead wrinkles: a V of grooves between the brows and two lines across.
+    b.cap((0.497, -0.03, 0.79), (0.524, -0.004, 0.742), 0.008, stiffness=6, negative=True)
+    b.cap((0.497, 0.03, 0.79), (0.524, 0.004, 0.742), 0.008, stiffness=6, negative=True)
+    for x, z, w in ((0.475, 0.795, 0.06), (0.455, 0.812, 0.07)):
+        b.cap((x - 0.012, -w, z - 0.012), (x, 0, z), 0.007, stiffness=6, negative=True)
+        b.cap((x, 0, z), (x - 0.012, w, z - 0.012), 0.007, stiffness=6, negative=True)
     for side, s in (("L", 1), ("R", -1)):
         m = lambda p: (p[0], s * p[1], p[2])  # noqa: E731
         # Front leg: shoulder muscle, upper arm, forearm, paw with toes.
         b.ell(m((0.15, 0.1, 0.37)), (0.085, 0.065, 0.1), stiffness=3)
         b.cap(m(SHOULDER), m(ELBOW), 0.055)
-        b.cap(m(ELBOW), m(WRIST), 0.042, stiffness=3)
+        b.cap(m(ELBOW), m(WRIST), 0.045, stiffness=3)
         b.ell(m((WRIST[0] + 0.03, WRIST[1], 0.034)), (0.05, 0.042, 0.032), stiffness=3)
-        for dy in (-0.025, -0.009, 0.009, 0.025):
-            b.ball(m((WRIST[0] + 0.065, WRIST[1] + dy, 0.022)), 0.014, stiffness=5)
+        for dy, x in FRONT_TOES:
+            b.ball(m((x, WRIST[1] + dy, 0.022)), 0.014, stiffness=5)
         # Hind leg: big thigh, shin, hock, paw with toes.
         b.ell(m((-0.14, 0.095, 0.36)), (0.1, 0.07, 0.115), stiffness=3)
         b.cap(m(HIP), m(STIFLE), 0.065)
-        b.cap(m(STIFLE), m(HOCK), 0.042, stiffness=3)
+        b.ell(m((-0.1, 0.085, 0.3)), (0.075, 0.06, 0.075), stiffness=3)  # flank, joining the stifle to the belly
+        gaskin = tuple(a + (b - a) * 0.4 for a, b in zip(STIFLE, HOCK))
+        b.cap(m(STIFLE), m(gaskin), 0.05, stiffness=3)
+        b.cap(m(gaskin), m(HOCK), 0.037, stiffness=3)
         b.cap(m(HOCK), m(ANKLE), 0.03, stiffness=3)
         b.ell(m((ANKLE[0] + 0.035, ANKLE[1], 0.032)), (0.048, 0.038, 0.03), stiffness=3)
-        for dy in (-0.022, -0.008, 0.008, 0.022):
-            b.ball(m((ANKLE[0] + 0.07, ANKLE[1] + dy, 0.02)), 0.013, stiffness=5)
+        for dy, x in HIND_TOES:
+            b.ball(m((x, ANKLE[1] + dy, 0.02)), 0.013, stiffness=5)
     return b.mb
 
 
@@ -268,43 +294,85 @@ class Parts:
             f.smooth = smooth
 
 
-def ear(parts, s):
-    """A button ear: a thin triangular flap on the top of the skull, folded forward
-    so its tip points at the outer corner of the eye."""
-    root, tip, out = ear_frame(s)
+class Surface:
+    """Nearest point and smooth normal on a mesh, to lay parts on the fur."""
+
+    def __init__(self, mesh):
+        self.mesh = mesh
+        self.tree = BVHTree.FromPolygons([v.co for v in mesh.vertices], [p.vertices for p in mesh.polygons])
+
+    def nearest(self, p):
+        loc, _, index, _ = self.tree.find_nearest(p)
+        normal = sum((self.mesh.vertices[i].normal for i in self.mesh.polygons[index].vertices), Vector()).normalized()
+        return loc, normal
+
+
+def ear(parts, s, surface):
+    """A button ear: a thin, soft triangular flap set high on the skull and folded
+    forward, its tip lying against the head toward the outer corner of the eye. Its
+    widest edge is the fold, a rounded ridge along the top; the flap follows the
+    skull, cupped so its edges meet it."""
+    root, tip, _ = ear_frame(s)
     down = (tip - root).normalized()
-    across = down.cross(out)
-    length, half_width = (tip - root).length, 0.042
-    verts = uv_ellipsoid(parts.bm, (0, 0, 0), (1, 1, 1), segments=(20, 12))
-    for v in verts:
-        a, t, d = v.co  # across, thickness, along (-1 root .. 1 tip)
-        along = (1 - d) / 2  # 0 at the tip
-        u = 1 - along  # 0 at the root, 1 at the tip
-        w = half_width * (1 - 0.8 * u) * a
-        bow = 0.014 * math.sin(math.pi * u) + 0.008 * (1 - a * a)
-        v.co = root + down * (length * (u * 1.05 - 0.1)) + across * w + out * (bow + 0.0055 * t)
+    _, out = surface.nearest((root + tip) / 2)
+    across = down.cross(out).normalized()
+    length, half_width = (tip - root).length, 0.05
+    rows, sides = 18, 16
+    grid = []
+    for i in range(rows + 1):
+        u = -0.08 + 1.08 * i / rows  # below 0: rounding off the fold
+        cap = math.sqrt(max(0.0, 1 - (u / 0.08) ** 2)) if u < 0 else 1.0
+        width = half_width * (1 - u) ** 0.7 * (0.35 + 0.65 * cap) if u < 1 else 0.0
+        thick = (0.0035 + 0.008 * (1 - u) ** 3) * cap
+        row = []
+        for j in range(sides):
+            ang = 2 * math.pi * j / sides
+            a, t = math.cos(ang), math.sin(ang)
+            on, normal = surface.nearest(root + down * (length * u) + across * (width * a))
+            lift = 0.003 + 0.012 * (1 - max(u, 0)) ** 2 + 0.007 * (1 - a * a) * (width / half_width)
+            row.append(parts.bm.verts.new(on + normal * (lift + thick * t)))
+        grid.append(row)
+    for r0, r1 in zip(grid, grid[1:]):
+        for j in range(sides):
+            parts.bm.faces.new((r0[j], r1[j], r1[(j + 1) % sides], r0[(j + 1) % sides]))
+    for row, flip in ((grid[0], True), (grid[-1], False)):
+        parts.bm.faces.new(row[::-1] if flip else row)
+    verts = [v for r in grid for v in r]
+    bmesh.ops.remove_doubles(parts.bm, verts=verts, dist=1e-6)
+    verts = [v for v in verts if v.is_valid]
+    bmesh.ops.recalc_face_normals(parts.bm, faces=list({f for v in verts for f in v.link_faces}))
     parts.assign(verts, f"ear.{'L' if s > 0 else 'R'}", "Fur")
 
 
 def curled_tail(parts):
-    """Rises off the rump and curls tight over the hip."""
-    pts, radii = [], []
-    n = 60
-    center = Vector((-0.195, 0.035, 0.6))
-    normal = Vector((0.1, 1, 0.3)).normalized()  # the coil faces the camera side and up
+    """Rises off the rump and rolls into a tight double curl lying on the hip, each
+    turn resting against the last."""
+    base = Vector((-0.21, 0, 0.5))
+    center = Vector((-0.17, -0.015, 0.59))
+    normal = Vector((0.1, -0.4, 1)).normalized()  # the coil lies on the hip, tipped toward the camera
     u_axis = Vector((-1, 0, 0))
+    u_axis = (u_axis - normal * u_axis.dot(normal)).normalized()
     v_axis = normal.cross(u_axis)
+    r0, pitch, turns = 0.068, 0.046, 1.35
+
+    def coil(u):
+        ang = -2 * math.pi * turns * u
+        r = r0 - pitch * turns * u
+        return center + r * (math.cos(ang) * u_axis + math.sin(ang) * v_axis) + normal * (0.014 * u)
+
+    start = coil(0)
+    tangent = (coil(0.01) - start).normalized()
+    pts, radii = [], []
+    for i in range(12):  # root: up out of the rump, then over into the coil
+        t = i / 12
+        c1, c2 = base + Vector((0, 0, 0.06)), start - tangent * 0.05
+        pts.append((1 - t) ** 3 * base + 3 * (1 - t) ** 2 * t * c1 + 3 * (1 - t) * t * t * c2 + t ** 3 * start)
+        radii.append(0.034 - 0.003 * t)
+    n = 70
     for i in range(n):
-        t = i / (n - 1)
-        if t < 0.12:  # root, going up out of the rump
-            p = Vector((-0.235, 0, 0.5)).lerp(center + u_axis * 0.062, t / 0.12)
-        else:
-            u = (t - 0.12) / 0.88
-            ang = -2 * math.pi * 1.5 * u
-            r = 0.062 * (1 - 0.6 * u)
-            p = center + r * (math.cos(ang) * u_axis + math.sin(ang) * v_axis) + normal * (0.012 * u)
-        pts.append(p)
-        radii.append(0.034 - 0.018 * t)
+        u = i / (n - 1)
+        pts.append(coil(u))
+        radii.append(0.031 - 0.019 * u ** 1.3)
     parts.assign(tube(parts.bm, pts, radii, sides=14), "tail", "Fur")
 
 
@@ -320,9 +388,10 @@ def collar(parts):
         row = []
         for j in range(sides):
             b = 2 * math.pi * j / sides
-            r = 0.118 + 0.011 * math.cos(b)
-            z = 0.022 * math.sin(b)
-            # Hangs a little lower at the front, the way a collar sits on a pug.
+            # A flat band, its edges rounded off (a squarish superellipse section).
+            cb, sb = math.cos(b), math.sin(b)
+            r = 0.12 + 0.006 * math.copysign(abs(cb) ** 0.35, cb)
+            z = 0.019 * math.copysign(abs(sb) ** 0.35, sb)
             local = Vector((r * math.cos(a), r * math.sin(a), z))
             p = center + rot @ local
             v = parts.bm.verts.new(p)
@@ -347,21 +416,71 @@ def collar(parts):
     parts.assign(tag, "neck", "Accent")
 
 
+def ring(bm, points, radius, sides=8):
+    """A closed tube through `points` (a loop), returns its verts."""
+    n = len(points)
+    rings = []
+    for i, p in enumerate(points):
+        t = (Vector(points[(i + 1) % n]) - Vector(points[i - 1])).normalized()
+        out = (Vector(p) - sum((Vector(q) for q in points), Vector()) / n)
+        out = (out - t * out.dot(t)).normalized()
+        up = t.cross(out)
+        rings.append([bm.verts.new(Vector(p) + radius * (math.cos(2 * math.pi * j / sides) * out + math.sin(2 * math.pi * j / sides) * up))
+                      for j in range(sides)])
+    for i in range(n):
+        r0, r1 = rings[i], rings[(i + 1) % n]
+        for j in range(sides):
+            bm.faces.new((r0[j], r0[(j + 1) % sides], r1[(j + 1) % sides], r1[j]))
+    return [v for r in rings for v in r]
+
+
+def eye(parts, s):
+    """A dark eye looking forward and a little out: the brown iris nearly fills the
+    opening, with a sliver of white at the corners, framed by a black eyelid rim.
+    The eyeball outside the opening is black skin, so no white shows past the lids."""
+    center, radius = Vector((0.486, s * 0.085, 0.672)), 0.034
+    gaze = Vector((1, s * 0.4, 0.02)).normalized()
+    side = Vector((0, 0, 1)).cross(gaze).normalized()
+    up = gaze.cross(side)
+
+    def opening(c, n):
+        """Degrees from the gaze to the lid edge in direction (c, n): an almond, the
+        upper lid a little lower over the eye."""
+        return 1 / math.hypot(c / 57, n / (42 if n > 0 else 48))
+
+    verts = uv_ellipsoid(parts.bm, center, (radius,) * 3, gaze.to_track_quat("Z", "Y"), segments=(32, 20))
+    parts.assign(verts, "head", "Sclera")
+    for f in {f for v in verts for f in v.link_faces}:
+        d = (f.calc_center_median() - center).normalized()
+        angle = math.degrees(d.angle(gaze))
+        lid = opening(*Vector((d.dot(side), d.dot(up))).normalized()) if angle > 1 else 90
+        f.material_index = list(MATERIALS).index("Skin" if angle > lid else "Eye" if angle < 22 else "Iris" if angle < 50 else "Sclera")
+    rim = []
+    for i in range(28):
+        a = 2 * math.pi * i / 28
+        c, n = math.cos(a), math.sin(a)
+        deg = opening(c, n)
+        d = gaze * math.cos(math.radians(deg)) + math.sin(math.radians(deg)) * (c * side + n * up)
+        rim.append(center + d * (radius + 0.002))
+    parts.assign(ring(parts.bm, rim, 0.0045), "head", "Skin")
+    glint = center + (gaze + 0.38 * up - 0.18 * side).normalized() * (radius + 0.0003)
+    parts.assign(uv_ellipsoid(parts.bm, glint, (0.003, 0.003, 0.003), segments=(10, 6)), "head", "Catchlight")
+
+
 def face_parts(parts):
-    for s in (1, -1):
-        eye_c = Vector((0.488, s * 0.08, 0.675))
-        parts.assign(uv_ellipsoid(parts.bm, eye_c, (0.041, 0.041, 0.041)), "head", "Eye")
-        glint = eye_c + Vector((0.65, s * 0.05, 0.5)).normalized() * 0.039
-        parts.assign(uv_ellipsoid(parts.bm, glint, (0.008, 0.008, 0.008), segments=(10, 6)), "head", "Catchlight")
-    # Nose: flat and wide, a little wider at the top, with comma-shaped nostrils.
-    nose = uv_ellipsoid(parts.bm, (0.556, 0, 0.622), (0.018, 0.04, 0.025), segments=(32, 16))
+    eye(parts, 1)
+    eye(parts, -1)
+    # Nose: broad and flat-fronted, a little wider at the top, with comma-shaped nostrils.
+    nose = uv_ellipsoid(parts.bm, NOSE, (0.016, 0.042, 0.024), segments=(32, 16))
     for v in nose:
-        x, y, z = v.co - Vector((0.556, 0, 0.622))
+        x, y, z = v.co - Vector(NOSE)
         v.co.y = y * (1 + 0.25 * z / 0.025)
+        if x > 0.006:  # a flat front face
+            v.co.x = NOSE[0] + 0.006 + (x - 0.006) * 0.3
         for s in (1, -1):
-            d = ((y - s * 0.02) / 0.011) ** 2 + ((z + 0.003) / 0.006) ** 2
+            d = ((y - s * 0.022) / 0.012) ** 2 + ((z + 0.003) / 0.0065) ** 2
             if x > 0 and d < 1:
-                v.co.x -= 0.016 * (1 - d)
+                v.co.x -= 0.011 * (1 - d)
     parts.assign(nose, "head", "Nose")
     # Inside of the mouth, seen when the jaw drops.
     parts.assign(uv_ellipsoid(parts.bm, (0.475, 0, 0.553), (0.065, 0.058, 0.016)), "head", "Mouth")
@@ -377,6 +496,21 @@ def face_parts(parts):
     bpy.data.meshes.remove(chin)
 
 
+def nails(parts):
+    """A short black claw at the tip of every toe."""
+    for side, s in (("L", 1), ("R", -1)):
+        for toes, y0, radius, bone in ((FRONT_TOES, WRIST[1], 0.014, "hand"), (HIND_TOES, ANKLE[1], 0.013, "foot")):
+            z = 0.022 if bone == "hand" else 0.02
+            for dy, x in toes:
+                tip_dir = Vector((1, s * dy * 4, -0.9)).normalized()
+                base = Vector((x + radius * 0.6, s * (y0 + dy), z - radius * 0.15))
+                cone = bmesh.ops.create_cone(
+                    parts.bm, cap_ends=True, segments=10, radius1=0.0045, radius2=0.0008, depth=0.014,
+                    matrix=Matrix.Translation(base + tip_dir * 0.005) @ tip_dir.to_track_quat("Z", "Y").to_matrix().to_4x4(),
+                )["verts"]
+                parts.assign(cone, f"{bone}.{side}", "Nail")
+
+
 def build_meshes(rig):
     mats = []
     for name, (color, rough, metal) in MATERIALS.items():
@@ -388,9 +522,12 @@ def build_meshes(rig):
         bsdf.inputs["Base Color"].default_value = color
         bsdf.inputs["Roughness"].default_value = rough
         bsdf.inputs["Metallic"].default_value = metal
+        if name == "Fur":
+            bsdf.inputs["Sheen Weight"].default_value = 0.6
+            bsdf.inputs["Sheen Roughness"].default_value = 0.4
         if name == "Catchlight":
             bsdf.inputs["Emission Color"].default_value = color
-            bsdf.inputs["Emission Strength"].default_value = 1.5
+            bsdf.inputs["Emission Strength"].default_value = 0.3
         mats.append(mat)
 
     # Fur: metaballs -> mesh -> automatic weights.
@@ -433,10 +570,12 @@ def build_meshes(rig):
     # Rigid parts.
     parts = Parts()
     face_parts(parts)
-    ear(parts, 1)
-    ear(parts, -1)
+    surface = Surface(fur_mesh)
+    ear(parts, 1, surface)
+    ear(parts, -1, surface)
     curled_tail(parts)
     collar(parts)
+    nails(parts)
     parts_mesh = bpy.data.meshes.new("PugParts")
     parts.bm.to_mesh(parts_mesh)
     parts.bm.free()
