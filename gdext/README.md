@@ -29,8 +29,13 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
 ## Things to know
 
 - The node tree is built in code: `build_stage`, `build_fighters` and `build_hud`
-  in `ready()`. Only the light, environment and `Camera3D` live in `main.tscn`, so
-  they can be tweaked in the editor.
+  in `ready()`. Only the light, environment, `Camera3D` and the decorative backdrop
+  live in `main.tscn`, so they can be tweaked in the editor. The backdrop (`Beach`,
+  `Clouds`) is a subdivided plane shaped by `shaders/sand.gdshader`, an ocean plane
+  using `shaders/ocean.gdshader`, and props from `art/beach/` (palms, rocks,
+  sailboats). Its ground sits at y = −12, just under the bottom blast zone, so
+  fighters are KO'd before they'd reach the sand. The water animates on shader
+  `TIME`; that's fine because it's scenery, never gameplay.
 - Controls are hard-coded in `read_input` (table in the root README). Gamepads go to
   human players in order (with P2 as CPU, the first pad drives P1). Triggers are
   axes, so shield is "trigger past 0.3". The right stick acts as a C-stick. On the

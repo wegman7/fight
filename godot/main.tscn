@@ -1,9 +1,17 @@
 [gd_scene format=3]
 
+[ext_resource type="PackedScene" path="res://models/palm.glb" id="palm"]
+[ext_resource type="PackedScene" path="res://models/palm2.glb" id="palm2"]
+[ext_resource type="PackedScene" path="res://models/rock.glb" id="rock"]
+[ext_resource type="PackedScene" path="res://models/sailboat.glb" id="sailboat"]
+[ext_resource type="Shader" path="res://shaders/ocean.gdshader" id="ocean_shader"]
+[ext_resource type="Shader" path="res://shaders/sand.gdshader" id="sand_shader"]
+
 [sub_resource type="ProceduralSkyMaterial" id="sky_material"]
-sky_top_color = Color(0.18, 0.28, 0.5, 1)
-sky_horizon_color = Color(0.55, 0.62, 0.75, 1)
-ground_horizon_color = Color(0.55, 0.62, 0.75, 1)
+sky_top_color = Color(0.2, 0.48, 0.85, 1)
+sky_horizon_color = Color(0.72, 0.86, 0.95, 1)
+ground_bottom_color = Color(0.1, 0.4, 0.5, 1)
+ground_horizon_color = Color(0.72, 0.86, 0.95, 1)
 
 [sub_resource type="Sky" id="sky"]
 sky_material = SubResource("sky_material")
@@ -14,6 +22,116 @@ sky = SubResource("sky")
 ambient_light_source = 3
 tonemap_mode = 2
 glow_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.78, 0.88, 0.95, 1)
+fog_density = 0.0012
+fog_sky_affect = 0.0
+
+[sub_resource type="FastNoiseLite" id="dune_noise"]
+seed = 11
+frequency = 0.008
+
+[sub_resource type="NoiseTexture2D" id="dune_tex"]
+width = 256
+height = 256
+seamless = true
+noise = SubResource("dune_noise")
+
+[sub_resource type="FastNoiseLite" id="grain_noise"]
+seed = 12
+frequency = 0.03
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="grain_tex"]
+seamless = true
+noise = SubResource("grain_noise")
+
+[sub_resource type="FastNoiseLite" id="sand_ripple_noise"]
+noise_type = 2
+seed = 13
+frequency = 0.04
+cellular_distance_function = 1
+
+[sub_resource type="NoiseTexture2D" id="sand_ripple_tex"]
+seamless = true
+as_normal_map = true
+bump_strength = 4.0
+noise = SubResource("sand_ripple_noise")
+
+[sub_resource type="ShaderMaterial" id="sand_mat"]
+shader = ExtResource("sand_shader")
+shader_parameter/dunes = SubResource("dune_tex")
+shader_parameter/grain = SubResource("grain_tex")
+shader_parameter/ripples = SubResource("sand_ripple_tex")
+
+[sub_resource type="PlaneMesh" id="sand_mesh"]
+material = SubResource("sand_mat")
+size = Vector2(800, 300)
+subdivide_width = 200
+subdivide_depth = 150
+
+[sub_resource type="FastNoiseLite" id="ripple_noise_a"]
+seed = 21
+frequency = 0.02
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="ripple_tex_a"]
+width = 512
+height = 512
+seamless = true
+as_normal_map = true
+bump_strength = 6.0
+noise = SubResource("ripple_noise_a")
+
+[sub_resource type="FastNoiseLite" id="ripple_noise_b"]
+seed = 22
+frequency = 0.035
+fractal_octaves = 2
+
+[sub_resource type="NoiseTexture2D" id="ripple_tex_b"]
+width = 512
+height = 512
+seamless = true
+as_normal_map = true
+bump_strength = 4.0
+noise = SubResource("ripple_noise_b")
+
+[sub_resource type="FastNoiseLite" id="foam_noise"]
+seed = 23
+frequency = 0.05
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="foam_tex"]
+seamless = true
+noise = SubResource("foam_noise")
+
+[sub_resource type="ShaderMaterial" id="ocean_mat"]
+shader = ExtResource("ocean_shader")
+shader_parameter/ripple_a = SubResource("ripple_tex_a")
+shader_parameter/ripple_b = SubResource("ripple_tex_b")
+shader_parameter/foam_noise = SubResource("foam_tex")
+
+[sub_resource type="PlaneMesh" id="ocean_mesh"]
+material = SubResource("ocean_mat")
+size = Vector2(8000, 3500)
+
+[sub_resource type="StandardMaterial3D" id="island_mat"]
+albedo_color = Color(0.25, 0.5, 0.28, 1)
+roughness = 1.0
+
+[sub_resource type="SphereMesh" id="island_mesh"]
+material = SubResource("island_mat")
+radius = 1.0
+height = 2.0
+
+[sub_resource type="StandardMaterial3D" id="cloud_mat"]
+albedo_color = Color(1, 1, 1, 1)
+roughness = 1.0
+
+[sub_resource type="SphereMesh" id="cloud_mesh"]
+material = SubResource("cloud_mat")
+radius = 1.0
+height = 2.0
 
 [node name="Main" type="FightWorld"]
 
@@ -22,8 +140,222 @@ environment = SubResource("environment")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 10, 0)
+light_color = Color(1, 0.95, 0.86, 1)
 shadow_enabled = true
+directional_shadow_max_distance = 250.0
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 20)
 fov = 40.0
+
+[node name="Beach" type="Node3D" parent="."]
+
+[node name="Sand" type="MeshInstance3D" parent="Beach"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -12, -90)
+mesh = SubResource("sand_mesh")
+
+[node name="Ocean" type="MeshInstance3D" parent="Beach"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -12.15, -1819)
+mesh = SubResource("ocean_mesh")
+
+[node name="Island" type="MeshInstance3D" parent="Beach"]
+transform = Transform3D(90, 0, 0, 0, 10, 0, 0, 0, 30, -220, -14, -450)
+mesh = SubResource("island_mesh")
+
+[node name="Clouds" type="Node3D" parent="."]
+
+[node name="Palm0" parent="Beach" instance=ExtResource("palm2")]
+transform = Transform3D(0.9356, 0, 0.165, 0, 0.95, 0, -0.165, 0, 0.9356, -34, -12.35, -8)
+
+[node name="Palm1" parent="Beach" instance=ExtResource("palm")]
+transform = Transform3D(-0.9397, 0, 0.342, 0, 1, 0, -0.342, 0, -0.9397, 40, -12.35, -4)
+
+[node name="Palm2" parent="Beach" instance=ExtResource("palm")]
+transform = Transform3D(-0.9397, 0, -0.342, 0, 1, 0, 0.342, 0, -0.9397, -16, -12.35, -52)
+
+[node name="Palm3" parent="Beach" instance=ExtResource("palm2")]
+transform = Transform3D(0.9093, 0, -0.525, 0, 1.05, 0, 0.525, 0, 0.9093, 22, -12.35, -60)
+
+[node name="Palm4" parent="Beach" instance=ExtResource("palm")]
+transform = Transform3D(1.081, 0, -0.3933, 0, 1.15, 0, 0.3933, 0, 1.081, -48, -12.35, -44)
+
+[node name="Palm5" parent="Beach" instance=ExtResource("palm2")]
+transform = Transform3D(-0.9848, 0, -0.1736, 0, 1, 0, 0.1736, 0, -0.9848, 58, -12.35, -50)
+
+[node name="Palm6" parent="Beach" instance=ExtResource("palm")]
+transform = Transform3D(1.083, 0, -0.191, 0, 1.1, 0, 0.191, 0, 1.083, -85, -12.35, -58)
+
+[node name="Palm7" parent="Beach" instance=ExtResource("palm2")]
+transform = Transform3D(-1.083, 0, 0.191, 0, 1.1, 0, -0.191, 0, -1.083, 92, -12.35, -40)
+
+[node name="Palm8" parent="Beach" instance=ExtResource("palm")]
+transform = Transform3D(0.1563, 0, 0.8863, 0, 0.9, 0, -0.8863, 0, 0.1563, 4, -12.35, -64)
+
+[node name="Rock0" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-1.148, -0.1203, -1.109, 0, 1.781, -0.1545, 1.114, -0.124, -1.143, -30, -12.76, -74)
+
+[node name="Rock1" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(0.8408, -0.03594, -0.3194, 0, 1.047, -0.08623, 0.3209, 0.09417, 0.837, -27, -12.69, -76)
+
+[node name="Rock2" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(2.164, -0.006452, 0.3985, 0, 2.59, 0.03025, -0.3985, -0.03503, 2.163, 14, -12.82, -77)
+
+[node name="Rock3" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-0.5946, -0.1085, -0.7937, 0, 0.8344, -0.1597, 0.804, -0.08026, -0.587, 18, -12.7, -74)
+
+[node name="Rock4" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-1.275, -0.02605, 0.2517, 0, 1.316, 0.1316, -0.253, 0.1313, -1.269, 50, -12.73, -73)
+
+[node name="Rock5" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-2.327, 0.1992, -1.139, 0, 2.262, 0.5032, 1.161, 0.3992, -2.283, -70, -12.86, -78)
+
+[node name="Rock6" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-0.2016, 0.1983, 1.066, 0, 1.2, -0.1823, -1.081, -0.03698, -0.1989, -64, -12.71, -75)
+
+[node name="Rock7" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(1.615, 0.2565, 2.51, 0, 2.548, -0.3557, -2.528, 0.1638, 1.604, 80, -12.9, -80)
+
+[node name="Rock8" parent="Beach" instance=ExtResource("rock")]
+transform = Transform3D(-0.8894, 0.09596, -0.7966, 0, 0.9502, 0.1785, 0.8056, 0.1059, -0.8795, -8, -12.72, -82)
+
+[node name="Sailboat0" parent="Beach" instance=ExtResource("sailboat")]
+transform = Transform3D(1.529, 0, 0.4728, 0, 1.6, 0, -0.4728, 0, 1.529, -80, -12.4, -420)
+
+[node name="Sailboat1" parent="Beach" instance=ExtResource("sailboat")]
+transform = Transform3D(-1.542, 0, 0.9279, 0, 1.8, 0, -0.9279, 0, -1.542, 150, -12.4, -700)
+
+[node name="Cloud0" type="Node3D" parent="Clouds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -140, 55, -320)
+
+[node name="Puff0" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(16.76, 0, 0, 0, 7.541, 0, 0, 0, 10.05, 22.28, 0.948, -5.121)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff1" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(13.94, 0, 0, 0, 6.272, 0, 0, 0, 8.363, 22.34, 1.307, 8.307)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff2" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(18.2, 0, 0, 0, 8.189, 0, 0, 0, 10.92, 10.67, 1.212, 7.938)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff3" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(11.44, 0, 0, 0, 5.147, 0, 0, 0, 6.863, 27.99, 3.433, -3.622)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff4" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(12.98, 0, 0, 0, 5.841, 0, 0, 0, 7.787, -20.04, 0.6986, -7.827)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff5" type="MeshInstance3D" parent="Clouds/Cloud0"]
+transform = Transform3D(16.55, 0, 0, 0, 7.449, 0, 0, 0, 9.932, 6.187, 0.02185, 3.203)
+mesh = SubResource("cloud_mesh")
+
+[node name="Cloud1" type="Node3D" parent="Clouds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 72, -390)
+
+[node name="Puff0" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(11.35, 0, 0, 0, 5.106, 0, 0, 0, 6.808, -8.552, 3.58, -0.2599)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff1" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(17.56, 0, 0, 0, 7.904, 0, 0, 0, 10.54, -0.8452, 3.734, -5.98)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff2" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(7.031, 0, 0, 0, 3.164, 0, 0, 0, 4.219, -21.47, 2.117, 4.656)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff3" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(8.708, 0, 0, 0, 3.918, 0, 0, 0, 5.225, 12.95, 1.408, 1.06)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff4" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(8.016, 0, 0, 0, 3.607, 0, 0, 0, 4.81, -20.4, 0.5341, 6.145)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff5" type="MeshInstance3D" parent="Clouds/Cloud1"]
+transform = Transform3D(10.8, 0, 0, 0, 4.859, 0, 0, 0, 6.478, 11.51, 3.736, 5.968)
+mesh = SubResource("cloud_mesh")
+
+[node name="Cloud2" type="Node3D" parent="Clouds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 90, 60, -340)
+
+[node name="Puff0" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(16.47, 0, 0, 0, 7.411, 0, 0, 0, 9.882, -10.16, 3.767, 5.788)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff1" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(14.33, 0, 0, 0, 6.449, 0, 0, 0, 8.598, 17.39, 5.033, 7.554)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff2" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(15.39, 0, 0, 0, 6.923, 0, 0, 0, 9.231, 31.21, 0.4245, -3.344)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff3" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(15.46, 0, 0, 0, 6.955, 0, 0, 0, 9.274, 29.27, 1.662, 8.908)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff4" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(15.57, 0, 0, 0, 7.007, 0, 0, 0, 9.343, -13.13, 2.162, -6.773)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff5" type="MeshInstance3D" parent="Clouds/Cloud2"]
+transform = Transform3D(13.8, 0, 0, 0, 6.212, 0, 0, 0, 8.282, -24.58, 3.756, 10.43)
+mesh = SubResource("cloud_mesh")
+
+[node name="Cloud3" type="Node3D" parent="Clouds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 210, 48, -300)
+
+[node name="Puff0" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(9.93, 0, 0, 0, 4.469, 0, 0, 0, 5.958, -22.57, 3.248, 0.503)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff1" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(12.57, 0, 0, 0, 5.658, 0, 0, 0, 7.544, -13.13, 2.628, 4.894)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff2" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(11.95, 0, 0, 0, 5.376, 0, 0, 0, 7.169, -3.912, 0.3081, 6.241)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff3" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(17.89, 0, 0, 0, 8.053, 0, 0, 0, 10.74, -0.3218, 4.998, -5.541)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff4" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(8.514, 0, 0, 0, 3.831, 0, 0, 0, 5.108, 22.49, 2.081, 4.32)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff5" type="MeshInstance3D" parent="Clouds/Cloud3"]
+transform = Transform3D(13.94, 0, 0, 0, 6.273, 0, 0, 0, 8.365, -3.272, 0.8369, 5.171)
+mesh = SubResource("cloud_mesh")
+
+[node name="Cloud4" type="Node3D" parent="Clouds"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 90, -430)
+
+[node name="Puff0" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(20.99, 0, 0, 0, 9.443, 0, 0, 0, 12.59, -2.576, 6.286, 5.812)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff1" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(17.04, 0, 0, 0, 7.67, 0, 0, 0, 10.23, -2.555, 3.072, 3.787)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff2" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(14.04, 0, 0, 0, 6.319, 0, 0, 0, 8.425, -11.49, 2.108, -5.833)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff3" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(10.89, 0, 0, 0, 4.899, 0, 0, 0, 6.533, 26.86, 3.241, 2.095)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff4" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(17.59, 0, 0, 0, 7.916, 0, 0, 0, 10.55, -8.884, 0.4933, -3.757)
+mesh = SubResource("cloud_mesh")
+
+[node name="Puff5" type="MeshInstance3D" parent="Clouds/Cloud4"]
+transform = Transform3D(14.22, 0, 0, 0, 6.4, 0, 0, 0, 8.534, 20.21, 1.509, 4.719)
+mesh = SubResource("cloud_mesh")
+

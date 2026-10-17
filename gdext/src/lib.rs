@@ -267,10 +267,11 @@ impl FightWorld {
         let stage = self.world.stage.clone();
         for plat in &stage.platforms {
             let width = (plat.right - plat.left).to_f32() * SCALE;
+            // Driftwood platforms over a weathered stone block, to suit the beach backdrop.
             let (thickness, depth, color) = if plat.soft {
-                (0.15, 3.0, Color::from_rgb(0.55, 0.60, 0.70))
+                (0.15, 3.0, Color::from_rgb(0.45, 0.32, 0.22))
             } else {
-                (1.6, 5.0, Color::from_rgb(0.35, 0.38, 0.45))
+                (1.6, 5.0, Color::from_rgb(0.46, 0.40, 0.34))
             };
             let mut mesh = BoxMesh::new_gd();
             mesh.set_size(Vector3::new(width, thickness, depth));
