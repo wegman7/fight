@@ -63,9 +63,13 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
   while a dodge is invincible, flashing while charging a smash attack (the model also
   shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
-  Projectiles come from `World::projectiles` and are drawn from a pool of glowing
-  spheres, in the owner's color or their character's `projectile` color (the pug's
-  sneeze is a pale puff), sized by `Projectile::radius()`, which grows with charge. `Event::Counter` (the pug's play dead) makes a spark and a
+  Projectiles come from `World::projectiles` and are drawn from a pool, each as its
+  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff,
+  sized by `Projectile::radius()`, which grows with charge); `Shot::Model` loads a model
+  (the chef's `res://models/pie.glb`), turns it the way it flies and tilts it with its
+  arc. Model shots burst into cream blobs (`Splat`) where they hit (`Event::Hit` /
+  `ShieldHit` with `projectile: true`) or land (`Event::ProjectileLanded`, a puddle on
+  the floor); other hits make a spark. `Event::Counter` (the pug's play dead) makes a spark and a
   small shake. With **H**, hitboxes are red and grab boxes purple.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600`. It
   should print no `ERROR` lines.

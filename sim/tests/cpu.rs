@@ -1,7 +1,7 @@
 use fight_sim::{Character, Cpu, Event, Fx, Input, MoveId, Stage, State, World};
 
 fn world() -> World {
-    World::new(Stage::battlefield(), &[Character::Mannequin; 2], 3)
+    World::new(Stage::battlefield(), &[Character::Chef; 2], 3)
 }
 
 /// Runs P1 idle against an easy CPU as P2. Returns (attacks started, hits landed).
@@ -136,7 +136,7 @@ fn easy_cpu_shields_some_attacks() {
 }
 
 fn pug_cpu_world() -> World {
-    World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], 3)
+    World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3)
 }
 
 #[test]

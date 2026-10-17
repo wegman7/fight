@@ -1,12 +1,12 @@
 //! The pug's own moveset and tuning. P1 (fighter 0) is the pug unless a test says
-//! otherwise; P2 is a mannequin standing in as the target.
+//! otherwise; P2 is a chef standing in as the target.
 
 use fight_sim::{Character, Event, Fx, Input, MoveId, Stage, State, World};
 
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
 fn world() -> World {
-    World::new(Stage::battlefield(), &[Character::Pug, Character::Mannequin], 3)
+    World::new(Stage::battlefield(), &[Character::Pug, Character::Chef], 3)
 }
 
 fn press(buttons: u8) -> Input {
@@ -44,10 +44,10 @@ fn each_fighter_gets_its_characters_tuning() {
     let w = world();
     assert_eq!(w.fighters[0].character, Character::Pug);
     assert_eq!(w.fighters[0].params, Character::Pug.params());
-    assert_eq!(w.fighters[1].params, Character::Mannequin.params());
-    let (pug, mannequin) = (w.fighters[0].params, w.fighters[1].params);
-    assert!(pug.weight < mannequin.weight && pug.height < mannequin.height);
-    assert!(pug.run_speed > mannequin.run_speed);
+    assert_eq!(w.fighters[1].params, Character::Chef.params());
+    let (pug, chef) = (w.fighters[0].params, w.fighters[1].params);
+    assert!(pug.weight < chef.weight && pug.height < chef.height);
+    assert!(pug.run_speed > chef.run_speed);
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn pug_inputs_start_pug_moves() {
 }
 
 #[test]
-fn mannequin_keeps_its_own_moves_next_to_a_pug() {
+fn chef_keeps_its_own_moves_next_to_a_pug() {
     let mut w = world();
     w.step(&[NONE, press(Input::ATTACK)]);
     assert_eq!(mv(&w, 1), Some(MoveId::Jab));
@@ -314,12 +314,12 @@ fn ear_copter_climbs_slowly_steers_and_ends_helpless() {
 
 #[test]
 fn play_dead_counters_a_hit_and_pounces_back() {
-    let mut w = World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], 3);
+    let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::PugPlayDead));
     run(&mut w, 5, NONE, NONE);
-    // The mannequin's jab lands on its frame 2: the pug's frame 8, inside the window.
+    // The chef's jab lands on its frame 2: the pug's frame 8, inside the window.
     w.step(&[press(Input::ATTACK), NONE]);
     w.step(&[NONE, NONE]);
     assert!(w.events.iter().any(|e| matches!(e, Event::Counter { fighter: 1, attacker: 0, .. })), "{:?}", w.events);
@@ -335,7 +335,7 @@ fn play_dead_counters_a_hit_and_pounces_back() {
 
 #[test]
 fn play_dead_outside_its_window_just_gets_hit() {
-    let mut w = World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], 3);
+    let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 27, NONE, NONE);
@@ -348,9 +348,9 @@ fn play_dead_outside_its_window_just_gets_hit() {
 
 #[test]
 fn play_dead_counters_projectiles_too() {
-    let mut w = World::new(Stage::battlefield(), &[Character::Mannequin, Character::Pug], 3);
+    let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3);
     w.fighters[1].x = Fx::ZERO;
-    w.step(&[press(Input::SPECIAL), NONE]); // energy shot leaves on frame 12
+    w.step(&[press(Input::SPECIAL), NONE]); // the pie leaves on frame 12
     let mut countered = false;
     for f in 1..60 {
         let pug = if f == 12 { input(0, -100, Input::SPECIAL) } else { NONE };
@@ -359,7 +359,7 @@ fn play_dead_counters_projectiles_too() {
     }
     assert!(countered);
     assert_eq!(w.fighters[1].percent, 0);
-    assert!(w.projectiles.is_empty(), "the shot is used up");
+    assert!(w.projectiles.is_empty(), "the pie is used up");
 }
 
 /// The pug grabs P2 (standing at x = -32).

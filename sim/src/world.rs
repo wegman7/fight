@@ -12,9 +12,12 @@ const COUNTER_INTANGIBLE_FRAMES: u16 = 10;
 /// Things that happened during the last [`World::step`], for effects and sound.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Event {
-    Hit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32, knockback: Fx },
+    /// `projectile`: the hit came from a projectile, which is used up.
+    Hit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32, knockback: Fx, projectile: bool },
     /// A hit that landed on a shield.
-    ShieldHit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32 },
+    ShieldHit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32, projectile: bool },
+    /// A lobbed projectile (the chef's pie) came down on a platform at x, y and is gone.
+    ProjectileLanded { owner: usize, x: Fx, y: Fx },
     ShieldBreak { fighter: usize },
     Grab { attacker: usize, defender: usize },
     /// `fighter` countered a hit from `attacker` (the pug playing dead) at x, y.
@@ -41,6 +44,7 @@ pub struct Projectile {
     pub x: Fx,
     pub y: Fx,
     pub vx: Fx,
+    pub vy: Fx,
     pub frames_left: u16,
     /// Frames the move was charged before firing, 0..=MAX_CHARGE.
     pub charge: u8,
@@ -202,17 +206,28 @@ impl World {
                 victim.take_hit(kb, throw.angle, holder.facing);
             }
             let (x, y) = (victim.x, victim.y + victim.params.height / Fx::int(2));
-            self.events.push(Event::Hit { attacker: i, defender: v, x, y, damage: throw.damage, knockback: kb });
+            self.events.push(Event::Hit { attacker: i, defender: v, x, y, damage: throw.damage, knockback: kb, projectile: false });
         }
     }
 
     fn move_projectiles(&mut self) {
         let s = &self.stage;
-        for p in &mut self.projectiles {
+        let events = &mut self.events;
+        self.projectiles.retain_mut(|p| {
+            let gravity = p.data().gravity;
+            let was_y = p.y;
+            p.vy -= gravity;
             p.x += p.vx;
+            p.y += p.vy;
             p.frames_left = p.frames_left.saturating_sub(1);
-        }
-        self.projectiles.retain(|p| p.frames_left > 0 && p.x > s.blast_left && p.x < s.blast_right);
+            // Coming down through the top of a platform: it lands there.
+            let landed = s.platforms.iter().find(|pl| p.vy < Fx::ZERO && was_y >= pl.y && p.y < pl.y && pl.contains_x(p.x));
+            if let Some(pl) = landed {
+                events.push(Event::ProjectileLanded { owner: p.owner, x: p.x, y: pl.y });
+                return false;
+            }
+            p.frames_left > 0 && p.x > s.blast_left && p.x < s.blast_right && p.y > s.blast_bottom
+        });
     }
 
     fn fire_projectiles(&mut self) {
@@ -227,6 +242,7 @@ impl World {
                     x: f.x + data.x * f.facing,
                     y: f.y + data.y,
                     vx: data.speed * f.facing,
+                    vy: data.vy,
                     frames_left: data.lifetime + growth.map_or(0, |g| grown(g.lifetime as i32, f.charge) as u16),
                     charge: f.charge,
                 });
@@ -343,7 +359,14 @@ impl World {
             }
             if defender.shielding() {
                 let broke = defender.block(s.damage, s.direction);
-                self.events.push(Event::ShieldHit { attacker: s.attacker, defender: s.defender, x: s.x, y: s.y, damage: s.damage });
+                self.events.push(Event::ShieldHit {
+                    attacker: s.attacker,
+                    defender: s.defender,
+                    x: s.x,
+                    y: s.y,
+                    damage: s.damage,
+                    projectile: s.projectile.is_some(),
+                });
                 if broke {
                     self.events.push(Event::ShieldBreak { fighter: s.defender });
                 }
@@ -352,7 +375,15 @@ impl World {
             defender.percent = (defender.percent + s.damage).min(999);
             let kb = knockback(defender.percent, s.damage, defender.params.weight, s.base_kb, s.kb_growth);
             defender.take_hit(kb, s.angle, s.direction);
-            self.events.push(Event::Hit { attacker: s.attacker, defender: s.defender, x: s.x, y: s.y, damage: s.damage, knockback: kb });
+            self.events.push(Event::Hit {
+                attacker: s.attacker,
+                defender: s.defender,
+                x: s.x,
+                y: s.y,
+                damage: s.damage,
+                knockback: kb,
+                projectile: s.projectile.is_some(),
+            });
         }
 
         for (ai, di) in grabs {

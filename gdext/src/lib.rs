@@ -36,16 +36,29 @@ struct Look {
     /// Rigged model with an animation for every name its character's `Fighter::anim()`
     /// can return, keyed at 60 fps.
     model: &'static str,
-    /// Neutral-special projectile color, mixed with the player's color. `None` = player color.
-    projectile: Option<Color>,
+    /// How its neutral special's projectile is drawn.
+    shot: Shot,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Shot {
+    /// A glowing ball in this color, mixed a little with the player's.
+    Orb(Color),
+    /// A model built facing +X, turned the way it flies and tilted with its arc, drawn
+    /// at `scale`. It bursts into blobs of `splat` where it hits or lands.
+    Model { path: &'static str, scale: f32, splat: Color },
 }
 
 fn look(character: Character) -> Look {
     match character {
-        // Built by art/fighter/build_fighter.py.
-        Character::Mannequin => Look { model: "res://models/fighter.glb", projectile: None },
+        // Both built by art/fighter/build_fighter.py. The pie is 0.26 m across as built;
+        // drawn a bit bigger in flight, a little inside its 0.6 m hitbox.
+        Character::Chef => Look {
+            model: "res://models/fighter.glb",
+            shot: Shot::Model { path: "res://models/pie.glb", scale: 1.5, splat: Color::from_rgb(0.98, 0.96, 0.9) },
+        },
         // Built by art/pug/build_pug.py. Its projectile is a sneeze cloud.
-        Character::Pug => Look { model: "res://models/pug.glb", projectile: Some(Color::from_rgb(0.85, 0.95, 0.8)) },
+        Character::Pug => Look { model: "res://models/pug.glb", shot: Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8)) },
     }
 }
 /// Surfaces with this material name get the player's color.
@@ -75,6 +88,26 @@ struct Spark {
     size: f32,
 }
 
+struct ProjectileView {
+    node: Gd<Node3D>,
+    /// The orb's material, to color it each frame. `None` for models.
+    material: Option<Gd<StandardMaterial3D>>,
+    shot: Shot,
+}
+
+/// A blob of cream from a pie splat: flies out, falls and shrinks away. Blobs with a
+/// `floor` stop on it.
+struct Splat {
+    node: Gd<MeshInstance3D>,
+    velocity: Vector3,
+    size: Vector3,
+    floor: Option<f32>,
+    frames_left: u32,
+    life: u32,
+}
+
+const SPLAT_GRAVITY: f32 = 0.004;
+
 #[derive(GodotClass)]
 #[class(base = Node3D)]
 pub struct FightWorld {
@@ -82,8 +115,9 @@ pub struct FightWorld {
     world: World,
     views: Vec<FighterView>,
     hitbox_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
-    projectile_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
+    projectile_pool: Vec<ProjectileView>,
     sparks: Vec<Spark>,
+    splats: Vec<Splat>,
     hud: Vec<Gd<Label>>,
     banner: Option<Gd<Label>>,
     camera: Option<Gd<Camera3D>>,
@@ -106,7 +140,7 @@ pub struct FightWorld {
 #[godot_api]
 impl INode3D for FightWorld {
     fn init(base: Base<Node3D>) -> Self {
-        // P1 starts as the mannequin, P2 as the pug; 1 / 2 cycle them in game.
+        // P1 starts as the chef, P2 as the pug; 1 / 2 cycle them in game.
         let characters: Vec<Character> = (0..PLAYERS).map(|p| Character::ALL[p % Character::ALL.len()]).collect();
         Self {
             base,
@@ -115,6 +149,7 @@ impl INode3D for FightWorld {
             hitbox_pool: Vec::new(),
             projectile_pool: Vec::new(),
             sparks: Vec::new(),
+            splats: Vec::new(),
             hud: Vec::new(),
             banner: None,
             camera: None,
@@ -174,12 +209,24 @@ impl INode3D for FightWorld {
 
         for event in self.world.events.clone() {
             match event {
-                Event::Hit { x, y, knockback, .. } => {
+                Event::Hit { attacker, x, y, knockback, projectile, .. } => {
                     let kb = knockback.to_f32();
-                    self.spawn_spark(to_godot(x, y), 0.3 + kb / 150.0);
+                    match self.splat_color(attacker, projectile) {
+                        Some(cream) => self.spawn_splat(to_godot(x, y), cream, None),
+                        None => self.spawn_spark(to_godot(x, y), 0.3 + kb / 150.0),
+                    }
                     self.shake = self.shake.max((kb - 40.0).max(0.0) / 400.0);
                 }
-                Event::ShieldHit { x, y, .. } => self.spawn_spark(to_godot(x, y), 0.25),
+                Event::ShieldHit { attacker, x, y, projectile, .. } => match self.splat_color(attacker, projectile) {
+                    Some(cream) => self.spawn_splat(to_godot(x, y), cream, None),
+                    None => self.spawn_spark(to_godot(x, y), 0.25),
+                },
+                Event::ProjectileLanded { owner, x, y } => {
+                    if let Some(cream) = self.splat_color(owner, true) {
+                        let at = to_godot(x, y);
+                        self.spawn_splat(at, cream, Some(at.y));
+                    }
+                }
                 Event::ShieldBreak { fighter } => {
                     self.shake = 0.4;
                     godot_print!("P{} shield break!", fighter + 1);
@@ -203,6 +250,7 @@ impl INode3D for FightWorld {
         self.update_hitboxes();
         self.update_projectiles();
         self.update_sparks();
+        self.update_splats();
         self.update_hud();
         self.update_camera(delta as f32);
     }
@@ -434,35 +482,131 @@ impl FightWorld {
         }
     }
 
-    /// Glowing balls in the owner's color (the pug's sneeze is a pale puff).
+    /// Each projectile as its owner's `Shot`: the pug's sneeze is a pale glowing puff,
+    /// the chef's pie a model flying cream first.
     fn update_projectiles(&mut self) {
         let projectiles = self.world.projectiles.clone();
-        while self.projectile_pool.len() < projectiles.len() {
-            let (node, mut mat) = sphere_instance(Color::WHITE);
-            mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
-            mat.set_emission_energy_multiplier(3.0);
-            self.base_mut().add_child(&node);
-            self.projectile_pool.push((node, mat));
-        }
-        for (i, (node, mat)) in self.projectile_pool.iter_mut().enumerate() {
-            match projectiles.get(i) {
-                Some(p) => {
-                    let player = PLAYER_COLORS[p.owner % PLAYER_COLORS.len()];
-                    let tint = look(self.world.fighters[p.owner].character).projectile;
-                    let color = match tint {
-                        Some(tint) => tint.lerp(player, 0.2),
-                        None => player.lightened(0.4),
-                    };
-                    let pulse = 1.0 + 0.1 * ((self.time * 30.0).sin() as f32);
-                    node.set_position(to_godot(p.x, p.y));
-                    node.set_scale(Vector3::splat(p.radius().to_f32() * 2.0 * SCALE * pulse));
-                    node.set_visible(true);
-                    mat.set_albedo(color);
-                    mat.set_emission(color);
+        for (i, p) in projectiles.iter().enumerate() {
+            let shot = look(self.world.fighters[p.owner].character).shot;
+            if self.projectile_pool.get(i).is_none_or(|view| view.shot != shot) {
+                let view = self.projectile_view(shot);
+                self.base_mut().add_child(&view.node);
+                if i < self.projectile_pool.len() {
+                    std::mem::replace(&mut self.projectile_pool[i], view).node.queue_free();
+                } else {
+                    self.projectile_pool.push(view);
                 }
-                None => node.set_visible(false),
+            }
+            let frame = self.world.frame as f32;
+            let view = &mut self.projectile_pool[i];
+            view.node.set_position(to_godot(p.x, p.y));
+            view.node.set_visible(true);
+            match shot {
+                Shot::Orb(tint) => {
+                    let color = tint.lerp(PLAYER_COLORS[p.owner % PLAYER_COLORS.len()], 0.2);
+                    let pulse = 1.0 + 0.1 * ((self.time * 30.0).sin() as f32);
+                    view.node.set_scale(Vector3::splat(p.radius().to_f32() * 2.0 * SCALE * pulse));
+                    if let Some(mat) = &mut view.material {
+                        mat.set_albedo(color);
+                        mat.set_emission(color);
+                    }
+                }
+                Shot::Model { scale, .. } => {
+                    // Turned well toward the camera (more than the fighters, so the pie's
+                    // face shows), nose up or down with its arc, wobbling a little.
+                    let (vx, vy) = (p.vx.to_f32(), p.vy.to_f32());
+                    let to_camera = MODEL_YAW_TO_CAMERA + 30.0;
+                    let yaw = if vx < 0.0 { 180.0 + to_camera } else { -to_camera };
+                    let tilt = vy.atan2(vx.abs());
+                    let wobble = 0.25 * (frame * 0.35).sin();
+                    view.node.set_basis(Basis::from_euler(EulerOrder::YZX, Vector3::new(wobble, yaw.to_radians(), tilt)));
+                    view.node.set_scale(Vector3::splat(scale));
+                }
             }
         }
+        for view in self.projectile_pool.iter_mut().skip(projectiles.len()) {
+            view.node.set_visible(false);
+        }
+    }
+
+    fn projectile_view(&self, shot: Shot) -> ProjectileView {
+        match shot {
+            Shot::Orb(_) => {
+                let (node, mut mat) = sphere_instance(Color::WHITE);
+                mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
+                mat.set_emission_energy_multiplier(3.0);
+                ProjectileView { node: node.upcast(), material: Some(mat), shot }
+            }
+            Shot::Model { path, .. } => ProjectileView { node: load::<PackedScene>(path).instantiate_as::<Node3D>(), material: None, shot },
+        }
+    }
+
+    /// The cream color if `attacker`'s hit came from a projectile that splats.
+    fn splat_color(&self, attacker: usize, projectile: bool) -> Option<Color> {
+        match look(self.world.fighters[attacker].character).shot {
+            Shot::Model { splat, .. } if projectile => Some(splat),
+            _ => None,
+        }
+    }
+
+    /// A burst of cream blobs at `at`. With a `floor`, they land on it around a puddle.
+    fn spawn_splat(&mut self, at: Vector3, color: Color, floor: Option<f32>) {
+        let mut blobs = Vec::new();
+        if let Some(y) = floor {
+            blobs.push((Vector3::new(at.x, y + 0.01, at.z), Vector3::ZERO, Vector3::new(0.5, 0.06, 0.4), 90));
+        } else {
+            blobs.push((at, Vector3::ZERO, Vector3::splat(0.45), 10));
+        }
+        let up = if floor.is_some() { 0.05 } else { 0.03 };
+        for k in 0..10 {
+            // Spread evenly with a little variety; purely cosmetic.
+            let angle = (k as f32 * 36.0 + (k * 17 % 11) as f32 * 3.0).to_radians();
+            let speed = 0.03 + 0.004 * (k * 7 % 5) as f32;
+            let velocity = Vector3::new(angle.cos() * speed, up + angle.sin().abs() * speed * 0.6, ((k * 13 % 7) as f32 - 3.0) * 0.006);
+            let size = 0.06 + 0.012 * (k * 5 % 4) as f32;
+            blobs.push((at + Vector3::new(0.0, 0.05, 0.0), velocity, Vector3::splat(size), if floor.is_some() { 70 } else { 28 }));
+        }
+        for (position, velocity, size, life) in blobs {
+            let (mut node, mut mat) = sphere_instance(color);
+            // Unshaded, or the sky's blue ambient light turns small blobs blue.
+            mat.set_shading_mode(ShadingMode::UNSHADED);
+            node.set_position(position);
+            node.set_scale(size);
+            self.base_mut().add_child(&node);
+            self.splats.push(Splat { node, velocity, size, floor, frames_left: life, life });
+        }
+    }
+
+    fn update_splats(&mut self) {
+        for splat in &mut self.splats {
+            splat.frames_left = splat.frames_left.saturating_sub(1);
+            // Blobs at rest (puddles, and ones that have landed) stay put.
+            let moving = splat.velocity != Vector3::ZERO;
+            let mut position = splat.node.get_position() + splat.velocity;
+            if moving {
+                splat.velocity.y -= SPLAT_GRAVITY;
+            }
+            if let Some(floor) = splat.floor
+                && moving
+                && position.y < floor
+            {
+                // Lands and flattens into a dab.
+                position.y = floor;
+                splat.velocity = Vector3::ZERO;
+                splat.size = Vector3::new(splat.size.x * 1.4, splat.size.y * 0.35, splat.size.z * 1.4);
+            }
+            splat.node.set_position(position);
+            // Full size for the first 60% of its life, then shrinks away.
+            let left = splat.frames_left as f32 / splat.life as f32;
+            splat.node.set_scale(splat.size * (left / 0.4).min(1.0));
+        }
+        self.splats.retain_mut(|splat| {
+            let alive = splat.frames_left > 0;
+            if !alive {
+                splat.node.queue_free();
+            }
+            alive
+        });
     }
 
     fn spawn_spark(&mut self, at: Vector3, size: f32) {

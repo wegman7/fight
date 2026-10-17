@@ -31,7 +31,7 @@ pub struct FighterParams {
 }
 
 impl FighterParams {
-    pub const MANNEQUIN: FighterParams = FighterParams {
+    pub const CHEF: FighterParams = FighterParams {
         weight: 100,
         walk_speed: Fx::ratio(11, 10),
         run_speed: Fx::ratio(15, 10),

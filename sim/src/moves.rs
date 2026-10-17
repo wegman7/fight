@@ -22,7 +22,7 @@ pub enum MoveId {
     Bair,
     Uair,
     Dair,
-    NeutralSpecial,
+    PieThrow,
     SideSpecial,
     UpSpecial,
     DownSpecial,
@@ -107,13 +107,17 @@ pub struct Motion {
     pub vy: Option<Fx>,
 }
 
-/// Fired on `frame`; flies straight forward until it hits something or `lifetime` runs out.
+/// Fired on `frame`; flies forward at `speed` until it hits something or `lifetime`
+/// runs out. With `gravity`, it's lobbed: it starts rising at `vy`, arcs down, and is
+/// gone when it lands on a platform.
 #[derive(Debug)]
 pub struct ProjectileData {
     pub frame: u16,
     pub x: Fx,
     pub y: Fx,
     pub speed: Fx,
+    pub vy: Fx,
+    pub gravity: Fx,
     pub lifetime: u16,
     pub radius: Fx,
     pub damage: i32,
@@ -232,7 +236,7 @@ impl MoveId {
             MoveId::Bair => &BAIR,
             MoveId::Uair => &UAIR,
             MoveId::Dair => &DAIR,
-            MoveId::NeutralSpecial => &NEUTRAL_SPECIAL,
+            MoveId::PieThrow => &PIE_THROW,
             MoveId::SideSpecial => &SIDE_SPECIAL,
             MoveId::UpSpecial => &UP_SPECIAL,
             MoveId::DownSpecial => &DOWN_SPECIAL,
@@ -420,20 +424,23 @@ static DAIR: MoveData = MoveData {
 
 // --- Specials ---------------------------------------------------------------
 
-/// Energy shot: a slow projectile.
-static NEUTRAL_SPECIAL: MoveData = MoveData {
-    name: "special_n",
+/// Pie throw: a cream pie lobbed overhand. It arcs no higher than the pug's head, so
+/// it hits short fighters too, and splats on the floor about half a stage away.
+static PIE_THROW: MoveData = MoveData {
+    name: "pie_throw",
     total_frames: 36,
     projectile: Some(ProjectileData {
         frame: 12,
         x: int(8),
         y: int(7),
-        speed: Fx::ratio(22, 10),
-        lifetime: 70,
+        speed: Fx::int(2),
+        vy: Fx::ratio(1, 2),
+        gravity: Fx::ratio(7, 200),
+        lifetime: 90,
         radius: int(3),
-        damage: 6,
+        damage: 7,
         angle: 40,
-        base_kb: 20,
+        base_kb: 25,
         kb_growth: 50,
         growth: None,
     }),
@@ -547,7 +554,7 @@ static DTHROW: MoveData = MoveData {
 };
 
 // --- Pug --------------------------------------------------------------------
-// A short fighter (hurtbox 9 tall), so most hitboxes sit lower than the mannequin's.
+// A short fighter (hurtbox 9 tall), so most hitboxes sit lower than the chef's.
 
 /// Snap bite. Press attack again for a second bite, then keep pressing for nibbles.
 static PUG_BITE: MoveData = MoveData {
@@ -695,6 +702,8 @@ static PUG_SNEEZE: MoveData = MoveData {
         x: int(6),
         y: int(6),
         speed: Fx::ONE,
+        vy: Fx::ZERO,
+        gravity: Fx::ZERO,
         lifetime: 28,
         radius: int(3),
         damage: 4,
@@ -775,7 +784,7 @@ static PUG_POUNCE: MoveData = MoveData {
     ..BASE
 };
 
-/// Grabs with its mouth: shorter reach than the mannequin's hands.
+/// Grabs with its mouth: shorter reach than the chef's hands.
 static PUG_BITE_GRAB: MoveData = MoveData {
     name: "bite_grab",
     total_frames: 28,

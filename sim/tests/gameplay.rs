@@ -4,7 +4,7 @@ use fight_sim::{Character, DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stag
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
 fn world() -> World {
-    World::new(Stage::battlefield(), &[Character::Mannequin; 2], 3)
+    World::new(Stage::battlefield(), &[Character::Chef; 2], 3)
 }
 
 fn press(buttons: u8) -> Input {
@@ -321,26 +321,59 @@ fn each_aerial_has_its_own_landing_lag() {
 // --- Specials ---------------------------------------------------------------
 
 #[test]
-fn neutral_special_fires_a_projectile_that_hits_from_range() {
+fn pie_throw_lobs_a_pie_that_arcs_into_its_target() {
     let mut w = world();
     w.fighters[1].x = Fx::ZERO;
     w.step(&[press(Input::SPECIAL), NONE]);
-    assert_eq!(mv(&w, 0), Some(MoveId::NeutralSpecial));
+    assert_eq!(mv(&w, 0), Some(MoveId::PieThrow));
     run(&mut w, 10, NONE, NONE);
     assert!(w.projectiles.is_empty());
     w.step(&[NONE, NONE]);
-    assert_eq!(w.projectiles.len(), 1, "fired on frame 12");
-    assert_eq!(w.projectiles[0].x, Fx::int(-32));
+    assert_eq!(w.projectiles.len(), 1, "thrown on frame 12");
+    let pie = &w.projectiles[0];
+    assert_eq!((pie.x, pie.y), (Fx::int(-32), Fx::int(7)));
 
     let mut hit = false;
     for _ in 0..40 {
         w.step(&[NONE, NONE]);
-        hit |= w.events.iter().any(|e| matches!(e, Event::Hit { attacker: 0, defender: 1, damage: 6, .. }));
+        hit |= w.events.iter().any(|e| matches!(e, Event::Hit { attacker: 0, defender: 1, damage: 7, projectile: true, .. }));
     }
     assert!(hit);
-    assert_eq!(w.fighters[1].percent, 6);
+    assert_eq!(w.fighters[1].percent, 7);
     assert!(w.projectiles.is_empty(), "used up by the hit");
 }
+
+#[test]
+fn a_pie_that_misses_lands_on_the_floor_about_half_a_stage_away() {
+    let mut w = world();
+    w.fighters[0].x = Fx::int(-60);
+    w.step(&[press(Input::SPECIAL), NONE]);
+    let mut landed = None;
+    let mut heights = Vec::new();
+    for f in 2..80 {
+        w.step(&[NONE, NONE]);
+        heights.extend(w.projectiles.first().map(|p| p.y));
+        for e in &w.events {
+            if let Event::ProjectileLanded { owner: 0, x, y } = *e {
+                landed = Some((f, x, y));
+            }
+        }
+    }
+    // Thrown at y = 7, it rises for 14 frames (vy 1/2, gravity 7/200 a frame) to just
+    // over 10, then comes down.
+    let apex = (0..heights.len()).max_by_key(|&i| heights[i].raw()).unwrap();
+    assert!((13..=14).contains(&apex), "{apex}: {heights:?}");
+    assert!(heights[apex] > Fx::int(10) && heights[apex] < Fx::int(11), "{heights:?}");
+    let (frame, x, y) = landed.expect("the pie never landed");
+    assert!(w.projectiles.is_empty());
+    assert_eq!(y, Fx::ZERO, "on the main stage");
+    // Thrown at x = -52 on frame 12, then 2 units a frame for the 39 frames of its arc,
+    // short of P2 at x = 40.
+    assert_eq!(frame, 51, "{heights:?}");
+    assert_eq!(x, Fx::int(26));
+    assert_eq!(w.fighters[1].percent, 0);
+}
+
 
 #[test]
 fn side_special_lunges_forward_and_only_once_per_airtime() {
@@ -589,7 +622,7 @@ fn projectiles_hit_shields() {
     let mut blocked = false;
     for _ in 0..50 {
         w.step(&[NONE, shield]);
-        blocked |= w.events.iter().any(|e| matches!(e, Event::ShieldHit { attacker: 0, defender: 1, damage: 6, .. }));
+        blocked |= w.events.iter().any(|e| matches!(e, Event::ShieldHit { attacker: 0, defender: 1, damage: 7, projectile: true, .. }));
     }
     assert!(blocked);
     assert_eq!(w.fighters[1].percent, 0);

@@ -6,8 +6,9 @@ use crate::moves::{Landing, MoveId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Character {
-    /// The all-rounder: punches, kicks, an energy shot, an uppercut recovery and a ground pound.
-    Mannequin,
+    /// The all-rounder, dressed in chef's whites: punches, kicks, a thrown pie, an uppercut
+    /// recovery and a ground pound.
+    Chef,
     /// Small, light and quick, with two air jumps: bites, a chargeable sneeze, a pounce
     /// tackle that rides its target, an ear-flapping recovery and a play-dead counter.
     Pug,
@@ -74,7 +75,7 @@ impl Moveset {
     }
 }
 
-static MANNEQUIN_MOVES: Moveset = Moveset {
+static CHEF_MOVES: Moveset = Moveset {
     jab: MoveId::Jab,
     ftilt: MoveId::FTilt,
     utilt: MoveId::UTilt,
@@ -88,7 +89,7 @@ static MANNEQUIN_MOVES: Moveset = Moveset {
     bair: MoveId::Bair,
     uair: MoveId::Uair,
     dair: MoveId::Dair,
-    neutral_special: MoveId::NeutralSpecial,
+    neutral_special: MoveId::PieThrow,
     side_special: MoveId::SideSpecial,
     up_special: MoveId::UpSpecial,
     down_special: MoveId::DownSpecial,
@@ -129,25 +130,25 @@ static PUG_MOVES: Moveset = Moveset {
 };
 
 impl Character {
-    pub const ALL: [Character; 2] = [Character::Mannequin, Character::Pug];
+    pub const ALL: [Character; 2] = [Character::Chef, Character::Pug];
 
     pub fn name(self) -> &'static str {
         match self {
-            Character::Mannequin => "Mannequin",
+            Character::Chef => "Chef",
             Character::Pug => "Pug",
         }
     }
 
     pub fn params(self) -> &'static FighterParams {
         match self {
-            Character::Mannequin => &FighterParams::MANNEQUIN,
+            Character::Chef => &FighterParams::CHEF,
             Character::Pug => &FighterParams::PUG,
         }
     }
 
     pub fn moveset(self) -> &'static Moveset {
         match self {
-            Character::Mannequin => &MANNEQUIN_MOVES,
+            Character::Chef => &CHEF_MOVES,
             Character::Pug => &PUG_MOVES,
         }
     }

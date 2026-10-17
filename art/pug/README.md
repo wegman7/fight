@@ -9,7 +9,7 @@ moveset in the sim (`sim/src/character.rs`, frame data at the end of
 |---|---|
 | `build_pug.py` | Generates the whole asset from code: mesh, armature, every animation. Saves `pug.blend` and exports the `.glb`. |
 | `pug.blend` | The Blender file. Open it to look at or edit the model by hand. |
-| `export_pug.py` | Exports `pug.blend` to `godot/models/pug.glb` (same glTF settings as the fighter). |
+| `export_pug.py` | Exports `pug.blend` to `godot/models/pug.glb` (same glTF settings as the chef). |
 
 ```sh
 blender --background --factory-startup --python art/pug/build_pug.py      # rebuild from the script
@@ -17,7 +17,7 @@ blender --background art/pug/pug.blend --python art/pug/export_pug.py    # or ex
 godot --headless --path godot --import                                   # then reimport
 ```
 
-As with the fighter, rebuilding from the script overwrites hand edits to `pug.blend`.
+As with the chef, rebuilding from the script overwrites hand edits to `pug.blend`.
 Choose one approach per change.
 
 The rules in [`art/fighter/README.md`](../fighter/README.md#rules-the-game-relies-on)
