@@ -1,15 +1,21 @@
 //! Godot-facing layer. Reads controllers, steps `fight_sim` at a fixed 60 Hz in
 //! `physics_process`, and mirrors the simulation onto 3D nodes in `process`.
 //! No gameplay rules live here — if it affects who wins, it belongs in the sim.
+//! Before a match, the Melee-style menus in `menu` (drawn by `menu_view`) pick its setup.
 
-use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, STATE_ANIMS, Stage, State, World};
+mod menu;
+mod menu_view;
+
+use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, STATE_ANIMS, Stage, StageId, State, World};
+use menu::{DEFAULT_CPU_LEVEL, DEFAULT_STOCKS, MatchSetup, Menu, MenuEvent, PORTS, Player, PortInput, Screen};
+use menu_view::MenuView;
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
     AnimationPlayer, Camera3D, CanvasLayer, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
     MeshInstance3D, Node3D, PackedScene, SphereMesh, StandardMaterial3D,
 };
-use godot::global::{JoyAxis, JoyButton, Key};
+use godot::global::{HorizontalAlignment, JoyAxis, JoyButton, Key};
 use godot::prelude::*;
 
 struct FightExtension;
@@ -18,15 +24,14 @@ struct FightExtension;
 unsafe impl ExtensionLibrary for FightExtension {}
 
 /// Simulation units -> Godot meters.
-const SCALE: f32 = 0.1;
+pub(crate) const SCALE: f32 = 0.1;
 /// Stage models made by `art/stage/build_stage.py`, and the platform width (m) each was built at.
 const STAGE_MODEL: &str = "res://models/stage.glb";
 const STAGE_MODEL_WIDTH: f32 = 13.6;
 const RAFT_MODEL: &str = "res://models/raft.glb";
 const RAFT_MODEL_WIDTH: f32 = 3.7;
-const PLAYERS: usize = 2;
-const STOCKS: u8 = 3;
-const PLAYER_COLORS: [Color; 4] = [
+/// By port, as in Melee: P1 red, P2 blue, P3 yellow, P4 green.
+pub(crate) const PLAYER_COLORS: [Color; PORTS] = [
     Color::from_rgb(0.90, 0.25, 0.25),
     Color::from_rgb(0.25, 0.45, 0.95),
     Color::from_rgb(0.95, 0.80, 0.20),
@@ -36,6 +41,12 @@ const STICK_DEADZONE: f32 = 0.15;
 /// Right stick pushed this far acts as the C-stick: one smash attack (or aerial) in its direction.
 const CSTICK_THRESHOLD: f32 = 0.5;
 const TRIGGER_THRESHOLD: f32 = 0.3;
+/// Keyboard controls for ports 1 and 2: left, right, up, down, attack, jump, special,
+/// shield, grab, smash. In the menus attack is A (confirm) and special is B (back).
+const KEYS: [[Key; 10]; 2] = [
+    [Key::A, Key::D, Key::W, Key::S, Key::J, Key::K, Key::L, Key::SEMICOLON, Key::U, Key::I],
+    [Key::LEFT, Key::RIGHT, Key::UP, Key::DOWN, Key::COMMA, Key::PERIOD, Key::SLASH, Key::M, Key::N, Key::B],
+];
 /// How a sim `Character` is drawn.
 struct Look {
     /// Rigged model with an animation for every name its character's `Fighter::anim()`
@@ -70,7 +81,7 @@ fn look(character: Character) -> Look {
 const TINTED_MATERIAL: &str = "Body";
 /// The model faces +X. Turning it this far toward the camera shows a 3/4 view, as in Smash.
 const MODEL_YAW_TO_CAMERA: f32 = 25.0;
-const ANIM_FPS: f64 = 60.0;
+pub(crate) const ANIM_FPS: f64 = 60.0;
 
 fn to_godot(x: Fx, y: Fx) -> Vector3 {
     Vector3::new(x.to_f32() * SCALE, y.to_f32() * SCALE, 0.0)
@@ -113,10 +124,23 @@ struct Splat {
 
 const SPLAT_GRAVITY: f32 = 0.004;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Menu,
+    Match,
+}
+
 #[derive(GodotClass)]
 #[class(base = Node3D)]
 pub struct FightWorld {
     base: Base<Node3D>,
+    mode: Mode,
+    menu: Menu,
+    menu_view: Option<MenuView>,
+    /// Parent of everything a match builds (stage, fighters, effects, HUD), freed when it ends.
+    arena: Gd<Node3D>,
+    /// Who plays (fighter `i` is `setup.players[i]`), where, and for how many stocks.
+    setup: MatchSetup,
     world: World,
     views: Vec<FighterView>,
     hitbox_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
@@ -130,9 +154,7 @@ pub struct FightWorld {
     shake: f32,
     time: f64,
     show_hitboxes: bool,
-    /// Per player: who they play. Changing it starts a new match.
-    characters: Vec<Character>,
-    /// `Some` for players driven by the computer instead of a controller.
+    /// Per fighter: `Some` for players driven by the computer instead of a controller.
     cpus: Vec<Option<Cpu>>,
     /// Per player: right stick was out last frame, so it only fires once per push.
     cstick_out: Vec<bool>,
@@ -145,11 +167,14 @@ pub struct FightWorld {
 #[godot_api]
 impl INode3D for FightWorld {
     fn init(base: Base<Node3D>) -> Self {
-        // P1 starts as the chef, P2 as the pug; 1 / 2 cycle them in game.
-        let characters: Vec<Character> = (0..PLAYERS).map(|p| Character::ALL[p % Character::ALL.len()]).collect();
         Self {
             base,
-            world: World::new(Stage::battlefield(), &characters, STOCKS),
+            mode: Mode::Menu,
+            menu: Menu::new(),
+            menu_view: None,
+            arena: Node3D::new_alloc(),
+            setup: MatchSetup { stocks: DEFAULT_STOCKS, stage: StageId::ALL[0], players: Vec::new() },
+            world: World::new(Stage::battlefield(), &[], DEFAULT_STOCKS),
             views: Vec::new(),
             hitbox_pool: Vec::new(),
             projectile_pool: Vec::new(),
@@ -162,9 +187,8 @@ impl INode3D for FightWorld {
             shake: 0.0,
             time: 0.0,
             show_hitboxes: false,
-            characters,
-            cpus: vec![None; PLAYERS],
-            cstick_out: vec![false; PLAYERS],
+            cpus: Vec::new(),
+            cstick_out: Vec::new(),
             joypads: None,
             paused: false,
             advance_one_frame: false,
@@ -173,24 +197,31 @@ impl INode3D for FightWorld {
 
     fn ready(&mut self) {
         self.camera = self.base().try_get_node_as::<Camera3D>("Camera3D");
-        // FIGHT_DEMO: CPU vs CPU with hitboxes shown. FIGHT_CPU: you vs an easy CPU.
+        check_models();
+        let arena = self.arena.clone();
+        self.base_mut().add_child(&arena);
+        let view = MenuView::new();
+        self.base_mut().add_child(&view.layer);
+        self.menu_view = Some(view);
+
+        // FIGHT_DEMO: CPU vs CPU with hitboxes shown. FIGHT_CPU[=level]: you vs a CPU.
+        // Both skip the menus; FIGHT_STAGE=<name> picks their stage.
         let demo = std::env::var_os("FIGHT_DEMO").is_some();
-        self.show_hitboxes = demo;
-        for p in 0..PLAYERS {
-            let cpu = demo || (p == PLAYERS - 1 && std::env::var_os("FIGHT_CPU").is_some());
-            self.cpus[p] = cpu.then(|| Cpu::easy(p));
+        let cpu = std::env::var("FIGHT_CPU").ok().map(|level| level.parse().unwrap_or(DEFAULT_CPU_LEVEL));
+        if demo || cpu.is_some() {
+            let level = cpu.unwrap_or(DEFAULT_CPU_LEVEL);
+            let stage = std::env::var("FIGHT_STAGE").ok().and_then(|name| StageId::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(&name)));
+            let players = (0..2)
+                .map(|port| Player { port, character: Character::ALL[port % Character::ALL.len()], cpu: (demo || port == 1).then_some(level) })
+                .collect();
+            let setup = MatchSetup { stocks: DEFAULT_STOCKS, stage: stage.unwrap_or(StageId::ALL[0]), players };
+            self.menu.load(&setup);
+            self.start_match(setup);
+            self.show_hitboxes = demo;
         }
-        self.build_stage();
-        self.build_fighters();
-        self.build_hud();
     }
 
     fn physics_process(&mut self, _delta: f64) {
-        if self.paused && !self.advance_one_frame {
-            return;
-        }
-        self.advance_one_frame = false;
-
         let joypads: Vec<i32> = Input::singleton().get_connected_joypads().iter_shared().map(|id| id as i32).collect();
         if self.joypads.as_ref() != Some(&joypads) {
             for &id in &joypads {
@@ -201,13 +232,27 @@ impl INode3D for FightWorld {
             }
             self.joypads = Some(joypads.clone());
         }
-        // Pads go to human players in order, so with P2 as CPU the first pad is P1's.
-        let mut pads = joypads.into_iter();
-        let mut inputs = Vec::with_capacity(PLAYERS);
-        for p in 0..PLAYERS {
-            inputs.push(match &mut self.cpus[p] {
+        // The nth connected pad is port n, like Melee's controller ports.
+        let pad = |port: usize| joypads.get(port).copied();
+        if self.mode == Mode::Menu {
+            let inputs: [PortInput; PORTS] = std::array::from_fn(|port| read_menu_input(port, pad(port)));
+            match self.menu.update(&inputs) {
+                Some(MenuEvent::StartMatch(setup)) => self.start_match(setup),
+                Some(MenuEvent::Quit) => self.base().get_tree().quit(),
+                None => {}
+            }
+            return;
+        }
+        if self.paused && !self.advance_one_frame {
+            return;
+        }
+        self.advance_one_frame = false;
+
+        let mut inputs = Vec::with_capacity(self.setup.players.len());
+        for (i, player) in self.setup.players.iter().enumerate() {
+            inputs.push(match &mut self.cpus[i] {
                 Some(cpu) => cpu.think(&self.world),
-                None => read_input(p, pads.next(), &mut self.cstick_out[p]),
+                None => read_input(player.port, pad(player.port), &mut self.cstick_out[i]),
             });
         }
         self.world.step(&inputs);
@@ -251,6 +296,13 @@ impl INode3D for FightWorld {
 
     fn process(&mut self, delta: f64) {
         self.time += delta;
+        if self.mode == Mode::Menu {
+            if let Some(view) = &mut self.menu_view {
+                view.update(&self.menu);
+            }
+            self.update_menu_camera();
+            return;
+        }
         self.update_fighters();
         self.update_hitboxes();
         self.update_projectiles();
@@ -260,13 +312,19 @@ impl INode3D for FightWorld {
         self.update_camera(delta as f32);
     }
 
+    /// In-match buttons. The menus poll their input in `physics_process` instead.
     fn unhandled_input(&mut self, event: Gd<InputEvent>) {
+        if self.mode != Mode::Match {
+            return;
+        }
         let event = match event.try_cast::<InputEventJoypadButton>() {
             Ok(button) => {
                 if button.is_pressed() {
                     match button.get_button_index() {
-                        JoyButton::START => self.new_match(),
-                        JoyButton::BACK => self.toggle_cpu(),
+                        // Start pauses, as in Melee; once someone has won it goes back to the menu.
+                        JoyButton::START if self.winner().is_some() => self.leave_match(),
+                        JoyButton::START => self.paused = !self.paused,
+                        JoyButton::BACK if self.paused => self.leave_match(),
                         _ => {}
                     }
                 }
@@ -286,34 +344,79 @@ impl INode3D for FightWorld {
                 self.advance_one_frame = true;
             }
             Key::R => self.new_match(),
-            Key::C => self.toggle_cpu(),
-            Key::KEY_1 => self.next_character(0),
-            Key::KEY_2 => self.next_character(1),
-            Key::ESCAPE => self.base().get_tree().quit(),
+            Key::ENTER | Key::KP_ENTER if self.winner().is_some() => self.leave_match(),
+            Key::ESCAPE => self.leave_match(),
             _ => {}
         }
     }
 }
 
 impl FightWorld {
-    fn new_match(&mut self) {
-        self.world = World::new(Stage::battlefield(), &self.characters, STOCKS);
-        for (p, cpu) in self.cpus.iter_mut().enumerate() {
-            if cpu.is_some() {
-                *cpu = Some(Cpu::easy(p));
-            }
+    /// Builds and starts the match `setup` describes, replacing any current one.
+    fn start_match(&mut self, setup: MatchSetup) {
+        self.clear_arena();
+        let players: Vec<String> = setup
+            .players
+            .iter()
+            .map(|p| format!("P{} {}{}", p.port + 1, p.character.name(), p.cpu.map_or(String::new(), |l| format!(" (CPU lv {l})"))))
+            .collect();
+        godot_print!("{} stocks on {}: {}", setup.stocks, setup.stage.name(), players.join(", "));
+        self.setup = setup;
+        self.new_match();
+        self.build_stage();
+        self.build_fighters();
+        self.build_hud();
+        self.mode = Mode::Match;
+        if let Some(view) = &mut self.menu_view {
+            view.set_visible(false);
         }
     }
 
-    /// Switches the last player between human and CPU, and starts over.
-    fn toggle_cpu(&mut self) {
-        let p = PLAYERS - 1;
-        self.cpus[p] = if self.cpus[p].is_some() { None } else { Some(Cpu::easy(p)) };
-        self.new_match();
+    /// Restarts the current match from the beginning (same players, stage and stocks).
+    fn new_match(&mut self) {
+        let characters: Vec<Character> = self.setup.players.iter().map(|p| p.character).collect();
+        self.world = World::new(self.setup.stage.stage(), &characters, self.setup.stocks);
+        self.cpus = self.setup.players.iter().enumerate().map(|(i, p)| p.cpu.map(|level| Cpu::with_level(i, level))).collect();
+        self.cstick_out = vec![false; characters.len()];
+        self.paused = false;
     }
 
-    fn player_name(&self, p: usize) -> String {
-        if self.cpus[p].is_some() { format!("CPU{}", p + 1) } else { format!("P{}", p + 1) }
+    /// Ends the match and goes back to character select, Melee-style.
+    fn leave_match(&mut self) {
+        self.clear_arena();
+        self.mode = Mode::Menu;
+        self.paused = false;
+        self.menu.enter(Screen::Characters);
+        if let Some(view) = &mut self.menu_view {
+            view.set_visible(true);
+        }
+    }
+
+    fn clear_arena(&mut self) {
+        for mut child in self.arena.get_children().iter_shared() {
+            child.queue_free();
+        }
+        self.views.clear();
+        self.hitbox_pool.clear();
+        self.projectile_pool.clear();
+        self.sparks.clear();
+        self.splats.clear();
+        self.hud.clear();
+        self.banner = None;
+    }
+
+    /// The last fighter standing, once everyone else is out.
+    fn winner(&self) -> Option<usize> {
+        let mut alive = (0..self.world.fighters.len()).filter(|&i| self.world.fighters[i].state != State::Eliminated);
+        match (alive.next(), alive.next()) {
+            (Some(winner), None) if self.world.fighters.len() > 1 => Some(winner),
+            _ => None,
+        }
+    }
+
+    fn player_name(&self, i: usize) -> String {
+        let port = self.setup.players[i].port + 1;
+        if self.cpus[i].is_some() { format!("CPU{port}") } else { format!("P{port}") }
     }
 
     fn build_stage(&mut self) {
@@ -331,7 +434,7 @@ impl FightWorld {
                 // Turn every other raft around so they don't all look the same.
                 node.set_rotation_degrees(Vector3::new(0.0, 180.0, 0.0));
             }
-            self.base_mut().add_child(&node);
+            self.arena.add_child(&node);
         }
     }
 
@@ -343,63 +446,32 @@ impl FightWorld {
     }
 
     fn build_view(&mut self, i: usize) -> FighterView {
-        let character = self.characters[i];
-        let color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
-        let mut material = StandardMaterial3D::new_gd();
-        material.set_albedo(color);
-        material.set_roughness(0.6);
-
-        let model = load::<PackedScene>(look(character).model).instantiate_as::<Node3D>();
-        for node in model.find_children_ex("*").type_("MeshInstance3D").done().iter_shared() {
-            let mut mesh_node = node.cast::<MeshInstance3D>();
-            let Some(mesh) = mesh_node.get_mesh() else { continue };
-            for s in 0..mesh.get_surface_count() {
-                if mesh.surface_get_material(s).is_some_and(|m| m.get_name() == TINTED_MATERIAL) {
-                    mesh_node.set_surface_override_material(s, &material);
-                }
-            }
-        }
+        let player = self.setup.players[i];
+        let color = PLAYER_COLORS[player.port];
+        let (model, material) = tinted_model(player.character, color);
         // Posed by hand from the sim state every frame (see `update_fighters`), never free-running.
         let mut anim = model.get_node_as::<AnimationPlayer>("AnimationPlayer");
         anim.set_callback_mode_process(AnimationCallbackModeProcess::MANUAL);
-        let moves = character.moves();
-        let names = STATE_ANIMS.iter().copied().chain(moves.iter().map(|m| m.data().name)).chain(DodgeKind::ALL.iter().map(|d| d.data().name));
-        for name in names {
-            if !anim.has_animation(name) {
-                godot_error!("{} has no animation '{name}': that pose won't show", look(character).model);
-            }
-        }
 
         let mut root = Node3D::new_alloc();
         root.add_child(&model);
-        self.base_mut().add_child(&root);
+        self.arena.add_child(&root);
 
         let (shield, shield_material) = sphere_instance(Color { a: 0.35, ..color });
-        self.base_mut().add_child(&shield);
+        self.arena.add_child(&shield);
         FighterView { root, model, anim, material, shield, shield_material, color }
-    }
-
-    /// Switches player `p` to the next character and starts a new match, since
-    /// characters play differently.
-    fn next_character(&mut self, p: usize) {
-        if p >= self.views.len() {
-            return;
-        }
-        let next = (Character::ALL.iter().position(|&c| c == self.characters[p]).unwrap_or(0) + 1) % Character::ALL.len();
-        self.characters[p] = Character::ALL[next];
-        let mut view = self.build_view(p);
-        std::mem::swap(&mut self.views[p], &mut view);
-        view.root.queue_free();
-        view.shield.queue_free();
-        self.new_match();
-        godot_print!("P{} is now the {}", p + 1, self.characters[p].name());
     }
 
     fn build_hud(&mut self) {
         let mut layer = CanvasLayer::new_alloc();
-        for i in 0..self.world.fighters.len() {
-            let mut label = styled_label(36, PLAYER_COLORS[i % PLAYER_COLORS.len()]);
-            label.set_position(Vector2::new(480.0 + 420.0 * i as f32, 760.0));
+        let n = self.world.fighters.len();
+        for i in 0..n {
+            // Spread along the bottom, centered, like Melee's damage readouts.
+            let mut label = styled_label(36, PLAYER_COLORS[self.setup.players[i].port]);
+            let center = 800.0 + (i as f32 - (n as f32 - 1.0) / 2.0) * 380.0;
+            label.set_position(Vector2::new(center - 180.0, 760.0));
+            label.set_size(Vector2::new(360.0, 100.0));
+            label.set_horizontal_alignment(HorizontalAlignment::CENTER);
             layer.add_child(&label);
             self.hud.push(label);
         }
@@ -413,12 +485,12 @@ impl FightWorld {
             "P1: WASD move · J attack · K jump · L special · ; shield · U grab · I smash\n\
              P2: arrows · , attack · . jump · / special · M shield · N grab · B smash\n\
              Pads: stick · A attack · B special · X/Y jump · LT/RT shield · LB/RB grab · right stick smash\n\
-             C (pad: View) toggle P2 human/CPU · 1 / 2 change P1 / P2 character · R (pad: Menu) reset\n\
-             H hitboxes · P pause · F frame-advance · Esc quit",
+             Pad Start pause (then View: menu) · R rematch · Esc menu\n\
+             H hitboxes · P pause · F frame-advance",
         );
         help.set_position(Vector2::new(16.0, 12.0));
         layer.add_child(&help);
-        self.base_mut().add_child(&layer);
+        self.arena.add_child(&layer);
     }
 
     fn update_fighters(&mut self) {
@@ -470,7 +542,7 @@ impl FightWorld {
         while self.hitbox_pool.len() < active.len() {
             let (node, mut mat) = sphere_instance(Color::from_rgba(1.0, 0.1, 0.1, 0.5));
             mat.set_flag(Flags::DISABLE_DEPTH_TEST, true);
-            self.base_mut().add_child(&node);
+            self.arena.add_child(&node);
             self.hitbox_pool.push((node, mat));
         }
         for (i, (node, mat)) in self.hitbox_pool.iter_mut().enumerate() {
@@ -495,7 +567,7 @@ impl FightWorld {
             let shot = look(self.world.fighters[p.owner].character).shot;
             if self.projectile_pool.get(i).is_none_or(|view| view.shot != shot) {
                 let view = self.projectile_view(shot);
-                self.base_mut().add_child(&view.node);
+                self.arena.add_child(&view.node);
                 if i < self.projectile_pool.len() {
                     std::mem::replace(&mut self.projectile_pool[i], view).node.queue_free();
                 } else {
@@ -577,7 +649,7 @@ impl FightWorld {
             mat.set_shading_mode(ShadingMode::UNSHADED);
             node.set_position(position);
             node.set_scale(size);
-            self.base_mut().add_child(&node);
+            self.arena.add_child(&node);
             self.splats.push(Splat { node, velocity, size, floor, frames_left: life, life });
         }
     }
@@ -620,7 +692,7 @@ impl FightWorld {
         mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
         mat.set_emission(Color::from_rgb(1.0, 0.7, 0.2));
         node.set_position(at + Vector3::new(0.0, 0.0, 0.3));
-        self.base_mut().add_child(&node);
+        self.arena.add_child(&node);
         self.sparks.push(Spark { node, frames_left: 10, size });
     }
 
@@ -645,17 +717,23 @@ impl FightWorld {
             let stocks = "● ".repeat(f.stocks as usize);
             label.set_text(&format!("{name} {}  {}%\n{}", f.character.name(), f.percent, stocks));
         }
-        let alive: Vec<usize> = (0..self.world.fighters.len())
-            .filter(|&i| self.world.fighters[i].state != State::Eliminated)
-            .collect();
-        let text = match alive.as_slice() {
-            [winner] if self.world.fighters.len() > 1 => format!("{} WINS!\nPress R", names[*winner]),
-            _ if self.paused => "PAUSED".to_string(),
-            _ => String::new(),
+        let text = match self.winner() {
+            Some(winner) => format!("{} WINS!\nStart / Enter: menu · R: rematch", names[winner]),
+            None if self.paused => "PAUSED".to_string(),
+            None => String::new(),
         };
         if let Some(banner) = &mut self.banner {
             banner.set_text(&text);
         }
+    }
+
+    /// Behind the menus: a slow drift over the empty beach.
+    fn update_menu_camera(&mut self) {
+        let Some(camera) = &mut self.camera else { return };
+        let t = self.time as f32;
+        camera.set_position(Vector3::new(7.0 * (t * 0.07).sin(), 4.5 + 0.8 * (t * 0.05).sin(), 26.0));
+        camera.look_at(Vector3::new(0.0, 2.5, 0.0));
+        self.camera_focus = Vector3::new(0.0, 2.0, 20.0);
     }
 
     /// Frames every active fighter, Smash-style: zoom out as they spread apart.
@@ -711,6 +789,44 @@ fn pose(anim: &mut Gd<AnimationPlayer>, f: &Fighter, world_frame: u32) {
     anim.seek_ex(f64::from(frame.min(length)) / ANIM_FPS).update(true).done();
 }
 
+/// `character`'s model, with its `Body` surfaces given a fresh material in `color`
+/// (returned too, to recolor it later).
+pub(crate) fn tinted_model(character: Character, color: Color) -> (Gd<Node3D>, Gd<StandardMaterial3D>) {
+    let mut material = StandardMaterial3D::new_gd();
+    material.set_albedo(color);
+    material.set_roughness(0.6);
+    let model = load::<PackedScene>(look(character).model).instantiate_as::<Node3D>();
+    for node in model.find_children_ex("*").type_("MeshInstance3D").done().iter_shared() {
+        let mut mesh_node = node.cast::<MeshInstance3D>();
+        let Some(mesh) = mesh_node.get_mesh() else { continue };
+        for s in 0..mesh.get_surface_count() {
+            if mesh.surface_get_material(s).is_some_and(|m| m.get_name() == TINTED_MATERIAL) {
+                mesh_node.set_surface_override_material(s, &material);
+            }
+        }
+    }
+    (model, material)
+}
+
+/// Logs an `ERROR` for every animation a character can need (`STATE_ANIMS`,
+/// `Character::moves()`, dodges) that its model lacks. Runs at startup for every
+/// character, so the headless smoke test catches them without playing a match.
+fn check_models() {
+    for character in Character::ALL {
+        let path = look(character).model;
+        let model = load::<PackedScene>(path).instantiate_as::<Node3D>();
+        let anim = model.get_node_as::<AnimationPlayer>("AnimationPlayer");
+        let moves = character.moves();
+        let names = STATE_ANIMS.iter().copied().chain(moves.iter().map(|m| m.data().name)).chain(DodgeKind::ALL.iter().map(|d| d.data().name));
+        for name in names {
+            if !anim.has_animation(name) {
+                godot_error!("{path} has no animation '{name}': that pose won't show");
+            }
+        }
+        model.free();
+    }
+}
+
 /// A unit-diameter sphere; scale it to size.
 fn sphere_instance(color: Color) -> (Gd<MeshInstance3D>, Gd<StandardMaterial3D>) {
     let mut sphere = SphereMesh::new_gd();
@@ -732,7 +848,7 @@ fn mesh_instance(mesh: Gd<Mesh>, color: Color) -> (Gd<MeshInstance3D>, Gd<Standa
     (node, material)
 }
 
-fn styled_label(size: i32, color: Color) -> Gd<Label> {
+pub(crate) fn styled_label(size: i32, color: Color) -> Gd<Label> {
     let mut label = Label::new_alloc();
     label.add_theme_font_size_override("font_size", size);
     label.add_theme_color_override("font_color", color);
@@ -741,22 +857,49 @@ fn styled_label(size: i32, color: Color) -> Gd<Label> {
     label
 }
 
-/// Merges keyboard and (optionally) a gamepad into one sim input. `cstick_out`
-/// remembers whether the right stick was pushed last frame.
-fn read_input(player: usize, joypad: Option<i32>, cstick_out: &mut bool) -> SimInput {
+/// Port `port`'s menu controls: its keyboard keys (ports 1 and 2), plus Enter / Esc on
+/// port 1, plus the pad in that port.
+fn read_menu_input(port: usize, joypad: Option<i32>) -> PortInput {
     let input = Input::singleton();
     let key = |k: Key| input.is_physical_key_pressed(k);
-    // left, right, up, down, attack, jump, special, shield, grab, smash
-    let keys = match player {
-        0 => [Key::A, Key::D, Key::W, Key::S, Key::J, Key::K, Key::L, Key::SEMICOLON, Key::U, Key::I],
-        _ => [Key::LEFT, Key::RIGHT, Key::UP, Key::DOWN, Key::COMMA, Key::PERIOD, Key::SLASH, Key::M, Key::N, Key::B],
-    };
-    let [left, right, up, down, attack, jump, special, shield, grab, smash] = keys.map(key);
+    let mut menu = PortInput { present: port < KEYS.len() || joypad.is_some(), ..PortInput::default() };
+    if let Some(keys) = KEYS.get(port) {
+        let [left, right, up, down, attack, _, special, ..] = keys.map(key);
+        menu.stick = Vector2::new(right as i32 as f32 - left as i32 as f32, down as i32 as f32 - up as i32 as f32);
+        (menu.confirm, menu.back) = (attack, special);
+    }
+    if port == 0 {
+        menu.start = key(Key::ENTER) || key(Key::KP_ENTER);
+        menu.exit = key(Key::ESCAPE);
+    }
+    if let Some(device) = joypad {
+        let button = |b: JoyButton| input.is_joy_button_pressed(device, b);
+        let axis = |a: JoyAxis| input.get_joy_axis(device, a);
+        let dpad = |plus: JoyButton, minus: JoyButton| button(plus) as i32 as f32 - button(minus) as i32 as f32;
+        let strongest = |a: f32, b: f32| if b.abs() > a.abs() { b } else { a };
+        let x = strongest(axis(JoyAxis::LEFT_X), dpad(JoyButton::DPAD_RIGHT, JoyButton::DPAD_LEFT));
+        let y = strongest(axis(JoyAxis::LEFT_Y), dpad(JoyButton::DPAD_DOWN, JoyButton::DPAD_UP));
+        menu.stick = Vector2::new(strongest(menu.stick.x, x), strongest(menu.stick.y, y));
+        menu.confirm |= button(JoyButton::A);
+        menu.back |= button(JoyButton::B);
+        menu.start |= button(JoyButton::START);
+        menu.exit |= button(JoyButton::BACK);
+    }
+    menu
+}
+
+/// Merges keyboard and (optionally) a gamepad into one sim input. Only ports 1 and 2
+/// have keyboard keys. `cstick_out` remembers whether the right stick was pushed last frame.
+fn read_input(port: usize, joypad: Option<i32>, cstick_out: &mut bool) -> SimInput {
+    let input = Input::singleton();
+    let key = |k: Key| input.is_physical_key_pressed(k);
+    let held = KEYS.get(port).map_or([false; 10], |keys| keys.map(key));
+    let [left, right, up, down, attack, jump, special, shield, grab, smash] = held;
     let mut x = right as i32 as f32 - left as i32 as f32;
     let mut y = up as i32 as f32 - down as i32 as f32;
     let mut buttons = [
         (attack, SimInput::ATTACK),
-        (jump || (player == 0 && key(Key::SPACE)), SimInput::JUMP),
+        (jump || (port == 0 && key(Key::SPACE)), SimInput::JUMP),
         (special, SimInput::SPECIAL),
         (shield, SimInput::SHIELD),
         (grab, SimInput::GRAB),

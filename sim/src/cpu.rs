@@ -24,12 +24,36 @@ pub struct CpuLevel {
     pub shield_chance: u32,
 }
 
+const fn level(reaction_frames: u8, approach_chance: u32, attack_chance: u32, grab_chance: u32, shield_chance: u32) -> CpuLevel {
+    CpuLevel { reaction_frames, approach_chance, attack_chance, grab_chance, shield_chance }
+}
+
+/// Melee-style levels 1 to 9, from barely fighting back to reacting within a few
+/// frames. Every level walks rather than runs and never punishes or edge-guards; they
+/// differ in how quickly they re-plan and how often they approach, swing and shield.
+static LEVELS: [CpuLevel; 9] = [
+    level(40, 40, 15, 10, 0),
+    level(32, 55, 25, 15, 5),
+    CpuLevel::EASY,
+    level(20, 75, 45, 20, 25),
+    level(16, 80, 55, 25, 35),
+    level(14, 85, 62, 25, 45),
+    level(12, 90, 70, 30, 55),
+    level(10, 95, 78, 30, 65),
+    level(8, 100, 85, 30, 75),
+];
+
 impl CpuLevel {
-    /// Slow to react, walks instead of running, swings at a fraction of its
-    /// openings and never punishes or edge-guards. Still recovers, so it
-    /// doesn't throw stocks away on its own.
-    pub const EASY: CpuLevel =
-        CpuLevel { reaction_frames: 24, approach_chance: 70, attack_chance: 35, grab_chance: 20, shield_chance: 15 };
+    /// Level 3. Slow to react, swings at a fraction of its openings. Still recovers,
+    /// so it doesn't throw stocks away on its own.
+    pub const EASY: CpuLevel = level(24, 70, 35, 20, 15);
+    pub const MIN: u8 = 1;
+    pub const MAX: u8 = 9;
+
+    /// Level `n`, clamped to `MIN..=MAX`.
+    pub fn level(n: u8) -> &'static CpuLevel {
+        &LEVELS[usize::from(n.clamp(Self::MIN, Self::MAX) - 1)]
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -90,6 +114,11 @@ impl Cpu {
         Cpu::new(player, &CpuLevel::EASY)
     }
 
+    /// A CPU at Melee-style level `n` (1 to 9; see [`CpuLevel::level`]).
+    pub fn with_level(player: usize, n: u8) -> Cpu {
+        Cpu::new(player, CpuLevel::level(n))
+    }
+
     /// The input to feed this CPU's fighter for the next [`World::step`].
     pub fn think(&mut self, world: &World) -> Input {
         let input = self.decide(world);
@@ -120,14 +149,20 @@ impl Cpu {
             .min_by_key(|f| ((f.x - me.x).abs() + (f.y - me.y).abs()).raw());
 
         self.plan_age = self.plan_age.saturating_add(1);
-        let mid_jump = matches!(self.plan, Plan::Jump { .. }) && !me.grounded();
+        // Plans that take longer than a quick CPU's reaction time get to finish.
+        let committed = match self.plan {
+            Plan::Jump { .. } => !me.grounded(),
+            Plan::HopAttack => self.plan_age <= HOP_ATTACK_FRAME,
+            Plan::Shield => self.plan_age < SHIELD_FRAMES,
+            _ => false,
+        };
         let threatened = target.is_some_and(|t| {
             matches!(t.state, State::Attack { frame: 1, .. }) && (t.x - me.x).abs() < THREAT_RANGE && (t.y - me.y).abs() < THREAT_RANGE
         });
         if threatened && me.state == State::Ground && !matches!(self.plan, Plan::Shield) && self.chance(self.level.shield_chance) {
             self.plan = Plan::Shield;
             self.plan_age = 0;
-        } else if self.plan_age >= self.level.reaction_frames && !mid_jump {
+        } else if self.plan_age >= self.level.reaction_frames && !committed {
             self.plan = self.choose(me, target, world, stage);
             self.plan_age = 0;
         }

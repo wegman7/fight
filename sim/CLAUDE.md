@@ -27,6 +27,9 @@
   anything that can break a grab.
 - Tests that press attack with a direction from neutral get a smash attack. Use stick
   60 (not 100) for tilts.
+- New stage → a `StageId` variant (name, `stage()`), added to `StageId::ALL`. Its spawns
+  must sit on a platform; `every_stage_spawns_four_fighters_on_the_floor` and
+  `every_cpu_level_keeps_its_stocks_on_every_stage` cover it automatically.
 - CPU players (`cpu.rs`) read `&World` and return an `Input`, nothing else. Their
   randomness comes from the `rng` field (xorshift), never from time or the OS, so CPU
   matches replay identically. Behaviour changes need a test in `tests/cpu.rs`.

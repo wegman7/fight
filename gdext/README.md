@@ -4,7 +4,10 @@ The Godot extension, built with [godot-rust](https://godot-rust.github.io)
 (`godot` crate 0.5, Godot API 4.7). It registers one node class, `FightWorld`,
 which is the root of `godot/main.tscn`.
 
-Each frame:
+It starts in the menus (`Mode::Menu`) and switches to `Mode::Match` once one is chosen.
+
+In the menus, `physics_process` reads each port's controls (`read_menu_input`) into
+`menu::Menu::update`, and `process` draws the result with `MenuView`. In a match, each frame:
 
 1. `physics_process` (fixed 60 Hz) builds one `fight_sim::Input` per player, from the
    keyboard and gamepads for humans or from `Cpu::think` for CPU slots, and calls `World::step`.
@@ -18,18 +21,35 @@ Gameplay logic doesn't belong here. This layer only reads the sim, except that i
 
 ```sh
 cargo build                       # → target/debug/libfight_gd.dylib (.dll / .so)
+cargo test -p fight_gd            # menu logic tests (no Godot needed)
 godot --path godot                # from the repo root
-FIGHT_CPU=1 godot --path godot    # P2 is an easy CPU (toggle in game with C / pad View)
-FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
+FIGHT_CPU=3 godot --path godot    # skip the menus: P2 is a level-3 CPU (any of 1-9)
+FIGHT_DEMO=1 godot --path godot   # skip the menus: both players are level-3 CPUs, hitboxes on
+FIGHT_STAGE=driftwood FIGHT_DEMO=1 godot --path godot   # stage for the two above (default Boardwalk)
 ```
 
 `godot/fight.gdextension` points Godot at `../target/{debug,release}/`, so
 `cargo build --release` plus a release export uses the optimized library.
 
+## Menus
+
+| File | Contents |
+|---|---|
+| `menu.rs` | `Menu`: the screen (`Screen::Stocks` → `Characters` → `Stages`), stock count, the four player `Slot`s (`SlotKind` HMN / CPU / N/A, character, CPU level, where its coin sits), the four `Hand`s (position, which coin it carries), the stage cursor. `update` takes one `PortInput` per port (held buttons; it finds the presses itself) and returns `MenuEvent::StartMatch(MatchSetup)` or `Quit`. Also the layout: `portrait_rect`, `slot_rect`, `toggle_rect`, `level_rect`, `card_rect`, used for both hit tests and drawing. No Godot nodes, so its tests run under `cargo test`. |
+| `menu_view.rs` | `MenuView`: builds the Control nodes once (on a `CanvasLayer` over the beach) and each frame moves, recolors and shows them from `Menu`. Characters are drawn by `Render`, a `SubViewport` with its own 3D world holding the model, posed on the menu's frame counter (never free-running). Stage cards show a schematic drawn from the sim's `Stage` platforms. |
+
+A `MatchSetup` lists the players by port. Fighter `i` of the `World` is
+`setup.players[i]`, so with P1 off, fighter 0 is P2: it keeps P2's color, name and
+controls. `FightWorld::start_match` builds a match from a setup, `new_match` restarts
+it (**R**), and `leave_match` frees it and returns to character select. `Menu::enter`
+makes the next screen ignore buttons still held from before, so the press that left a
+screen doesn't also act on the next one.
+
 ## Things to know
 
-- The node tree is built in code: `build_stage`, `build_fighters` and `build_hud`
-  in `ready()`. `build_stage` puts a model from [`art/stage/`](../art/stage/README.md)
+- The node tree is built in code. The menus are built once in `ready()`. A match's
+  nodes (`build_stage`, `build_fighters`, `build_hud`, plus effects) all go under
+  `FightWorld::arena`, which `clear_arena` empties when the match ends. `build_stage` puts a model from [`art/stage/`](../art/stage/README.md)
   on each sim platform (`stage.glb` for the solid one, `raft.glb` for soft ones),
   stretched in x from the width it was built at (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`). Only the light, environment, `Camera3D` and the decorative backdrop
   live in `main.tscn`, so they can be tweaked in the editor. The backdrop (`Beach`,
@@ -38,25 +58,25 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
   sailboats). Its ground sits at y = −12, just under the bottom blast zone, so
   fighters are KO'd before they'd reach the sand. The water animates on shader
   `TIME`; that's fine because it's scenery, never gameplay.
-- Controls are hard-coded in `read_input` (table in the root README). Gamepads go to
-  human players in order (with P2 as CPU, the first pad drives P1). Triggers are
+- Controls are hard-coded in `KEYS`, `read_input` and `read_menu_input` (tables in the
+  root README). The nth connected gamepad is port n, like Melee's ports; ports 1 and 2
+  also have keyboard keys. Triggers are
   axes, so shield is "trigger past 0.3". The right stick acts as a C-stick. On the
   frame it is pushed, it sends `SMASH` with the left-stick direction replaced by the
   right stick's, so it gives a smash attack on the ground and an aerial in the air.
-  It needs releasing before it fires again (`FightWorld::cstick_out`). Debug keys and the pad Start (reset) /
-  Back (toggle CPU) buttons are in `unhandled_input`.
+  It needs releasing before it fires again (`FightWorld::cstick_out`). In-match keys
+  (debug keys, R, Esc) and the pad Start (pause, or menu once someone has won) / Back
+  (menu while paused) buttons are in `unhandled_input`; the menus poll instead.
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
-- Each player plays a `fight_sim::Character` (`FightWorld::characters`, passed to
-  `World::new`). `look()` maps it to a model, `res://models/fighter.glb` or
-  `res://models/pug.glb` (made in Blender, see
+- Each player plays the `fight_sim::Character` chosen in the menus. `look()` maps it to
+  a model, `res://models/fighter.glb` or `res://models/pug.glb` (made in Blender, see
   [`art/fighter/README.md`](../art/fighter/README.md) and
-  [`art/pug/README.md`](../art/pug/README.md)). Player `i` starts as
-  `Character::ALL[i % 2]`, and **1** / **2** cycle P1 / P2 (`next_character` rebuilds
-  that view and starts a new match, since characters play differently). When a model
-  loads, `build_view` logs an `ERROR` for every animation its character can need
-  (`STATE_ANIMS`, `Character::moves()`, dodges) that it lacks. The HUD shows each
+  [`art/pug/README.md`](../art/pug/README.md)); `tinted_model` loads it with the `Body`
+  material swapped for the player's color (in game and in the menus). At startup,
+  `check_models` logs an `ERROR` for every animation a character can need
+  (`STATE_ANIMS`, `Character::moves()`, dodges) that its model lacks. The HUD shows each
   player's character. The `AnimationPlayer` is in
   manual mode. `pose()` plays the clip named `Fighter::anim()` and seeks it to the
   sim's frame, so visuals match frame data, freeze in hitlag and pause, and work after a
@@ -73,5 +93,6 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
   `ShieldHit` with `projectile: true`) or land (`Event::ProjectileLanded`, a puddle on
   the floor); other hits make a spark. `Event::Counter` (the pug's play dead) makes a spark and a
   small shake. With **H**, hitboxes are red and grab boxes purple.
-- Smoke test with no window: `godot --headless --path godot --quit-after 600`. It
-  should print no `ERROR` lines.
+- Smoke test with no window: `godot --headless --path godot --quit-after 600` (sits in
+  the menus) and `FIGHT_DEMO=1 godot --headless --path godot --quit-after 900` (plays a
+  match). They should print no `ERROR` lines.

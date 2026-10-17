@@ -1,7 +1,7 @@
 # Stage models
 
-The platforms of the battlefield stage, generated in Blender by a script and exported
-to `godot/models/`:
+The platforms of every stage (Boardwalk, Sandbar, Driftwood all use them), generated in
+Blender by a script and exported to `godot/models/`:
 
 - `stage.glb`: the main stage. A plank boardwalk nailed onto stringers, over two courses
   of sandstone blocks, over a lumpy rock that tapers to a point underneath (like
@@ -21,13 +21,13 @@ godot --headless --path godot --import
 ```
 
 Rebuilding overwrites hand edits to `stage.blend`. The models are purely visual: the
-sim's `Stage::battlefield()` decides where the platforms are and how they collide.
+sim's `Stage` (one per `StageId`) decides where the platforms are and how they collide.
 
 ## Rules the game relies on
 
 - The walkable top of each model is at its origin (y = 0), centered on x = 0.
 - Each is built at the width of its platform in `Stage::battlefield()` (`STAGE_WIDTH`
-  13.6 and `RAFT_WIDTH` 3.7 meters). `build_stage` in `gdext/src/lib.rs` stretches it in
+  13.6 and `RAFT_WIDTH` 3.7 meters); other stages' platforms stretch it wider or narrower. `build_stage` in `gdext/src/lib.rs` stretches it in
   x to the platform's actual width (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`), so keep
   those constants equal to the script's if either changes. It also turns every other
   raft around, so the copies don't look identical.

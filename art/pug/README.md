@@ -3,7 +3,7 @@
 A realistic black pug on four legs, rigged and animated in Blender,
 exported to `godot/models/pug.glb`. It draws `Character::Pug`, which has its own
 moveset in the sim (`sim/src/character.rs`, frame data at the end of
-`sim/src/moves.rs`; the root README lists the moves). Press **1** / **2** in game to play it.
+`sim/src/moves.rs`; the root README lists the moves). Pick it on the character select screen to play it.
 
 | File | What it is |
 |---|---|

@@ -1,5 +1,5 @@
 use fight_sim::fighter::knockback;
-use fight_sim::{Character, DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stage, State, World};
+use fight_sim::{Character, DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stage, StageId, State, World};
 
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
@@ -45,6 +45,18 @@ fn idle_fighters_stay_on_their_spawns() {
     assert_eq!((w.fighters[0].x, w.fighters[0].y), (Fx::int(-40), Fx::ZERO));
     assert_eq!(w.fighters[0].state, State::Ground);
     assert_eq!(w.fighters[1].facing, -1);
+}
+
+#[test]
+fn every_stage_spawns_four_fighters_on_the_floor() {
+    for id in StageId::ALL {
+        let mut w = World::new(id.stage(), &[Character::Chef, Character::Pug, Character::Chef, Character::Pug], 3);
+        w.step(&[NONE; 4]);
+        for (i, f) in w.fighters.iter().enumerate() {
+            assert_eq!((f.state, f.y), (State::Ground, Fx::ZERO), "{} P{}", id.name(), i + 1);
+            assert_eq!(f.facing, if f.x < Fx::ZERO { 1 } else { -1 }, "{} P{} should face the middle", id.name(), i + 1);
+        }
+    }
 }
 
 #[test]

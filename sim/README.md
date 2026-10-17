@@ -6,7 +6,7 @@ I/O, so everything can be tested in milliseconds with `cargo test`.
 ## API in one screen
 
 ```rust
-let mut world = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], /* stocks */ 3);
+let mut world = World::new(StageId::Sandbar.stage(), &[Character::Chef, Character::Pug], /* stocks */ 3);
 
 // Once per frame (60 Hz), one Input per player:
 world.step(&[p1_input, p2_input]);
@@ -20,7 +20,7 @@ world.active_hitboxes();     // hitboxes and grab boxes, for debug drawing
 let snapshot = world.clone(); // full save state (rollback, replays)
 
 // A computer player is just another input source:
-let mut cpu = Cpu::easy(1);   // drives fighter 1
+let mut cpu = Cpu::with_level(1, 9);   // drives fighter 1, at Melee-style level 9 (1-9; Cpu::easy is 3)
 let p2_input = cpu.think(&world);
 world.step(&[p1_input, p2_input]);
 ```
@@ -34,9 +34,9 @@ world.step(&[p1_input, p2_input]);
 | `character.rs` | `Character` (Chef, Pug): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
 | `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
-| `stage.rs` | Platforms, blast zones, spawn points |
+| `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
-| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, and recovers with double jump then up special. Difficulty knobs in `CpuLevel` (only `EASY` so far). |
+| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, and recovers with double jump then up special. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. |
 
 ## How a move works
 
@@ -92,8 +92,9 @@ cargo test -p fight_sim -- --nocapture
 
 Gameplay tests live in `tests/gameplay.rs` (the chef) and `tests/pug.rs` (the pug's
 moves, tuning and play-dead counter). CPU behaviour tests (engages,
-recovers with and without a double jump, doesn't self-destruct, mashes out of grabs,
-grabs, shields, stays deterministic) live in `tests/cpu.rs`.
+recovers with and without a double jump, doesn't self-destruct at any level on any stage,
+higher levels attack more, mashes out of grabs, grabs, shields, stays deterministic) live
+in `tests/cpu.rs`.
 The helpers at the top of `gameplay.rs` (`world()`, `press()`, `stick()`,
 `run()`) keep tests short. The pattern is: set up, feed inputs frame by frame,
 then assert.

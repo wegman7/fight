@@ -28,15 +28,49 @@ pub struct Stage {
     pub respawn: (Fx, Fx),
 }
 
+/// The stages players pick from, in menu order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum StageId {
+    /// Battlefield-style: a main stage and three soft platforms.
+    Boardwalk,
+    /// Final Destination-style: one wide main stage, nothing else.
+    Sandbar,
+    /// Smashville-style: a smaller main stage under one soft platform.
+    Driftwood,
+}
+
+impl StageId {
+    pub const ALL: [StageId; 3] = [StageId::Boardwalk, StageId::Sandbar, StageId::Driftwood];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            StageId::Boardwalk => "Boardwalk",
+            StageId::Sandbar => "Sandbar",
+            StageId::Driftwood => "Driftwood",
+        }
+    }
+
+    pub fn stage(self) -> Stage {
+        match self {
+            StageId::Boardwalk => Stage::battlefield(),
+            StageId::Sandbar => Stage::flat(),
+            StageId::Driftwood => Stage::single_platform(),
+        }
+    }
+}
+
+fn plat(left: i32, right: i32, y: i32, soft: bool) -> Platform {
+    Platform { left: Fx::int(left), right: Fx::int(right), y: Fx::int(y), soft }
+}
+
+/// Spawn points on the floor: the first two at `±outer`, the next two at `±inner`.
+fn spawns(outer: i32, inner: i32) -> Vec<(Fx, Fx)> {
+    [-outer, outer, -inner, inner].into_iter().map(|x| (Fx::int(x), Fx::ZERO)).collect()
+}
+
 impl Stage {
     /// A Battlefield-style layout: one main stage and three soft platforms.
     pub fn battlefield() -> Stage {
-        let plat = |left, right, y, soft| Platform {
-            left: Fx::int(left),
-            right: Fx::int(right),
-            y: Fx::int(y),
-            soft,
-        };
         Stage {
             platforms: vec![
                 plat(-68, 68, 0, false),
@@ -48,12 +82,33 @@ impl Stage {
             blast_right: Fx::int(224),
             blast_top: Fx::int(200),
             blast_bottom: Fx::int(-108),
-            spawns: vec![
-                (Fx::int(-40), Fx::ZERO),
-                (Fx::int(40), Fx::ZERO),
-                (Fx::int(-15), Fx::ZERO),
-                (Fx::int(15), Fx::ZERO),
-            ],
+            spawns: spawns(40, 15),
+            respawn: (Fx::ZERO, Fx::int(80)),
+        }
+    }
+
+    /// A Final Destination-style layout: one wide main stage and no platforms.
+    pub fn flat() -> Stage {
+        Stage {
+            platforms: vec![plat(-85, 85, 0, false)],
+            blast_left: Fx::int(-240),
+            blast_right: Fx::int(240),
+            blast_top: Fx::int(200),
+            blast_bottom: Fx::int(-108),
+            spawns: spawns(50, 17),
+            respawn: (Fx::ZERO, Fx::int(80)),
+        }
+    }
+
+    /// A Smashville-style layout: a smaller main stage under one soft platform.
+    pub fn single_platform() -> Stage {
+        Stage {
+            platforms: vec![plat(-60, 60, 0, false), plat(-24, 24, 32, true)],
+            blast_left: Fx::int(-216),
+            blast_right: Fx::int(216),
+            blast_top: Fx::int(200),
+            blast_bottom: Fx::int(-108),
+            spawns: spawns(35, 12),
             respawn: (Fx::ZERO, Fx::int(80)),
         }
     }

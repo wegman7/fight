@@ -3,7 +3,8 @@
 2.5D platform fighter (Smash-like mechanics, original content). Rust workspace + Godot 4.7.
 
 - `sim/` (`fight_sim`): all gameplay rules, deterministic, engine-free. See `sim/CLAUDE.md`.
-- `gdext/` (`fight_gd`): godot-rust extension that feeds input to the sim and renders it. See `gdext/CLAUDE.md`.
+- `gdext/` (`fight_gd`): godot-rust extension that feeds input to the sim and renders it,
+  plus the Melee-style menus (stocks → character select → stage select). See `gdext/CLAUDE.md`.
 - `godot/`: Godot project. `main.tscn` root node is `FightWorld` (defined in Rust); it
   also holds the beach backdrop (purely decorative; sand and ocean shaders in `godot/shaders/`,
   next to the pug's `fur.gdshader`).
@@ -15,17 +16,20 @@
 - `art/stage/`: the stage's platform models (`stage.glb`, `raft.glb`), script-generated,
   textured by `wood.gdshader` and `stone.gdshader` swapped in on import. See `art/stage/README.md`.
 - Characters (`Character` in `sim/src/character.rs`) each have their own tuning and
-  moveset in the sim; `look()` in `gdext/src/lib.rs` picks each one's model.
+  moveset in the sim; `look()` in `gdext/src/lib.rs` picks each one's model. Stages are
+  `StageId` (`sim/src/stage.rs`); CPU difficulty is `CpuLevel::level(1..=9)` (`sim/src/cpu.rs`).
 
 ## Commands
 
 ```sh
-cargo test                                         # sim tests: run after any sim change
+cargo test                                         # sim tests + menu logic tests: run after any change to either
 cargo clippy --workspace --all-targets             # keep at zero warnings
 cargo build                                        # required before running Godot
-godot --headless --path godot --quit-after 600     # smoke test: must print no ERROR lines
+godot --headless --path godot --quit-after 600     # smoke test (menus, model checks): must print no ERROR lines
+FIGHT_DEMO=1 godot --headless --path godot --quit-after 900   # smoke test a match (skips the menus)
 FIGHT_DEMO=1 godot --path godot                    # visual check: CPUs fight, hitboxes on
-FIGHT_CPU=1 godot --path godot                     # play P1 vs an easy CPU (or press C in game)
+FIGHT_CPU=3 godot --path godot                     # skip the menus: P1 vs a level-3 CPU (levels 1-9)
+FIGHT_STAGE=sandbar FIGHT_DEMO=1 godot --path godot   # pick the stage for FIGHT_DEMO / FIGHT_CPU
 godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   # render frames to PNG for inspection
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb
@@ -46,6 +50,9 @@ If `cargo` isn't on PATH, prefix with `. "$HOME/.cargo/env";`.
   `World` must stay `Clone + PartialEq` (rollback snapshots).
 - **CPU players live in `sim/src/cpu.rs`** and only produce `Input`s; they never
   change fighter state directly. `gdext` just calls `Cpu::think` for CPU slots.
+- **Menus only choose a `MatchSetup`** (stocks, stage, each port's character and
+  CPU level). Their state and layout are in `gdext/src/menu.rs`, which has no Godot
+  nodes and is unit tested there; `gdext/src/menu_view.rs` only draws it.
 - **Models are visual only.** Animations are named after `Fighter::anim()` and
   seeked to the sim frame each render frame. They never free-run or drive gameplay.
   A model needs an animation for each of `STATE_ANIMS`, its character's
@@ -69,6 +76,9 @@ crate or subsystem needs its own explanation, add a `README.md` (for people) and
 
 - `godot --headless --import` sometimes segfaults on exit inside Godot itself
   (no frames in our library). Rerun it. Game runs aren't affected.
+- `--write-movie` only records frames while the window is actually drawn. If frames
+  freeze or the "frames at 60 FPS" count is short, the window was occluded: add
+  `--always-on-top`.
 - If Godot says `Cannot get class 'FightWorld'`, the extension isn't registered:
   check `godot/.godot/extension_list.cfg` contains `res://fight.gdextension`
   (re-import to regenerate), and that `cargo build` produced the dylib.

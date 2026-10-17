@@ -1,4 +1,4 @@
-use fight_sim::{Character, Cpu, Event, Fx, Input, MoveId, Stage, State, World};
+use fight_sim::{Character, Cpu, CpuLevel, Event, Fx, Input, MoveId, Stage, StageId, State, World};
 
 fn world() -> World {
     World::new(Stage::battlefield(), &[Character::Chef; 2], 3)
@@ -161,5 +161,57 @@ fn easy_cpu_pug_ear_copters_back_without_air_jumps() {
         assert!(used_ear_copter, "from x={x}");
         assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
         assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+    }
+}
+
+#[test]
+fn level_3_is_easy_and_levels_clamp() {
+    assert_eq!(CpuLevel::level(3), &CpuLevel::EASY);
+    assert_eq!(CpuLevel::level(0), CpuLevel::level(CpuLevel::MIN));
+    assert_eq!(CpuLevel::level(42), CpuLevel::level(CpuLevel::MAX));
+}
+
+#[test]
+fn higher_cpu_levels_attack_more() {
+    let attacks = |level| {
+        let (mut w, mut cpu) = (world(), Cpu::with_level(1, level));
+        vs_idle(&mut w, &mut cpu, 60 * 30).0
+    };
+    let (low, mid, high) = (attacks(1), attacks(5), attacks(9));
+    assert!(low < mid && mid < high, "attacks in 30 s: level 1 {low}, level 5 {mid}, level 9 {high}");
+}
+
+#[test]
+fn top_level_cpu_still_finishes_hop_attacks() {
+    // Its reaction time is shorter than a hop attack; the plan must not be dropped midway.
+    let (mut w, mut cpu) = (world(), Cpu::with_level(1, CpuLevel::MAX));
+    let mut aerials = 0;
+    for _ in 0..60 * 60 {
+        let input = cpu.think(&w);
+        w.step(&[Input::default(), input]);
+        aerials += matches!(w.fighters[1].state, State::Attack { mv: MoveId::Nair | MoveId::Fair, frame: 1, .. }) as usize;
+    }
+    assert!(aerials > 0, "no aerials in a minute");
+}
+
+#[test]
+fn every_cpu_level_keeps_its_stocks_on_every_stage() {
+    for id in StageId::ALL {
+        for level in CpuLevel::MIN..=CpuLevel::MAX {
+            let mut w = World::new(id.stage(), &[Character::Chef, Character::Pug], 3);
+            let mut cpu = Cpu::with_level(1, level);
+            vs_idle(&mut w, &mut cpu, 60 * 60);
+            assert_eq!(w.fighters[1].stocks, 3, "level {level} on {}", id.name());
+        }
+    }
+}
+
+#[test]
+fn cpu_lands_hits_on_every_stage() {
+    for id in StageId::ALL {
+        let mut w = World::new(id.stage(), &[Character::Chef; 2], 3);
+        let mut cpu = Cpu::with_level(1, 5);
+        let (_, hits) = vs_idle(&mut w, &mut cpu, 60 * 20);
+        assert!(hits > 0, "never hit an idle opponent on {}", id.name());
     }
 }
