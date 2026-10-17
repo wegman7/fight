@@ -29,7 +29,9 @@ FIGHT_DEMO=1 godot --path godot   # every player is a CPU, hitboxes on
 ## Things to know
 
 - The node tree is built in code: `build_stage`, `build_fighters` and `build_hud`
-  in `ready()`. Only the light, environment, `Camera3D` and the decorative backdrop
+  in `ready()`. `build_stage` puts a model from [`art/stage/`](../art/stage/README.md)
+  on each sim platform (`stage.glb` for the solid one, `raft.glb` for soft ones),
+  stretched in x from the width it was built at (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`). Only the light, environment, `Camera3D` and the decorative backdrop
   live in `main.tscn`, so they can be tweaked in the editor. The backdrop (`Beach`,
   `Clouds`) is a subdivided plane shaped by `shaders/sand.gdshader`, an ocean plane
   using `shaders/ocean.gdshader`, and props from `art/beach/` (palms, rocks,

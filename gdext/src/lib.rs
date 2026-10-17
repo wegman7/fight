@@ -6,7 +6,7 @@ use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
-    AnimationPlayer, BoxMesh, Camera3D, CanvasLayer, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
+    AnimationPlayer, Camera3D, CanvasLayer, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
     MeshInstance3D, Node3D, PackedScene, SphereMesh, StandardMaterial3D,
 };
 use godot::global::{JoyAxis, JoyButton, Key};
@@ -19,6 +19,11 @@ unsafe impl ExtensionLibrary for FightExtension {}
 
 /// Simulation units -> Godot meters.
 const SCALE: f32 = 0.1;
+/// Stage models made by `art/stage/build_stage.py`, and the platform width (m) each was built at.
+const STAGE_MODEL: &str = "res://models/stage.glb";
+const STAGE_MODEL_WIDTH: f32 = 13.6;
+const RAFT_MODEL: &str = "res://models/raft.glb";
+const RAFT_MODEL_WIDTH: f32 = 3.7;
 const PLAYERS: usize = 2;
 const STOCKS: u8 = 3;
 const PLAYER_COLORS: [Color; 4] = [
@@ -313,19 +318,19 @@ impl FightWorld {
 
     fn build_stage(&mut self) {
         let stage = self.world.stage.clone();
-        for plat in &stage.platforms {
+        for (i, plat) in stage.platforms.iter().enumerate() {
             let width = (plat.right - plat.left).to_f32() * SCALE;
-            // Driftwood platforms over a weathered stone block, to suit the beach backdrop.
-            let (thickness, depth, color) = if plat.soft {
-                (0.15, 3.0, Color::from_rgb(0.45, 0.32, 0.22))
-            } else {
-                (1.6, 5.0, Color::from_rgb(0.46, 0.40, 0.34))
-            };
-            let mut mesh = BoxMesh::new_gd();
-            mesh.set_size(Vector3::new(width, thickness, depth));
-            let (mut node, _) = mesh_instance(mesh.upcast(), color);
+            // A boardwalk on a floating sandstone rock, and driftwood rafts (art/stage/),
+            // stretched to the platform's width. Their tops are at their origin.
+            let (model, model_width) = if plat.soft { (RAFT_MODEL, RAFT_MODEL_WIDTH) } else { (STAGE_MODEL, STAGE_MODEL_WIDTH) };
+            let mut node = load::<PackedScene>(model).instantiate_as::<Node3D>();
             let center_x = (plat.left + plat.right).to_f32() * 0.5 * SCALE;
-            node.set_position(Vector3::new(center_x, plat.y.to_f32() * SCALE - thickness * 0.5, 0.0));
+            node.set_position(Vector3::new(center_x, plat.y.to_f32() * SCALE, 0.0));
+            node.set_scale(Vector3::new(width / model_width, 1.0, 1.0));
+            if plat.soft && i % 2 == 0 {
+                // Turn every other raft around so they don't all look the same.
+                node.set_rotation_degrees(Vector3::new(0.0, 180.0, 0.0));
+            }
             self.base_mut().add_child(&node);
         }
     }

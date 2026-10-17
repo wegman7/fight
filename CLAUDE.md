@@ -12,6 +12,8 @@
 - `art/pug/`: the black pug model (`godot/models/pug.glb`), also script-generated, on a
   four-legged rig. Its fur shader is swapped in by `pug.glb.import`. See `art/pug/README.md`.
 - `art/beach/`: script-generated backdrop props (palms, rock, sailboat). See `art/beach/README.md`.
+- `art/stage/`: the stage's platform models (`stage.glb`, `raft.glb`), script-generated,
+  textured by `wood.gdshader` and `stone.gdshader` swapped in on import. See `art/stage/README.md`.
 - Characters (`Character` in `sim/src/character.rs`) each have their own tuning and
   moveset in the sim; `look()` in `gdext/src/lib.rs` picks each one's model.
 
@@ -28,6 +30,7 @@ godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   #
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb
 blender --background --factory-startup --python art/beach/build_beach.py       # rebuild backdrop props
+blender --background --factory-startup --python art/stage/build_stage.py       # rebuild stage platforms
 godot --headless --path godot --import             # after a .glb changes
 ```
 
