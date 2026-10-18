@@ -10,6 +10,10 @@
   `Vector2` / `Rect2`), drawing in `menu_view.rs`. A menu behaviour change needs a test
   in `menu.rs`'s `tests`. Hit tests and drawing must use the same layout functions.
   `MenuView` builds nodes once; `update` must not create nodes every frame.
+- All 2D UI (menus, HUD) is placed in fixed 1600x900 coordinates (`menu::SCREEN`).
+  `godot/project.godot` sets stretch mode `canvas_items` / aspect `keep`, so Godot scales
+  it to the window and letterboxes other aspect ratios. Don't read the window size or
+  use anchors to lay out UI.
 - Everything a match creates goes under `FightWorld::arena` (never `base_mut()`), so
   `clear_arena` can tear it down.
 - Sim stepping happens in `physics_process` (60 Hz, set in `godot/project.godot`).
