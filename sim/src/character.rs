@@ -13,8 +13,8 @@ pub enum Character {
     /// tackle that rides its target, an ear-flapping recovery and a play-dead counter.
     Pug,
     /// A katana swordsman: the longest reach, a little heavier and slower to start:
-    /// slashes, a wind-blade projectile, a dash strike, a rising-dragon recovery and a
-    /// parry that ripostes.
+    /// slashes, a chargeable focus cut, a vault over the opponent, a spinning recovery
+    /// and a parry that ripostes.
     Samurai,
 }
 
@@ -147,9 +147,9 @@ static SAMURAI_MOVES: Moveset = Moveset {
     bair: MoveId::SamuraiBackCut,
     uair: MoveId::SamuraiSkyArc,
     dair: MoveId::SamuraiPlungeStab,
-    neutral_special: MoveId::SamuraiWindSlash,
-    side_special: MoveId::SamuraiDashStrike,
-    up_special: MoveId::SamuraiRisingDragon,
+    neutral_special: MoveId::SamuraiFocusCut,
+    side_special: MoveId::SamuraiVault,
+    up_special: MoveId::SamuraiCyclone,
     down_special: MoveId::SamuraiParry,
     grab: MoveId::Grab,
     dash_grab: MoveId::DashGrab,

@@ -260,7 +260,8 @@ impl World {
     fn resolve_hits(&mut self) {
         let mut strikes: Vec<Strike> = Vec::new();
         for (ai, attacker) in self.fighters.iter().enumerate() {
-            let State::Attack { hit_mask, .. } = attacker.state else { continue };
+            let State::Attack { mv, hit_mask, .. } = attacker.state else { continue };
+            let growth = mv.data().charge_growth.as_ref();
             for (hb, x, y) in active_hitboxes(attacker) {
                 for (di, defender) in self.fighters.iter().enumerate() {
                     let already_hit = hit_mask & (1 << di) != 0
@@ -271,9 +272,9 @@ impl World {
                             defender: di,
                             x,
                             y,
-                            damage: attacker.charged(hb.damage),
+                            damage: attacker.charged(hb.damage) + growth.map_or(0, |g| grown(g.damage, attacker.charge)),
                             angle: hb.angle,
-                            base_kb: hb.base_kb,
+                            base_kb: hb.base_kb + growth.map_or(0, |g| grown(g.base_kb, attacker.charge)),
                             kb_growth: hb.kb_growth,
                             direction: attacker.facing,
                             projectile: None,

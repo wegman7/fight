@@ -176,20 +176,20 @@ fn easy_cpu_lands_hits_as_the_samurai() {
 }
 
 #[test]
-fn easy_cpu_samurai_rising_dragons_back_without_air_jumps() {
+fn easy_cpu_samurai_cyclones_back_without_air_jumps() {
     for x in [-85, 85] {
         let (mut w, mut cpu) = (samurai_cpu_world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
         (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
-        let (mut used_rising_dragon, mut landed) = (false, false);
+        let (mut used_cyclone, mut landed) = (false, false);
         for _ in 0..300 {
             let input = cpu.think(&w);
             w.step(&[Input::default(), input]);
-            used_rising_dragon |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::SamuraiRisingDragon, .. });
+            used_cyclone |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::SamuraiCyclone, .. });
             // Once back, it may be mid-hop at the end, so look for any landing.
             landed |= w.fighters[1].grounded();
         }
-        assert!(used_rising_dragon, "from x={x}");
+        assert!(used_cyclone, "from x={x}");
         assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
         assert!(landed, "not back on stage from x={x}");
     }

@@ -88,7 +88,7 @@ screen doesn't also act on the next one.
   shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar; on the samurai, his headband and sash.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
   Projectiles come from `World::projectiles` and are drawn from a pool, each as its
-  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff; the samurai's wind slash, steel blue;
+  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff;
   sized by `Projectile::radius()`, which grows with charge); `Shot::Model` loads a model
   (the chef's `res://models/pie.glb`), turns it the way it flies and tilts it with its
   arc. Model shots burst into cream blobs (`Splat`) where they hit (`Event::Hit` /

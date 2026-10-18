@@ -13,7 +13,8 @@
   `..BASE`), then put it in a character's `Moveset` (`character.rs`) or reach it as a
   follow-up (`combo`, `Landing::Into`, `Counter::into`). `Fighter::step` picks moves
   through `self.moveset()`; never name a `MoveId` there. Hitbox/grab box/motion/projectile/
-  throw `x` are forward offsets, mirrored by facing automatically. Its `name` needs a
+  throw `x` are forward offsets, mirrored by facing automatically (after a move's `turn`
+  frame, by the new facing). Its `name` needs a
   matching animation in that character's model script (`art/fighter/build_fighter.py`,
   `art/pug/build_pug.py`, `art/samurai/build_samurai.py`).
 - New character → a `Character` variant with its `FighterParams`, `Moveset` and name,

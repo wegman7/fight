@@ -82,9 +82,11 @@ pub enum MoveId {
     SamuraiBackCut,
     SamuraiSkyArc,
     SamuraiPlungeStab,
-    SamuraiWindSlash,
-    SamuraiDashStrike,
-    SamuraiRisingDragon,
+    SamuraiFocusCut,
+    SamuraiVault,
+    /// The vault's follow-up: a downward strike from the air.
+    SamuraiVaultStrike,
+    SamuraiCyclone,
     SamuraiParry,
     /// The parry's answer: a quick cut at the attacker.
     SamuraiRiposte,
@@ -166,6 +168,15 @@ pub struct ProjectileGrowth {
     pub recoil: Fx,
 }
 
+/// For a move with a `charge_frame`: what each of its hitboxes gains at full charge
+/// (`MAX_CHARGE` frames), in proportion to how long it was charged. On top of the
+/// damage every charged move gains.
+#[derive(Debug)]
+pub struct HitGrowth {
+    pub damage: i32,
+    pub base_kb: i32,
+}
+
 /// Applied to the held opponent on `frame`. A pummel (`release: false`) only deals
 /// damage; a throw puts the opponent at `x` and launches them.
 #[derive(Debug)]
@@ -220,11 +231,15 @@ pub struct MoveData {
     pub charge_frame: Option<u16>,
     /// The buttons that keep charging: attack or smash for smash attacks.
     pub charge_with: u8,
+    pub charge_growth: Option<HitGrowth>,
     /// Pressing attack from this frame on cancels into the next hit of a combo.
     pub combo: Option<(MoveId, u16)>,
     /// Ends in helpless special fall when it finishes in the air.
     pub special_fall: bool,
     pub counter: Option<Counter>,
+    /// The fighter turns around on this frame (the samurai's vault, passing over an
+    /// opponent). Motion and hitboxes from then on are relative to the new facing.
+    pub turn: Option<u16>,
 }
 
 const BASE: MoveData = MoveData {
@@ -239,9 +254,11 @@ const BASE: MoveData = MoveData {
     landing: Landing::Continue,
     charge_frame: None,
     charge_with: Input::ATTACK | Input::SMASH,
+    charge_growth: None,
     combo: None,
     special_fall: false,
     counter: None,
+    turn: None,
 };
 
 impl MoveId {
@@ -317,9 +334,10 @@ impl MoveId {
             MoveId::SamuraiBackCut => &SAMURAI_BACK_CUT,
             MoveId::SamuraiSkyArc => &SAMURAI_SKY_ARC,
             MoveId::SamuraiPlungeStab => &SAMURAI_PLUNGE_STAB,
-            MoveId::SamuraiWindSlash => &SAMURAI_WIND_SLASH,
-            MoveId::SamuraiDashStrike => &SAMURAI_DASH_STRIKE,
-            MoveId::SamuraiRisingDragon => &SAMURAI_RISING_DRAGON,
+            MoveId::SamuraiFocusCut => &SAMURAI_FOCUS_CUT,
+            MoveId::SamuraiVault => &SAMURAI_VAULT,
+            MoveId::SamuraiVaultStrike => &SAMURAI_VAULT_STRIKE,
+            MoveId::SamuraiCyclone => &SAMURAI_CYCLONE,
             MoveId::SamuraiParry => &SAMURAI_PARRY,
             MoveId::SamuraiRiposte => &SAMURAI_RIPOSTE,
             MoveId::SamuraiHipThrow => &SAMURAI_HIP_THROW,
@@ -1021,52 +1039,67 @@ static SAMURAI_PLUNGE_STAB: MoveData = MoveData {
     ..BASE
 };
 
-/// Wind slash: a cut so fast it sends a blade of air flying. Hold special to build it
-/// up; a full charge makes it bigger, harder hitting and longer lived.
-static SAMURAI_WIND_SLASH: MoveData = MoveData {
-    name: "wind_slash",
-    total_frames: 40,
-    projectile: Some(ProjectileData {
-        frame: 14,
-        x: int(9),
-        y: int(7),
-        speed: Fx::ratio(28, 10),
-        vy: Fx::ZERO,
-        gravity: Fx::ZERO,
-        lifetime: 26,
-        radius: int(3),
-        damage: 6,
-        angle: 40,
-        base_kb: 25,
-        kb_growth: 55,
-        growth: Some(ProjectileGrowth { radius: int(2), damage: 8, base_kb: 25, lifetime: 14, recoil: Fx::ZERO }),
-    }),
-    charge_frame: Some(10),
+/// Focus cut: raises the blade beside his head and gathers himself, then a sweeping
+/// cut. Hold special to charge it (up to 1 s, then it swings by itself): a full charge
+/// hits far harder than any smash attack.
+static SAMURAI_FOCUS_CUT: MoveData = MoveData {
+    name: "focus_cut",
+    total_frames: 46,
+    hitboxes: &[hit(13, 16, int(13), int(7), int(4), 10, 40, 40, 95), hit(13, 16, int(7), int(8), int(5), 8, 42, 36, 92)],
+    charge_frame: Some(9),
     charge_with: Input::SPECIAL,
+    charge_growth: Some(HitGrowth { damage: 10, base_kb: 30 }),
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// Vault: crouches, then hops up over whoever is in front, turning around at the top
+/// to land behind them facing their back. Press attack once airborne (frame 9 on) to
+/// strike down instead (`SAMURAI_VAULT_STRIKE`). Once per airtime, like every side
+/// special.
+static SAMURAI_VAULT: MoveData = MoveData {
+    name: "vault",
+    total_frames: 34,
+    motion: &[
+        Motion { first: 1, last: 6, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 7, last: 12, vx: Some(Fx::ratio(18, 10)), vy: Some(Fx::ratio(24, 10)) },
+        Motion { first: 13, last: 14, vx: Some(Fx::ratio(18, 10)), vy: Some(Fx::ratio(12, 10)) },
+        // Turned around on 15, so the same way is now backward. Back down to the
+        // starting height on 22.
+        Motion { first: 15, last: 16, vx: Some(Fx::ratio(-18, 10)), vy: Some(Fx::ratio(-12, 10)) },
+        Motion { first: 17, last: 22, vx: Some(Fx::ratio(-18, 10)), vy: Some(Fx::ratio(-24, 10)) },
+    ],
+    turn: Some(15),
+    combo: Some((MoveId::SamuraiVaultStrike, 9)),
     landing: Landing::Lag(10),
     ..BASE
 };
 
-/// Dash strike: crouches with the blade sheathed, then crosses a third of the stage in
-/// one draw-and-cut. Once per airtime, like every side special.
-static SAMURAI_DASH_STRIKE: MoveData = MoveData {
-    name: "dash_strike",
-    total_frames: 46,
-    hitboxes: &[hit(10, 16, int(8), int(7), int(6), 12, 40, 40, 85)],
+/// Points the blade down and drops straight onto whoever is below: a meteor.
+static SAMURAI_VAULT_STRIKE: MoveData = MoveData {
+    name: "vault_strike",
+    total_frames: 36,
+    hitboxes: &[hit(4, 22, int(1), int(-2), int(5), 12, 270, 25, 80)],
     motion: &[
-        Motion { first: 1, last: 8, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
-        Motion { first: 9, last: 16, vx: Some(Fx::ratio(32, 10)), vy: Some(Fx::ZERO) },
+        Motion { first: 1, last: 3, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 4, last: 22, vx: Some(Fx::ZERO), vy: Some(Fx::int(-3)) },
     ],
-    landing: Landing::Lag(14),
+    landing: Landing::Lag(16),
     ..BASE
 };
 
-/// Rising dragon, the recovery: a spinning upward cut of about 40 units, steerable.
-/// Helpless afterwards.
-static SAMURAI_RISING_DRAGON: MoveData = MoveData {
-    name: "rising_dragon",
+/// Cyclone, the recovery: spins with the blade held out level, climbing about 40
+/// units, steerable. The blade sweeps both sides, hardest as it starts. Helpless
+/// afterwards.
+static SAMURAI_CYCLONE: MoveData = MoveData {
+    name: "cyclone",
     total_frames: 46,
-    hitboxes: &[hit(4, 7, int(6), int(10), int(5), 11, 80, 45, 80), hit(8, 18, int(2), int(16), int(5), 5, 85, 25, 60)],
+    hitboxes: &[
+        hit(4, 7, int(9), int(7), int(5), 11, 75, 45, 80),
+        hit(4, 7, int(-9), int(7), int(5), 11, 105, 45, 80),
+        hit(8, 18, int(8), int(9), int(5), 5, 80, 25, 60),
+        hit(8, 18, int(-8), int(9), int(5), 5, 100, 25, 60),
+    ],
     motion: &[
         Motion { first: 1, last: 3, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
         Motion { first: 4, last: 18, vx: None, vy: Some(Fx::ratio(26, 10)) },

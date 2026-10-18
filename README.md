@@ -146,9 +146,9 @@ forward smash:
 | Dash attack | Running cut |
 | Forward / up / down smash | Two-handed overhead cleave / upward cut / spin sweep, in front then behind |
 | Neutral / forward / back / up / down air | Full turn of the blade around him / downward arc / cut behind / arc overhead / downward stab that meteors |
-| Special (neutral) | Wind slash: a cut that sends a fast blade of wind flying. Hold special to charge it (up to 1 s): bigger, stronger and longer lived. |
-| Special + sideways | Dash strike: a crouch, then one draw-and-cut that crosses a third of the stage. Once per trip through the air. |
-| Special + up | Rising dragon: a fast upward cut, steerable. Helpless after. |
+| Special (neutral) | Focus cut: raises the blade and gathers himself, then a sweeping cut. Hold special to charge it (up to 1 s, then it swings by itself): a full charge does 24% and launches far harder than a smash attack. |
+| Special + sideways | Vault: a crouch, then a hop up over whoever is in front, turning around at the top to land behind them. Press attack once airborne to strike straight down instead (a meteor). Once per trip through the air. |
+| Special + up | Cyclone: spins with the blade held level as he climbs, cutting both sides, steerable. Helpless after. |
 | Special + down | Parry: if hit in frames 5-24, he takes no damage and ripostes |
 | Grab, pummel, throws | The chef's grab with his free hand, a hilt bash, then hip throw forward / shoulder throw behind (the kill throw) / toss up / knee pin (pops them up for a combo) |
 

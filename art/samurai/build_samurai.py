@@ -425,6 +425,17 @@ def lunge(pose, fwd, drop, front, back=-0.2):
     return planted(with_(pose, hips_loc=(fwd, -drop)), front, back)
 
 
+def pitch(value):
+    return value[0] if isinstance(value, tuple) else value
+
+
+def turned(pose, twist):
+    """`pose` turned about the vertical by `twist` degrees: negative turns him toward
+    the camera when facing right (positive when facing left, as the model is turned
+    180 degrees then). Spins go past 360 like the sword's."""
+    return with_(pose, hips=(pitch(pose.get("hips", 0)), twist, 0))
+
+
 S = stance()
 CROUCH = with_(crouch(0.16), upper_arm_R=20, forearm_R=70, aim=20)
 AIR_S = with_(AIR, aim=45)
@@ -487,46 +498,29 @@ STAB = with_(AIR_S, spine=-8, head=8, upper_arm_R=22, forearm_R=0, aim=-88, uppe
              thigh_R=60, shin_R=-20, foot_R=-30, thigh_L=-30, shin_L=-30, foot_L=-30)
 
 # Specials
-DRAW_WIND = lunge(with_(crouch(0.12), spine=-6, upper_arm_R=14, forearm_R=96, aim=188, upper_arm_L=10, forearm_L=70), -0.02, 0.12, 0.24)
-DRAW_CUT = lunge(with_(S, spine=-18, head=14, upper_arm_R=100, forearm_R=0, aim=8, upper_arm_L=-40, forearm_L=10), 0.1, 0.1, 0.38)
-DRAW_FOLLOW = with_(DRAW_CUT, upper_arm_R=132, aim=50)
-STRIKE_WIND = lunge(with_(crouch(0.18), spine=-14, upper_arm_R=-24, forearm_R=30, aim=-162, upper_arm_L=30, forearm_L=80), -0.02, 0.18, 0.26)
-STRIKE = {
-    "hips_loc": (0.08, 0.02),
-    "hips": -30,
-    "spine": -15,
-    "head": 35,
-    "upper_arm.R": 130,
+FOCUS = planted(with_(S, hips_loc=(-0.03, -0.08), spine=4, head=-4, upper_arm_R=118, forearm_R=62, aim=96, upper_arm_L=112, forearm_L=70), 0.22, -0.22)
+FOCUS_LOAD = with_(FOCUS, spine=10, head=-8, upper_arm_R=150, forearm_R=50, aim=160, upper_arm_L=140, forearm_L=60)
+FOCUS_CUT = lunge(with_(S, spine=-24, head=18, upper_arm_R=100, forearm_R=0, aim=2, upper_arm_L=90, forearm_L=10), 0.16, 0.12, 0.46, -0.26)
+FOCUS_THROUGH = with_(FOCUS_CUT, upper_arm_R=70, upper_arm_L=62, aim=-35)
+VAULT_CROUCH = with_(crouch(0.24), spine=-20, head=18, upper_arm_R=-30, forearm_R=20, aim=-160, upper_arm_L=30, forearm_L=60)
+VAULT_LEAP = with_(AIR_S, spine=-15, head=10, upper_arm_R=-20, forearm_R=30, aim=-150, thigh_R=20, shin_R=-20, foot_R=-20, thigh_L=-30, shin_L=-30, foot_L=-30)
+VAULT_TUCK = with_(AIR_TUCK, spine=8, head=-6, upper_arm_R=160, forearm_R=20, aim=100, upper_arm_L=60, forearm_L=60)
+VAULT_DROP = with_(AIR_S, thigh_R=40, shin_R=-60, thigh_L=25, shin_L=-50, upper_arm_R=60, forearm_R=40, aim=20)
+CYCLONE_LOW = with_(crouch(0.14), spine=-8, upper_arm_R=-20, forearm_R=40, aim=-170, upper_arm_L=40, forearm_L=60)
+CYCLONE = {
+    "spine": 0,
+    "head": -4,
+    "upper_arm.R": 90,
     "forearm.R": 0,
-    "upper_arm.L": -10,
-    "forearm.L": 20,
-    "thigh.R": 70,
+    "upper_arm.L": -70,
+    "forearm.L": 10,
+    "thigh.R": 40,
     "shin.R": -60,
-    "foot.R": 10,
-    "thigh.L": -40,
-    "shin.L": -30,
-    "foot.L": 30,
-    "aim": 2,
-}
-STRIKE_THROUGH = with_(STRIKE, hips=-10, spine=-10, head=15, upper_arm_R=60, aim=-40)
-STRIKE_SHEATHE = lunge(with_(S, spine=-8, upper_arm_R=-40, forearm_R=0, aim=-170, upper_arm_L=30, forearm_L=70), 0.06, 0.12, 0.34)
-DRAGON_LOW = with_(crouch(0.14), upper_arm_R=30, forearm_R=10, aim=-30)
-DRAGON = {
-    "hips_loc": (0, 0.05),
-    "spine": 6,
-    "head": -12,
-    "upper_arm.R": 176,
-    "forearm.R": 0,
-    "upper_arm.L": -20,
-    "forearm.L": 50,
-    "thigh.R": 85,
-    "shin.R": -110,
-    "thigh.L": -10,
-    "shin.L": -15,
+    "thigh.L": -5,
+    "shin.L": -10,
     "foot.L": -30,
-    "aim": 92,
+    "aim": 0,
 }
-DRAGON_RISING = with_(DRAGON, upper_arm_R=104, aim=30)
 HELPLESS = with_(AIR_S, spine=10, head=-10, upper_arm_R=150, forearm_R=30, upper_arm_L=140, forearm_L=40, aim=150,
                  thigh_R=20, shin_R=-40, thigh_L=5, shin_L=-30)
 PARRY = with_(S, hips_loc=(-0.02, -0.07), spine=4, head=-4, upper_arm_R=48, forearm_R=96, aim=96, upper_arm_L=56, forearm_L=92)
@@ -606,12 +600,17 @@ ANIMATIONS = {
     "back_cut": [(1, AIR_S), (5, BCUT_WIND), (8, BCUT), (11, BCUT_LOW), (24, BCUT_LOW), (38, AIR_S)],
     "sky_arc": [(1, AIR_S), (3, ARC_FRONT), (5, ARC_UP), (8, ARC_TOP), (10, ARC_BACK), (20, ARC_BACK), (36, AIR_S)],
     "plunge_stab": [(1, AIR_S), (8, STAB_WIND), (11, with_(STAB, upper_arm_R=90, aim=-40)), (12, STAB), (30, STAB), (46, AIR_S)],
-    # Specials. Wind slash: charge frame 10, the blade of wind leaves on 14.
-    "wind_slash": [(1, S), (6, DRAW_WIND), (10, DRAW_WIND), (13, with_(DRAW_CUT, upper_arm_R=60, aim=-20)), (14, DRAW_CUT), (18, DRAW_FOLLOW), (28, DRAW_FOLLOW), (40, S)],
-    # Dash strike: still on 1-8, dashes 9-16, hit 10-16.
-    "dash_strike": [(1, S), (5, STRIKE_WIND), (8, STRIKE_WIND), (9, STRIKE), (13, STRIKE), (16, STRIKE_THROUGH), (24, STRIKE_SHEATHE), (34, STRIKE_SHEATHE), (46, S)],
-    # Rising dragon: rises 4-20, hit 4-7 then 8-18, then helpless.
-    "rising_dragon": [(1, S), (3, DRAGON_LOW), (4, DRAGON_RISING), (7, DRAGON), (18, DRAGON), (28, with_(DRAGON, upper_arm_R=150, aim=130, thigh_R=50)), (46, HELPLESS)],
+    # Specials. Focus cut: charge frame 9 (held while charging), hit 13-16.
+    "focus_cut": [(1, S), (6, FOCUS), (9, FOCUS), (11, FOCUS_LOAD), (12, with_(FOCUS_CUT, upper_arm_R=140, upper_arm_L=130, aim=70)), (13, FOCUS_CUT), (16, FOCUS_THROUGH), (30, FOCUS_THROUGH), (46, S)],
+    # Vault: crouches 1-6, leaps on 7, back down on 22. The sim turns him around on 15,
+    # so he twists toward the camera until 14 and from the mirrored side after.
+    "vault": [(1, S), (4, VAULT_CROUCH), (6, VAULT_CROUCH), (7, VAULT_LEAP), (11, VAULT_TUCK), (14, turned(VAULT_TUCK, -65)), (15, turned(VAULT_TUCK, 65)), (18, VAULT_TUCK), (22, VAULT_DROP), (34, AIR_S)],
+    # Vault strike: hangs 1-3, drops and hits 4-22.
+    "vault_strike": [(1, VAULT_TUCK), (3, STAB_WIND), (4, STAB), (22, STAB), (36, AIR_S)],
+    # Cyclone: rises 4-20, both sides hit 4-7 then 8-18, then helpless. Four turns
+    # toward the camera, fast while it hits.
+    "cyclone": [(1, S), (3, CYCLONE_LOW), (4, turned(CYCLONE, 30)), (8, turned(CYCLONE, 360)), (12, turned(CYCLONE, 720)), (18, turned(CYCLONE, 1260)),
+                (28, turned(with_(CYCLONE, upper_arm_R=150, aim=120), 1440)), (46, turned(HELPLESS, 1440))],
     # Parry: counters hits on 5-24. Riposte: 32 frames, hit 4-7.
     "parry": [(1, S), (4, PARRY), (24, PARRY), (34, with_(PARRY, upper_arm_R=40, aim=80)), (46, S)],
     "riposte": [(1, PARRY), (3, RIPOSTE_HIGH), (4, RIPOSTE), (7, RIPOSTE_THROUGH), (16, RIPOSTE_THROUGH), (32, S)],
@@ -630,10 +629,6 @@ ANIMATIONS = {
     "roll_b": [(1, S), (4, BALL), (20, BALL), (28, CROUCH), (32, S)],
     "airdodge": [(1, AIR_S), (4, AIRDODGE), (25, AIRDODGE), (34, AIR_S), (40, AIR_S)],
 }
-
-
-def pitch(value):
-    return value[0] if isinstance(value, tuple) else value
 
 
 def apply_pose(rig, pose):

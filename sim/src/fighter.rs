@@ -478,6 +478,9 @@ impl Fighter {
                 } else {
                     self.state = State::Attack { mv, frame: frame + 1, hit_mask };
                     self.frame_advanced = true;
+                    if data.turn == Some(frame + 1) {
+                        self.facing = -self.facing;
+                    }
                 }
             }
             State::Dodge { kind, frame } => {

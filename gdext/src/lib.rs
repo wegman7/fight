@@ -52,8 +52,8 @@ struct Look {
     /// Rigged model with an animation for every name its character's `Fighter::anim()`
     /// can return, keyed at 60 fps.
     model: &'static str,
-    /// How its neutral special's projectile is drawn.
-    shot: Shot,
+    /// How its neutral special's projectile is drawn, if it has one.
+    shot: Option<Shot>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -71,12 +71,12 @@ fn look(character: Character) -> Look {
         // drawn a bit bigger in flight, a little inside its 0.6 m hitbox.
         Character::Chef => Look {
             model: "res://models/fighter.glb",
-            shot: Shot::Model { path: "res://models/pie.glb", scale: 1.5, splat: Color::from_rgb(0.98, 0.96, 0.9) },
+            shot: Some(Shot::Model { path: "res://models/pie.glb", scale: 1.5, splat: Color::from_rgb(0.98, 0.96, 0.9) }),
         },
         // Built by art/pug/build_pug.py. Its projectile is a sneeze cloud.
-        Character::Pug => Look { model: "res://models/pug.glb", shot: Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8)) },
-        // Built by art/samurai/build_samurai.py. Its projectile is a blade of wind.
-        Character::Samurai => Look { model: "res://models/samurai.glb", shot: Shot::Orb(Color::from_rgb(0.75, 0.88, 1.0)) },
+        Character::Pug => Look { model: "res://models/pug.glb", shot: Some(Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8))) },
+        // Built by art/samurai/build_samurai.py. All his specials are sword moves.
+        Character::Samurai => Look { model: "res://models/samurai.glb", shot: None },
     }
 }
 /// Surfaces with this material name get the player's color.
@@ -571,11 +571,11 @@ impl FightWorld {
     }
 
     /// Each projectile as its owner's `Shot`: the pug's sneeze is a pale glowing puff,
-    /// the samurai's wind slash a steel-blue one, the chef's pie a model flying cream first.
+    /// the chef's pie a model flying cream first.
     fn update_projectiles(&mut self) {
         let projectiles = self.world.projectiles.clone();
         for (i, p) in projectiles.iter().enumerate() {
-            let shot = look(self.world.fighters[p.owner].character).shot;
+            let shot = look(self.world.fighters[p.owner].character).shot.expect("projectile from a character without a Shot");
             if self.projectile_pool.get(i).is_none_or(|view| view.shot != shot) {
                 let view = self.projectile_view(shot);
                 self.arena.add_child(&view.node);
@@ -632,7 +632,7 @@ impl FightWorld {
     /// The cream color if `attacker`'s hit came from a projectile that splats.
     fn splat_color(&self, attacker: usize, projectile: bool) -> Option<Color> {
         match look(self.world.fighters[attacker].character).shot {
-            Shot::Model { splat, .. } if projectile => Some(splat),
+            Some(Shot::Model { splat, .. }) if projectile => Some(splat),
             _ => None,
         }
     }

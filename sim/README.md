@@ -92,7 +92,7 @@ cargo test -p fight_sim -- --nocapture
 
 Gameplay tests live in `tests/gameplay.rs` (the chef), `tests/pug.rs` (the pug's
 moves, tuning and play-dead counter) and `tests/samurai.rs` (the samurai's moves, reach,
-tipper, wind slash, dash strike and parry). CPU behaviour tests (engages,
+tipper, charged focus cut, vault and its strike, cyclone and parry). CPU behaviour tests (engages,
 recovers with and without a double jump, doesn't self-destruct at any level on any stage,
 higher levels attack more, mashes out of grabs, grabs, shields, stays deterministic) live
 in `tests/cpu.rs`.

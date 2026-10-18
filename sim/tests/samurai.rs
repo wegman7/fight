@@ -54,7 +54,7 @@ fn samurai_is_the_chefs_height_heavier_and_slower_to_run() {
 #[test]
 fn samurai_moves_are_his_own_except_the_grab() {
     let moves = Character::Samurai.moves();
-    for follow_up in [MoveId::SamuraiSlash2, MoveId::SamuraiThrust, MoveId::SamuraiRiposte] {
+    for follow_up in [MoveId::SamuraiSlash2, MoveId::SamuraiThrust, MoveId::SamuraiRiposte, MoveId::SamuraiVaultStrike] {
         assert!(moves.contains(&follow_up), "{follow_up:?}");
     }
     for shared in [MoveId::Grab, MoveId::DashGrab, MoveId::Pummel] {
@@ -74,9 +74,9 @@ fn samurai_inputs_start_samurai_moves() {
         (0, 0, Input::SMASH, MoveId::SamuraiCleave),
         (0, 100, Input::SMASH, MoveId::SamuraiSkyCut),
         (0, -100, Input::SMASH, MoveId::SamuraiSpinSweep),
-        (0, 0, Input::SPECIAL, MoveId::SamuraiWindSlash),
-        (100, 0, Input::SPECIAL, MoveId::SamuraiDashStrike),
-        (0, 100, Input::SPECIAL, MoveId::SamuraiRisingDragon),
+        (0, 0, Input::SPECIAL, MoveId::SamuraiFocusCut),
+        (100, 0, Input::SPECIAL, MoveId::SamuraiVault),
+        (0, 100, Input::SPECIAL, MoveId::SamuraiCyclone),
         (0, -100, Input::SPECIAL, MoveId::SamuraiParry),
         (0, 0, Input::GRAB, MoveId::Grab),
     ];
@@ -141,76 +141,108 @@ fn forward_cut_outreaches_the_chefs_kick() {
     assert_eq!(w.fighters[1].percent, 0);
 }
 
-/// Starts the wind slash, then feeds `held` every frame until it fires (frame 14).
-fn wind_slash(w: &mut World, held: Input) {
+/// Starts the focus cut at P2, standing at the blade's tip, then feeds `held` every
+/// frame until it hits. Returns the world and the frame it hit on.
+fn focus_cut(held: Input) -> (World, u16) {
+    let mut w = world();
+    w.fighters[1].x = Fx::int(-27);
     w.step(&[press(Input::SPECIAL), NONE]);
-    for _ in 0..120 {
-        if !w.projectiles.is_empty() {
-            return;
-        }
+    for frame in 2..200 {
         w.step(&[held, NONE]);
+        if w.fighters[1].percent > 0 {
+            return (w, frame);
+        }
     }
-    panic!("no wind slash");
+    panic!("the focus cut never hit");
 }
 
 #[test]
-fn tapped_wind_slash_fires_a_fast_blade_on_frame_14() {
+fn tapped_focus_cut_hits_on_frame_13() {
+    let (w, frame) = focus_cut(NONE);
+    assert_eq!(frame, 13);
+    assert_eq!(w.fighters[1].percent, 10, "with the tip");
+}
+
+#[test]
+fn fully_charged_focus_cut_swings_by_itself_and_hits_far_harder() {
+    let (tapped, _) = focus_cut(NONE);
+    let (w, frame) = focus_cut(press(Input::SPECIAL));
+    assert_eq!(frame, 13 + 60, "swings after a second of charging");
+    assert_eq!(w.fighters[0].charge, 60);
+    // 10 x 1.4 like any charged move, plus the focus cut's own 10.
+    assert_eq!(w.fighters[1].percent, 24);
+    assert!(w.fighters[1].kb_x > tapped.fighters[1].kb_x * Fx::ratio(3, 2), "{:?} vs {:?}", w.fighters[1].kb_x, tapped.fighters[1].kb_x);
+}
+
+#[test]
+fn vault_hops_over_the_target_and_lands_behind_it_turned_around() {
     let mut w = world();
-    w.step(&[press(Input::SPECIAL), NONE]);
-    run(&mut w, 12, NONE, NONE);
-    assert!(w.projectiles.is_empty());
+    w.fighters[1].x = Fx::int(-28);
+    w.step(&[input(100, 0, Input::SPECIAL), NONE]);
+    assert_eq!(mv(&w, 0), Some(MoveId::SamuraiVault));
+    run(&mut w, 5, NONE, NONE);
+    assert_eq!((w.fighters[0].x, w.fighters[0].y), (Fx::int(-40), Fx::ZERO), "crouches on 1-6");
+    run(&mut w, 8, NONE, NONE);
+    assert_eq!(w.fighters[0].facing, 1, "still facing forward on 14");
+    assert!(w.fighters[0].y > w.fighters[1].params.height, "over P2's head: {:?}", w.fighters[0].y);
     w.step(&[NONE, NONE]);
-    assert_eq!(w.projectiles.len(), 1, "fired on frame 14");
-    let blade = &w.projectiles[0];
-    assert_eq!((blade.charge, blade.radius(), blade.damage(), blade.frames_left), (0, Fx::int(3), 6, 26));
-    // Fast: it crosses to P2, standing 80 units away at x = 40, before it fades.
-    run(&mut w, 26, NONE, NONE);
-    assert_eq!(w.fighters[1].percent, 6);
+    assert_eq!(w.fighters[0].facing, -1, "turns around on 15");
+    run(&mut w, 7, NONE, NONE);
+    assert_eq!(w.fighters[0].state, State::Landing { frames_left: 10 }, "lands on 22");
+    assert!(w.fighters[0].x > w.fighters[1].x + Fx::int(12), "behind P2: {:?}", w.fighters[0].x);
+    assert_eq!(w.fighters[1].percent, 0, "the vault itself doesn't hit");
 }
 
 #[test]
-fn a_fully_charged_wind_slash_is_bigger_and_stronger() {
+fn attack_mid_vault_strikes_down_on_the_target() {
     let mut w = world();
-    wind_slash(&mut w, press(Input::SPECIAL));
-    let blade = &w.projectiles[0];
-    assert_eq!(blade.charge, 60, "fires by itself at full charge");
-    assert_eq!((blade.radius(), blade.damage(), blade.base_kb(), blade.frames_left), (Fx::int(5), 14, 50, 40));
-    assert_eq!(w.fighters[0].kb_x, Fx::ZERO, "no recoil");
+    w.fighters[1].x = Fx::int(-28);
+    w.step(&[input(100, 0, Input::SPECIAL), NONE]);
+    run(&mut w, 10, NONE, NONE);
+    w.step(&[press(Input::ATTACK), NONE]);
+    assert_eq!(mv(&w, 0), Some(MoveId::SamuraiVaultStrike));
+    run(&mut w, 10, NONE, NONE);
+    assert_eq!(w.fighters[1].percent, 12);
 }
 
 #[test]
-fn dash_strike_crosses_a_third_of_the_stage_once_per_airtime() {
+fn vault_strike_meteors_airborne_targets() {
+    let mut w = world();
+    airborne(&mut w, 0, 0, 150);
+    airborne(&mut w, 1, 6, 135);
+    w.fighters[1].percent = 50;
+    w.step(&[input(100, 0, Input::SPECIAL), NONE]);
+    run(&mut w, 8, NONE, NONE);
+    w.step(&[press(Input::ATTACK), NONE]);
+    let mut sent_down = false;
+    for _ in 0..20 {
+        w.step(&[NONE, NONE]);
+        sent_down |= w.fighters[1].kb_y < Fx::ZERO;
+    }
+    assert!(sent_down);
+}
+
+#[test]
+fn vault_works_once_per_airtime() {
     let mut w = world();
     airborne(&mut w, 0, -60, 150);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
-    assert_eq!(mv(&w, 0), Some(MoveId::SamuraiDashStrike));
-    let start = w.fighters[0].x;
-    run(&mut w, 7, NONE, NONE);
-    assert_eq!(w.fighters[0].x, start, "holds still while it winds up");
-    run(&mut w, 39, NONE, NONE);
-    assert!(w.fighters[0].x - start >= Fx::int(25), "moved {:?}", w.fighters[0].x - start);
+    assert_eq!(mv(&w, 0), Some(MoveId::SamuraiVault));
+    run(&mut w, 34, NONE, NONE);
     assert_eq!(w.fighters[0].state, State::Air);
+    assert_eq!(w.fighters[0].facing, -1);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(w.fighters[0].state, State::Air, "already used this airtime");
 }
 
 #[test]
-fn dash_strike_cuts_through_a_target_in_its_path() {
-    let mut w = world();
-    w.fighters[1].x = Fx::int(-15);
-    w.step(&[input(100, 0, Input::SPECIAL), NONE]);
-    run(&mut w, 20, NONE, NONE);
-    assert_eq!(w.fighters[1].percent, 12);
-}
-
-#[test]
-fn rising_dragon_climbs_steers_and_ends_helpless() {
+fn cyclone_climbs_steers_and_ends_helpless() {
     let climb = |drift: i8| {
         // High in the air: it climbs fast enough to land again before it ends.
         let mut w = world();
         airborne(&mut w, 0, 0, 150);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
-        assert_eq!(mv(&w, 0), Some(MoveId::SamuraiRisingDragon));
+        assert_eq!(mv(&w, 0), Some(MoveId::SamuraiCyclone));
         let mut peak = Fx::ZERO;
         for _ in 2..=46 {
             w.step(&[stick(drift, 0), NONE]);
@@ -224,6 +256,18 @@ fn rising_dragon_climbs_steers_and_ends_helpless() {
     assert!(peak >= Fx::int(150 + 38), "peak {peak:?}");
     let (_, steered) = climb(100);
     assert!(steered > x + Fx::int(10), "steered to {steered:?}");
+}
+
+#[test]
+fn cyclone_cuts_both_sides() {
+    for side in [-9, 9] {
+        let mut w = world();
+        w.fighters[1].x = Fx::int(-40 + side);
+        w.step(&[input(0, 100, Input::SPECIAL), NONE]);
+        run(&mut w, 6, NONE, NONE);
+        assert_eq!(w.fighters[1].percent, 11, "side {side}");
+        assert_eq!(w.fighters[1].kb_x.signum(), side.signum(), "sent away from him on side {side}");
+    }
 }
 
 #[test]

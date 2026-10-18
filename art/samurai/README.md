@@ -34,8 +34,8 @@ The rules in [`art/fighter/README.md`](../fighter/README.md#rules-the-game-relie
 apply here too, except for the move names: the samurai needs the shared state and dodge
 animations plus one per samurai move (`Character::Samurai.moves()`: `slash`, `slash2`,
 `thrust`, `forward_cut`, `rising_cut`, `low_cut`, `dash_cut`, `cleave`, `sky_cut`,
-`spin_sweep`, `air_spin`, `air_cut`, `back_cut`, `sky_arc`, `plunge_stab`, `wind_slash`,
-`dash_strike`, `rising_dragon`, `parry`, `riposte`, `hip_throw`, `shoulder_throw`,
+`spin_sweep`, `air_spin`, `air_cut`, `back_cut`, `sky_arc`, `plunge_stab`, `focus_cut`,
+`vault`, `vault_strike`, `cyclone`, `parry`, `riposte`, `hip_throw`, `shoulder_throw`,
 `toss_up`, `pin`, and the chef's shared `grab`, `dashgrab` and `pummel`). The game logs
 an `ERROR` at startup for any it can't find. `godot/models/samurai.glb.import` must keep
 `animation/fps=60`.
@@ -54,6 +54,12 @@ an `ERROR` at startup for any it can't find. `godot/models/samurai.glb.import` m
   game to compare). The comments above each entry in `ANIMATIONS` give the sim frames.
 - Spins go past 360 degrees (`air_spin` ends at `upper_arm.R` 405, the same as 45)
   so the keys interpolate the right way round.
+- **Turning the body.** `turned(pose, twist)` turns the hips (and so everything) about
+  the vertical; negative turns him toward the camera while facing right. `cyclone` spins
+  him four times this way. `vault` turns him around: the sim flips his facing on its
+  frame 15, and the game turns the model 230 degrees then (from the right-facing 3/4
+  view to the left-facing one), so the keys go to -65 on 14 and jump to +65 on 15: both
+  face the camera, and no snap shows.
 
 ## How it's built
 
