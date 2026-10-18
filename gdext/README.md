@@ -26,6 +26,7 @@ godot --path godot                # from the repo root
 FIGHT_CPU=3 godot --path godot    # skip the menus: P2 is a level-3 CPU (any of 1-9)
 FIGHT_DEMO=1 godot --path godot   # skip the menus: both players are level-3 CPUs, hitboxes on
 FIGHT_STAGE=driftwood FIGHT_DEMO=1 godot --path godot   # stage for the two above (default Boardwalk)
+FIGHT_CHARACTERS=samurai,pug FIGHT_DEMO=1 godot --path godot   # P1's and P2's characters for them (default chef, pug)
 ```
 
 `godot/fight.gdextension` points Godot at `../target/{debug,release}/`, so
@@ -71,9 +72,10 @@ screen doesn't also act on the next one.
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
 - Each player plays the `fight_sim::Character` chosen in the menus. `look()` maps it to
-  a model, `res://models/fighter.glb` or `res://models/pug.glb` (made in Blender, see
-  [`art/fighter/README.md`](../art/fighter/README.md) and
-  [`art/pug/README.md`](../art/pug/README.md)); `tinted_model` loads it with the `Body`
+  a model, `res://models/fighter.glb`, `pug.glb` or `samurai.glb` (made in Blender, see
+  [`art/fighter/README.md`](../art/fighter/README.md),
+  [`art/pug/README.md`](../art/pug/README.md) and
+  [`art/samurai/README.md`](../art/samurai/README.md)); `tinted_model` loads it with the `Body`
   material swapped for the player's color (in game and in the menus). At startup,
   `check_models` logs an `ERROR` for every animation a character can need
   (`STATE_ANIMS`, `Character::moves()`, dodges) that its model lacks. The HUD shows each
@@ -83,15 +85,15 @@ screen doesn't also act on the next one.
   rollback. Clips switch instantly (no blending yet). The `Body` material is
   replaced per player for the color and state tints: white hit flash, pale blue
   while a dodge is invincible, flashing while charging a smash attack (the model also
-  shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar.
+  shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar; on the samurai, his headband and sash.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
   Projectiles come from `World::projectiles` and are drawn from a pool, each as its
-  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff,
+  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff; the samurai's wind slash, steel blue;
   sized by `Projectile::radius()`, which grows with charge); `Shot::Model` loads a model
   (the chef's `res://models/pie.glb`), turns it the way it flies and tilts it with its
   arc. Model shots burst into cream blobs (`Splat`) where they hit (`Event::Hit` /
   `ShieldHit` with `projectile: true`) or land (`Event::ProjectileLanded`, a puddle on
-  the floor); other hits make a spark. `Event::Counter` (the pug's play dead) makes a spark and a
+  the floor); other hits make a spark. `Event::Counter` (the pug's play dead, the samurai's parry) makes a spark and a
   small shake. With **H**, hitboxes are red and grab boxes purple.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600` (sits in
   the menus) and `FIGHT_DEMO=1 godot --headless --path godot --quit-after 900` (plays a

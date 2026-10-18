@@ -75,6 +75,8 @@ fn look(character: Character) -> Look {
         },
         // Built by art/pug/build_pug.py. Its projectile is a sneeze cloud.
         Character::Pug => Look { model: "res://models/pug.glb", shot: Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8)) },
+        // Built by art/samurai/build_samurai.py. Its projectile is a blade of wind.
+        Character::Samurai => Look { model: "res://models/samurai.glb", shot: Shot::Orb(Color::from_rgb(0.75, 0.88, 1.0)) },
     }
 }
 /// Surfaces with this material name get the player's color.
@@ -205,14 +207,23 @@ impl INode3D for FightWorld {
         self.menu_view = Some(view);
 
         // FIGHT_DEMO: CPU vs CPU with hitboxes shown. FIGHT_CPU[=level]: you vs a CPU.
-        // Both skip the menus; FIGHT_STAGE=<name> picks their stage.
+        // Both skip the menus; FIGHT_STAGE=<name> picks their stage and
+        // FIGHT_CHARACTERS=<p1>,<p2> (e.g. samurai,pug) their characters.
         let demo = std::env::var_os("FIGHT_DEMO").is_some();
         let cpu = std::env::var("FIGHT_CPU").ok().map(|level| level.parse().unwrap_or(DEFAULT_CPU_LEVEL));
         if demo || cpu.is_some() {
             let level = cpu.unwrap_or(DEFAULT_CPU_LEVEL);
             let stage = std::env::var("FIGHT_STAGE").ok().and_then(|name| StageId::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(&name)));
+            let chosen: Vec<Character> = std::env::var("FIGHT_CHARACTERS")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|name| Character::ALL.into_iter().find(|c| c.name().eq_ignore_ascii_case(name.trim())))
+                .collect();
             let players = (0..2)
-                .map(|port| Player { port, character: Character::ALL[port % Character::ALL.len()], cpu: (demo || port == 1).then_some(level) })
+                .map(|port| {
+                    let character = chosen.get(port).copied().unwrap_or(Character::ALL[port % Character::ALL.len()]);
+                    Player { port, character, cpu: (demo || port == 1).then_some(level) }
+                })
                 .collect();
             let setup = MatchSetup { stocks: DEFAULT_STOCKS, stage: stage.unwrap_or(StageId::ALL[0]), players };
             self.menu.load(&setup);
@@ -560,7 +571,7 @@ impl FightWorld {
     }
 
     /// Each projectile as its owner's `Shot`: the pug's sneeze is a pale glowing puff,
-    /// the chef's pie a model flying cream first.
+    /// the samurai's wind slash a steel-blue one, the chef's pie a model flying cream first.
     fn update_projectiles(&mut self) {
         let projectiles = self.world.projectiles.clone();
         for (i, p) in projectiles.iter().enumerate() {

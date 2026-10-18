@@ -164,6 +164,37 @@ fn easy_cpu_pug_ear_copters_back_without_air_jumps() {
     }
 }
 
+fn samurai_cpu_world() -> World {
+    World::new(Stage::battlefield(), &[Character::Chef, Character::Samurai], 3)
+}
+
+#[test]
+fn easy_cpu_lands_hits_as_the_samurai() {
+    let (mut w, mut cpu) = (samurai_cpu_world(), Cpu::easy(1));
+    let (_, hits) = vs_idle(&mut w, &mut cpu, 600);
+    assert!(hits > 0, "never hit an idle opponent in 10 s");
+}
+
+#[test]
+fn easy_cpu_samurai_rising_dragons_back_without_air_jumps() {
+    for x in [-85, 85] {
+        let (mut w, mut cpu) = (samurai_cpu_world(), Cpu::easy(1));
+        let f = &mut w.fighters[1];
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
+        let (mut used_rising_dragon, mut landed) = (false, false);
+        for _ in 0..300 {
+            let input = cpu.think(&w);
+            w.step(&[Input::default(), input]);
+            used_rising_dragon |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::SamuraiRisingDragon, .. });
+            // Once back, it may be mid-hop at the end, so look for any landing.
+            landed |= w.fighters[1].grounded();
+        }
+        assert!(used_rising_dragon, "from x={x}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
+        assert!(landed, "not back on stage from x={x}");
+    }
+}
+
 #[test]
 fn level_3_is_easy_and_levels_clamp() {
     assert_eq!(CpuLevel::level(3), &CpuLevel::EASY);
@@ -196,12 +227,14 @@ fn top_level_cpu_still_finishes_hop_attacks() {
 
 #[test]
 fn every_cpu_level_keeps_its_stocks_on_every_stage() {
-    for id in StageId::ALL {
-        for level in CpuLevel::MIN..=CpuLevel::MAX {
-            let mut w = World::new(id.stage(), &[Character::Chef, Character::Pug], 3);
-            let mut cpu = Cpu::with_level(1, level);
-            vs_idle(&mut w, &mut cpu, 60 * 60);
-            assert_eq!(w.fighters[1].stocks, 3, "level {level} on {}", id.name());
+    for character in Character::ALL {
+        for id in StageId::ALL {
+            for level in CpuLevel::MIN..=CpuLevel::MAX {
+                let mut w = World::new(id.stage(), &[Character::Chef, character], 3);
+                let mut cpu = Cpu::with_level(1, level);
+                vs_idle(&mut w, &mut cpu, 60 * 60);
+                assert_eq!(w.fighters[1].stocks, 3, "{character:?} at level {level} on {}", id.name());
+            }
         }
     }
 }

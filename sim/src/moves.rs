@@ -66,6 +66,32 @@ pub enum MoveId {
     PugTugSpin,
     PugFlingUp,
     PugSit,
+    // The samurai's moves. He also uses the shared `Grab`, `DashGrab` and `Pummel`.
+    SamuraiSlash,
+    SamuraiSlash2,
+    SamuraiThrust,
+    SamuraiForwardCut,
+    SamuraiRisingCut,
+    SamuraiLowCut,
+    SamuraiDashCut,
+    SamuraiCleave,
+    SamuraiSkyCut,
+    SamuraiSpinSweep,
+    SamuraiAirSpin,
+    SamuraiAirCut,
+    SamuraiBackCut,
+    SamuraiSkyArc,
+    SamuraiPlungeStab,
+    SamuraiWindSlash,
+    SamuraiDashStrike,
+    SamuraiRisingDragon,
+    SamuraiParry,
+    /// The parry's answer: a quick cut at the attacker.
+    SamuraiRiposte,
+    SamuraiHipThrow,
+    SamuraiShoulderThrow,
+    SamuraiTossUp,
+    SamuraiPin,
 }
 
 #[derive(Debug)]
@@ -276,6 +302,30 @@ impl MoveId {
             MoveId::PugTugSpin => &PUG_TUG_SPIN,
             MoveId::PugFlingUp => &PUG_FLING_UP,
             MoveId::PugSit => &PUG_SIT,
+            MoveId::SamuraiSlash => &SAMURAI_SLASH,
+            MoveId::SamuraiSlash2 => &SAMURAI_SLASH2,
+            MoveId::SamuraiThrust => &SAMURAI_THRUST,
+            MoveId::SamuraiForwardCut => &SAMURAI_FORWARD_CUT,
+            MoveId::SamuraiRisingCut => &SAMURAI_RISING_CUT,
+            MoveId::SamuraiLowCut => &SAMURAI_LOW_CUT,
+            MoveId::SamuraiDashCut => &SAMURAI_DASH_CUT,
+            MoveId::SamuraiCleave => &SAMURAI_CLEAVE,
+            MoveId::SamuraiSkyCut => &SAMURAI_SKY_CUT,
+            MoveId::SamuraiSpinSweep => &SAMURAI_SPIN_SWEEP,
+            MoveId::SamuraiAirSpin => &SAMURAI_AIR_SPIN,
+            MoveId::SamuraiAirCut => &SAMURAI_AIR_CUT,
+            MoveId::SamuraiBackCut => &SAMURAI_BACK_CUT,
+            MoveId::SamuraiSkyArc => &SAMURAI_SKY_ARC,
+            MoveId::SamuraiPlungeStab => &SAMURAI_PLUNGE_STAB,
+            MoveId::SamuraiWindSlash => &SAMURAI_WIND_SLASH,
+            MoveId::SamuraiDashStrike => &SAMURAI_DASH_STRIKE,
+            MoveId::SamuraiRisingDragon => &SAMURAI_RISING_DRAGON,
+            MoveId::SamuraiParry => &SAMURAI_PARRY,
+            MoveId::SamuraiRiposte => &SAMURAI_RIPOSTE,
+            MoveId::SamuraiHipThrow => &SAMURAI_HIP_THROW,
+            MoveId::SamuraiShoulderThrow => &SAMURAI_SHOULDER_THROW,
+            MoveId::SamuraiTossUp => &SAMURAI_TOSS_UP,
+            MoveId::SamuraiPin => &SAMURAI_PIN,
         }
     }
 }
@@ -834,6 +884,242 @@ static PUG_SIT: MoveData = MoveData {
     name: "sit",
     total_frames: 34,
     throws: &[Throw { frame: 16, release: true, x: int(6), damage: 7, angle: 80, base_kb: 45, kb_growth: 35 }],
+    ..BASE
+};
+
+// --- Samurai ----------------------------------------------------------------
+// The chef's height, with a katana: his hitboxes reach further out than anyone's,
+// and the blade's tip (listed first, so it wins) hits harder than the part near the
+// hilt. In exchange most cuts start a few frames later.
+
+/// Quick draw cut. Press attack again for a backhand, then a thrust.
+static SAMURAI_SLASH: MoveData = MoveData {
+    name: "slash",
+    total_frames: 20,
+    hitboxes: &[hit(4, 5, int(9), int(7), int(4), 4, 50, 10, 50)],
+    combo: Some((MoveId::SamuraiSlash2, 7)),
+    ..BASE
+};
+
+static SAMURAI_SLASH2: MoveData = MoveData {
+    name: "slash2",
+    total_frames: 20,
+    hitboxes: &[hit(4, 5, int(9), int(6), int(4), 3, 50, 10, 50)],
+    combo: Some((MoveId::SamuraiThrust, 7)),
+    ..BASE
+};
+
+/// Combo finisher: a long straight thrust.
+static SAMURAI_THRUST: MoveData = MoveData {
+    name: "thrust",
+    total_frames: 32,
+    hitboxes: &[hit(5, 7, int(13), int(6), half(7), 6, 35, 40, 95), hit(5, 7, int(7), int(6), int(3), 5, 40, 35, 90)],
+    ..BASE
+};
+
+/// A level cut at arm's length, strongest at the tip.
+static SAMURAI_FORWARD_CUT: MoveData = MoveData {
+    name: "forward_cut",
+    total_frames: 30,
+    hitboxes: &[hit(7, 9, int(13), int(7), int(3), 11, 35, 30, 100), hit(7, 9, int(8), int(7), int(4), 8, 40, 25, 90)],
+    ..BASE
+};
+
+/// An arc from in front up over the head.
+static SAMURAI_RISING_CUT: MoveData = MoveData {
+    name: "rising_cut",
+    total_frames: 30,
+    hitboxes: &[hit(6, 8, int(9), int(9), int(5), 8, 80, 30, 105), hit(9, 12, int(2), int(17), int(5), 8, 88, 30, 105)],
+    ..BASE
+};
+
+/// Kneeling sweep along the floor: long, low and sent at a low angle.
+static SAMURAI_LOW_CUT: MoveData = MoveData {
+    name: "low_cut",
+    total_frames: 24,
+    hitboxes: &[hit(6, 8, int(12), int(2), int(3), 7, 25, 25, 70), hit(6, 8, int(7), int(2), int(4), 6, 30, 25, 65)],
+    ..BASE
+};
+
+/// A running cut that carries him forward.
+static SAMURAI_DASH_CUT: MoveData = MoveData {
+    name: "dash_cut",
+    total_frames: 40,
+    hitboxes: &[hit(7, 11, int(10), int(6), int(5), 11, 45, 40, 70)],
+    motion: &[Motion { first: 5, last: 11, vx: Some(Fx::int(2)), vy: None }],
+    ..BASE
+};
+
+/// Two-handed overhead cleave: slow, long and the hardest hit he has.
+static SAMURAI_CLEAVE: MoveData = MoveData {
+    name: "cleave",
+    total_frames: 56,
+    hitboxes: &[hit(17, 19, int(13), int(6), int(4), 19, 38, 34, 102), hit(17, 19, int(7), int(10), int(4), 15, 40, 30, 100)],
+    charge_frame: Some(12),
+    ..BASE
+};
+
+/// Straight up: the blade sweeps from in front to overhead.
+static SAMURAI_SKY_CUT: MoveData = MoveData {
+    name: "sky_cut",
+    total_frames: 48,
+    hitboxes: &[hit(12, 16, int(2), int(18), int(6), 15, 90, 32, 100), hit(11, 12, int(8), int(9), int(5), 13, 85, 30, 100)],
+    charge_frame: Some(8),
+    ..BASE
+};
+
+/// A spin along the floor: in front first, then behind.
+static SAMURAI_SPIN_SWEEP: MoveData = MoveData {
+    name: "spin_sweep",
+    total_frames: 50,
+    hitboxes: &[hit(10, 11, int(12), int(2), int(4), 14, 30, 28, 98), hit(16, 17, int(-12), int(2), int(4), 15, 150, 28, 100)],
+    charge_frame: Some(6),
+    ..BASE
+};
+
+/// A full turn of the blade around him: in front and above, then behind.
+static SAMURAI_AIR_SPIN: MoveData = MoveData {
+    name: "air_spin",
+    total_frames: 38,
+    hitboxes: &[hit(5, 8, int(8), int(9), int(5), 9, 45, 15, 95), hit(9, 12, int(-8), int(5), int(5), 8, 135, 15, 95)],
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// A quick downward arc in front.
+static SAMURAI_AIR_CUT: MoveData = MoveData {
+    name: "air_cut",
+    total_frames: 36,
+    hitboxes: &[hit(6, 10, int(11), int(7), int(5), 10, 40, 22, 95)],
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// Turns and cuts behind him.
+static SAMURAI_BACK_CUT: MoveData = MoveData {
+    name: "back_cut",
+    total_frames: 38,
+    hitboxes: &[hit(8, 11, int(-11), int(6), int(5), 13, 145, 26, 100)],
+    landing: Landing::Lag(14),
+    ..BASE
+};
+
+static SAMURAI_SKY_ARC: MoveData = MoveData {
+    name: "sky_arc",
+    total_frames: 36,
+    hitboxes: &[hit(5, 10, int(2), int(17), int(6), 10, 85, 25, 95)],
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Stabs straight down: a meteor, with a lot of landing lag.
+static SAMURAI_PLUNGE_STAB: MoveData = MoveData {
+    name: "plunge_stab",
+    total_frames: 46,
+    hitboxes: &[hit(12, 16, int(1), int(-4), int(4), 14, 270, 20, 90)],
+    landing: Landing::Lag(22),
+    ..BASE
+};
+
+/// Wind slash: a cut so fast it sends a blade of air flying. Hold special to build it
+/// up; a full charge makes it bigger, harder hitting and longer lived.
+static SAMURAI_WIND_SLASH: MoveData = MoveData {
+    name: "wind_slash",
+    total_frames: 40,
+    projectile: Some(ProjectileData {
+        frame: 14,
+        x: int(9),
+        y: int(7),
+        speed: Fx::ratio(28, 10),
+        vy: Fx::ZERO,
+        gravity: Fx::ZERO,
+        lifetime: 26,
+        radius: int(3),
+        damage: 6,
+        angle: 40,
+        base_kb: 25,
+        kb_growth: 55,
+        growth: Some(ProjectileGrowth { radius: int(2), damage: 8, base_kb: 25, lifetime: 14, recoil: Fx::ZERO }),
+    }),
+    charge_frame: Some(10),
+    charge_with: Input::SPECIAL,
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Dash strike: crouches with the blade sheathed, then crosses a third of the stage in
+/// one draw-and-cut. Once per airtime, like every side special.
+static SAMURAI_DASH_STRIKE: MoveData = MoveData {
+    name: "dash_strike",
+    total_frames: 46,
+    hitboxes: &[hit(10, 16, int(8), int(7), int(6), 12, 40, 40, 85)],
+    motion: &[
+        Motion { first: 1, last: 8, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 9, last: 16, vx: Some(Fx::ratio(32, 10)), vy: Some(Fx::ZERO) },
+    ],
+    landing: Landing::Lag(14),
+    ..BASE
+};
+
+/// Rising dragon, the recovery: a spinning upward cut of about 40 units, steerable.
+/// Helpless afterwards.
+static SAMURAI_RISING_DRAGON: MoveData = MoveData {
+    name: "rising_dragon",
+    total_frames: 46,
+    hitboxes: &[hit(4, 7, int(6), int(10), int(5), 11, 80, 45, 80), hit(8, 18, int(2), int(16), int(5), 5, 85, 25, 60)],
+    motion: &[
+        Motion { first: 1, last: 3, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 4, last: 18, vx: None, vy: Some(Fx::ratio(26, 10)) },
+        Motion { first: 19, last: 20, vx: None, vy: Some(Fx::ratio(8, 10)) },
+    ],
+    landing: Landing::Lag(22),
+    special_fall: true,
+    ..BASE
+};
+
+/// Parry stance. Hit on frames 5-24, he turns the blow aside and ripostes.
+static SAMURAI_PARRY: MoveData = MoveData {
+    name: "parry",
+    total_frames: 46,
+    counter: Some(Counter { first: 5, last: 24, into: MoveId::SamuraiRiposte }),
+    ..BASE
+};
+
+static SAMURAI_RIPOSTE: MoveData = MoveData {
+    name: "riposte",
+    total_frames: 32,
+    hitboxes: &[hit(4, 7, int(10), int(7), int(6), 14, 35, 50, 90)],
+    ..BASE
+};
+
+/// Hip throw forward.
+static SAMURAI_HIP_THROW: MoveData = MoveData {
+    name: "hip_throw",
+    total_frames: 32,
+    throws: &[Throw { frame: 13, release: true, x: int(9), damage: 8, angle: 40, base_kb: 60, kb_growth: 60 }],
+    ..BASE
+};
+
+/// The kill throw: over the shoulder and out behind.
+static SAMURAI_SHOULDER_THROW: MoveData = MoveData {
+    name: "shoulder_throw",
+    total_frames: 38,
+    throws: &[Throw { frame: 16, release: true, x: int(-9), damage: 11, angle: 135, base_kb: 58, kb_growth: 78 }],
+    ..BASE
+};
+
+static SAMURAI_TOSS_UP: MoveData = MoveData {
+    name: "toss_up",
+    total_frames: 34,
+    throws: &[Throw { frame: 12, release: true, x: int(2), damage: 7, angle: 90, base_kb: 70, kb_growth: 55 }],
+    ..BASE
+};
+
+/// Pins them with a knee, then lets them pop up in front: the combo throw.
+static SAMURAI_PIN: MoveData = MoveData {
+    name: "pin",
+    total_frames: 34,
+    throws: &[Throw { frame: 15, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }],
     ..BASE
 };
 

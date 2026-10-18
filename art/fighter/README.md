@@ -44,7 +44,7 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
   `dashgrab`, `pummel`, `fthrow`, `bthrow`, `uthrow`, `dthrow`. A pose with no
   animation stays frozen on its last frame, and the game logs an `ERROR` for it at
   startup. A new move needs a new action with the same name. (Other characters'
-  models, like the pug, have their own move names.)
+  models, like the pug and the samurai, have their own move names.)
 - **60 fps, frame 1 = sim frame 1.** Moves are keyed on their sim frames (Blender
   frame 5 of `ftilt` is FTilt's frame 5). The export slides each action so frame 1
   is time 0. `godot/models/fighter.glb.import` has `animation/fps=60`; Godot's
@@ -70,6 +70,10 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
   from this mesh.
 - **New actions made in Blender** must be stashed (Action Editor → Stash) or be on an
   NLA track, so the exporter includes them.
+
+The samurai (`art/samurai/build_samurai.py`) imports this script's shapes, skeleton
+and pose helpers, so changing the joint positions, `guard`, `crouch`, `AIR` or the like
+changes him too. Rebuild both after such a change.
 
 ## Pose convention (in `build_fighter.py`)
 

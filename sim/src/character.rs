@@ -12,6 +12,10 @@ pub enum Character {
     /// Small, light and quick, with two air jumps: bites, a chargeable sneeze, a pounce
     /// tackle that rides its target, an ear-flapping recovery and a play-dead counter.
     Pug,
+    /// A katana swordsman: the longest reach, a little heavier and slower to start:
+    /// slashes, a wind-blade projectile, a dash strike, a rising-dragon recovery and a
+    /// parry that ripostes.
+    Samurai,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -129,13 +133,41 @@ static PUG_MOVES: Moveset = Moveset {
     dthrow: MoveId::PugSit,
 };
 
+static SAMURAI_MOVES: Moveset = Moveset {
+    jab: MoveId::SamuraiSlash,
+    ftilt: MoveId::SamuraiForwardCut,
+    utilt: MoveId::SamuraiRisingCut,
+    dtilt: MoveId::SamuraiLowCut,
+    dash_attack: MoveId::SamuraiDashCut,
+    fsmash: MoveId::SamuraiCleave,
+    usmash: MoveId::SamuraiSkyCut,
+    dsmash: MoveId::SamuraiSpinSweep,
+    nair: MoveId::SamuraiAirSpin,
+    fair: MoveId::SamuraiAirCut,
+    bair: MoveId::SamuraiBackCut,
+    uair: MoveId::SamuraiSkyArc,
+    dair: MoveId::SamuraiPlungeStab,
+    neutral_special: MoveId::SamuraiWindSlash,
+    side_special: MoveId::SamuraiDashStrike,
+    up_special: MoveId::SamuraiRisingDragon,
+    down_special: MoveId::SamuraiParry,
+    grab: MoveId::Grab,
+    dash_grab: MoveId::DashGrab,
+    pummel: MoveId::Pummel,
+    fthrow: MoveId::SamuraiHipThrow,
+    bthrow: MoveId::SamuraiShoulderThrow,
+    uthrow: MoveId::SamuraiTossUp,
+    dthrow: MoveId::SamuraiPin,
+};
+
 impl Character {
-    pub const ALL: [Character; 2] = [Character::Chef, Character::Pug];
+    pub const ALL: [Character; 3] = [Character::Chef, Character::Pug, Character::Samurai];
 
     pub fn name(self) -> &'static str {
         match self {
             Character::Chef => "Chef",
             Character::Pug => "Pug",
+            Character::Samurai => "Samurai",
         }
     }
 
@@ -143,6 +175,7 @@ impl Character {
         match self {
             Character::Chef => &FighterParams::CHEF,
             Character::Pug => &FighterParams::PUG,
+            Character::Samurai => &FighterParams::SAMURAI,
         }
     }
 
@@ -150,6 +183,7 @@ impl Character {
         match self {
             Character::Chef => &CHEF_MOVES,
             Character::Pug => &PUG_MOVES,
+            Character::Samurai => &SAMURAI_MOVES,
         }
     }
 

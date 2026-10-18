@@ -75,6 +75,29 @@ impl FighterParams {
         height: Fx::int(9),
         radius: Fx::int(4),
     };
+
+    /// The chef's height, a little heavier and slower on the ground, quicker to drift.
+    pub const SAMURAI: FighterParams = FighterParams {
+        weight: 106,
+        walk_speed: Fx::ratio(105, 100),
+        run_speed: Fx::ratio(145, 100),
+        ground_accel: Fx::ratio(2, 10),
+        traction: Fx::ratio(9, 100),
+        air_speed: Fx::ratio(9, 10),
+        air_accel: Fx::ratio(5, 100),
+        air_friction: Fx::ratio(2, 100),
+        gravity: Fx::ratio(1, 10),
+        max_fall: Fx::ratio(18, 10),
+        fast_fall: Fx::ratio(24, 10),
+        jump_squat: 4,
+        full_hop: Fx::ratio(23, 10),
+        short_hop: Fx::ratio(15, 10),
+        double_jump: Fx::ratio(22, 10),
+        air_jumps: 1,
+        landing_lag: 4,
+        height: Fx::int(12),
+        radius: Fx::int(4),
+    };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

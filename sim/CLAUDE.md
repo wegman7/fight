@@ -15,9 +15,9 @@
   through `self.moveset()`; never name a `MoveId` there. Hitbox/grab box/motion/projectile/
   throw `x` are forward offsets, mirrored by facing automatically. Its `name` needs a
   matching animation in that character's model script (`art/fighter/build_fighter.py`,
-  `art/pug/build_pug.py`).
+  `art/pug/build_pug.py`, `art/samurai/build_samurai.py`).
 - New character → a `Character` variant with its `FighterParams`, `Moveset` and name,
-  added to `Character::ALL`; its tests go in their own file like `tests/pug.rs`.
+  added to `Character::ALL`; its tests go in their own file like `tests/pug.rs` or `tests/samurai.rs`.
 - Anything that happens once on a move frame (firing a projectile, applying a throw)
   must check `Fighter::frame_advanced`. The frame number alone repeats during hitlag
   and while a smash attack charges.
