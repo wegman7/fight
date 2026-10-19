@@ -5,10 +5,12 @@
 
 mod menu;
 mod menu_view;
+mod music;
 
 use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, STATE_ANIMS, Stage, StageId, State, World};
 use menu::{DEFAULT_CPU_LEVEL, DEFAULT_STOCKS, MatchSetup, Menu, MenuEvent, PORTS, Player, PortInput, Screen};
 use menu_view::MenuView;
+use music::Music;
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
@@ -139,6 +141,8 @@ pub struct FightWorld {
     mode: Mode,
     menu: Menu,
     menu_view: Option<MenuView>,
+    /// Background music; created and attached to the tree in `ready`.
+    music: Option<Music>,
     /// Parent of everything a match builds (stage, fighters, effects, HUD), freed when it ends.
     arena: Gd<Node3D>,
     /// Who plays (fighter `i` is `setup.players[i]`), where, and for how many stocks.
@@ -174,6 +178,7 @@ impl INode3D for FightWorld {
             mode: Mode::Menu,
             menu: Menu::new(),
             menu_view: None,
+            music: None,
             arena: Node3D::new_alloc(),
             setup: MatchSetup { stocks: DEFAULT_STOCKS, stage: StageId::ALL[0], players: Vec::new() },
             world: World::new(Stage::battlefield(), &[], DEFAULT_STOCKS),
@@ -230,6 +235,15 @@ impl INode3D for FightWorld {
             self.start_match(setup);
             self.show_hitboxes = demo;
         }
+
+        let mut music = Music::new();
+        self.base_mut().add_child(music.player());
+        if self.mode == Mode::Match {
+            music.play_stage();
+        } else {
+            music.play_menu();
+        }
+        self.music = Some(music);
     }
 
     fn physics_process(&mut self, _delta: f64) {
@@ -305,6 +319,13 @@ impl INode3D for FightWorld {
         }
     }
 
+    fn exit_tree(&mut self) {
+        // Stop the music before teardown, so a windowed quit doesn't cut it off mid-note.
+        if let Some(music) = &mut self.music {
+            music.clear();
+        }
+    }
+
     fn process(&mut self, delta: f64) {
         self.time += delta;
         if self.mode == Mode::Menu {
@@ -325,6 +346,17 @@ impl INode3D for FightWorld {
 
     /// In-match buttons. The menus poll their input in `physics_process` instead.
     fn unhandled_input(&mut self, event: Gd<InputEvent>) {
+        // Music volume: `-` / `=` work in the menus and a match alike.
+        if let Ok(key) = event.clone().try_cast::<InputEventKey>()
+            && key.is_pressed()
+            && !key.is_echo()
+        {
+            match key.get_physical_keycode() {
+                Key::MINUS => self.change_music_volume(-10),
+                Key::EQUAL => self.change_music_volume(10),
+                _ => {}
+            }
+        }
         if self.mode != Mode::Match {
             return;
         }
@@ -381,6 +413,9 @@ impl FightWorld {
         if let Some(view) = &mut self.menu_view {
             view.set_visible(false);
         }
+        if let Some(music) = &mut self.music {
+            music.play_stage();
+        }
     }
 
     /// Restarts the current match from the beginning (same players, stage and stocks).
@@ -401,6 +436,17 @@ impl FightWorld {
         if let Some(view) = &mut self.menu_view {
             view.set_visible(true);
         }
+        if let Some(music) = &mut self.music {
+            music.play_menu();
+        }
+    }
+
+    /// Nudges the music volume by `delta` percentage points, clamped to 0..100.
+    fn change_music_volume(&mut self, delta: i16) {
+        let Some(music) = &mut self.music else { return };
+        let percent = (i16::from(music.percent()) + delta).clamp(0, 100) as u8;
+        music.set_percent(percent);
+        godot_print!("Music volume: {percent}%");
     }
 
     fn clear_arena(&mut self) {
@@ -497,7 +543,7 @@ impl FightWorld {
              P2: arrows · , attack · . jump · / special · M shield · N grab · B smash\n\
              Pads: stick · A attack · B special · X/Y jump · LT/RT shield · LB/RB grab · right stick smash\n\
              Pad Start pause (then View: menu) · R rematch · Esc menu\n\
-             H hitboxes · P pause · F frame-advance",
+             H hitboxes · P pause · F frame-advance · -/= music volume",
         );
         help.set_position(Vector2::new(16.0, 12.0));
         layer.add_child(&help);

@@ -16,6 +16,9 @@
   use anchors to lay out UI.
 - Everything a match creates goes under `FightWorld::arena` (never `base_mut()`), so
   `clear_arena` can tear it down.
+- Background music is `music.rs` (`Music`): one `AudioStreamPlayer` attached to the
+  root in `ready`, swapping the looping stream on mode changes (`play_menu` /
+  `play_stage`). It's presentation, not gameplay — nothing here feeds the sim.
 - Sim stepping happens in `physics_process` (60 Hz, set in `godot/project.godot`).
   Visual updates happen in `process`. Don't step the sim from `process`.
 - Never let the fighter `AnimationPlayer` advance on its own. Pose comes from sim

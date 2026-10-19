@@ -27,6 +27,7 @@ FIGHT_CPU=3 godot --path godot    # skip the menus: P2 is a level-3 CPU (any of 
 FIGHT_DEMO=1 godot --path godot   # skip the menus: both players are level-3 CPUs, hitboxes on
 FIGHT_STAGE=driftwood FIGHT_DEMO=1 godot --path godot   # stage for the two above (default Boardwalk)
 FIGHT_CHARACTERS=samurai,pug FIGHT_DEMO=1 godot --path godot   # P1's and P2's characters for them (default chef, pug)
+FIGHT_MUSIC_VOLUME=50 godot --path godot   # music volume 0-100 (default 70)
 ```
 
 `godot/fight.gdextension` points Godot at `../target/{debug,release}/`, so
@@ -71,6 +72,11 @@ screen doesn't also act on the next one.
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
+- Background music lives in `music.rs`: a single `AudioStreamPlayer` swaps between
+  `godot/music/untitled.mp3` (menus) and `godot/music/rising_motif.mp3` (matches), both
+  set to loop. `start_match` starts the stage track, `leave_match` and startup start the
+  menu track. Volume is `FIGHT_MUSIC_VOLUME` (0-100) and the `-` / `=` keys (in
+  `unhandled_input`, so they work in both modes).
 - Each player plays the `fight_sim::Character` chosen in the menus. `look()` maps it to
   a model, `res://models/fighter.glb`, `pug.glb` or `samurai.glb` (made in Blender, see
   [`art/fighter/README.md`](../art/fighter/README.md),

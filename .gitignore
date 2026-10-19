@@ -1,6 +1,9 @@
 # Rust build output
 /target
 
+# Git worktrees for parallel character work
+/.worktrees/
+
 # Godot editor cache and imports (regenerated on open / --import)
 godot/.godot/
 godot/android/
