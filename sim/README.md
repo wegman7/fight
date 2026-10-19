@@ -15,7 +15,7 @@ world.fighters[1].percent;   // damage
 world.fighters[1].state;     // State::Ground, State::Shield, State::Attack { mv, .. }, ...
 world.fighters[1].shield;    // shield health, out of SHIELD_MAX
 world.projectiles;           // pies and sneeze clouds in flight
-world.events;                // Event::Hit / ShieldHit / ShieldBreak / Grab / Counter / ProjectileLanded / Ko from the last step
+world.events;                // Event::Hit / ShieldHit / ShieldBreak / Grab / Counter / Shatter / ProjectileLanded / Ko from the last step
 world.active_hitboxes();     // hitboxes and grab boxes, for debug drawing
 let snapshot = world.clone(); // full save state (rollback, replays)
 
@@ -31,9 +31,9 @@ world.step(&[p1_input, p2_input]);
 |---|---|
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
-| `character.rs` | `Character` (Chef, Pug, Samurai): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
+| `character.rs` | `Character` (Chef, Pug, Samurai, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
 | `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
-| `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
+| `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
 | `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, and recovers with double jump then up special. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. |
@@ -53,6 +53,11 @@ A move is a `MoveId` plus a `static MoveData`. While it runs the fighter is in
   platform (`Event::ProjectileLanded`, the chef's pie). If the move was charged, its
   `growth` adds radius, damage, knockback and lifetime in proportion to the charge, and
   can push the shooter back (`Projectile::radius()` / `damage()` / `base_kb()`).
+- `shatter`: a shattering projectile bursts when it lands or expires — everyone within
+  `radius` of where it stopped takes the hit, sent away from the burst point
+  (`Event::Shatter`, the hobo's bottle). Declared on the move (`MoveData::shatter`), so
+  any character's lobbed projectile can use it. A direct hit mid-flight still applies
+  the projectile's own hit and never shatters.
 - `throws`: each applied once to the held fighter on its frame. A pummel only deals
   damage; a releasing throw launches and ends the hold, so later entries are skipped.
   Several in one move make a multi-hit ride (the pug's tackle).
@@ -91,8 +96,10 @@ cargo test -p fight_sim -- --nocapture
 ## Writing tests
 
 Gameplay tests live in `tests/gameplay.rs` (the chef), `tests/pug.rs` (the pug's
-moves, tuning and play-dead counter) and `tests/samurai.rs` (the samurai's moves, reach,
-tipper, charged focus cut, vault and its strike, cyclone and parry). CPU behaviour tests (engages,
+moves, tuning and play-dead counter), `tests/samurai.rs` (the samurai's moves, reach,
+tipper, charged focus cut, vault and its strike, cyclone and parry) and `tests/hobo.rs`
+(the hobo's moves, tuning, bottle shatter, cart charge, fizz rocket and passed-out
+counter). CPU behaviour tests (engages,
 recovers with and without a double jump, doesn't self-destruct at any level on any stage,
 higher levels attack more, mashes out of grabs, grabs, shields, stays deterministic) live
 in `tests/cpu.rs`.

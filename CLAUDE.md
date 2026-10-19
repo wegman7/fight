@@ -16,6 +16,9 @@
   four-legged rig. Its fur shader is swapped in by `pug.glb.import`. See `art/pug/README.md`.
 - `art/samurai/`: the samurai model (`godot/models/samurai.glb`), script-generated on the
   chef's skeleton plus a katana bone, reusing the chef script's helpers. See `art/samurai/README.md`.
+- `art/hobo/`: the drunk hobo model (`godot/models/hobo.glb`), script-generated on the
+  chef's skeleton plus a bottle and a shopping-cart bone, with procedural grime/roughness
+  textures for his coat. See `art/hobo/README.md`.
 - `art/beach/`: script-generated backdrop props (palms, rock, sailboat). See `art/beach/README.md`.
 - `art/stage/`: the stage's platform models (`stage.glb`, `raft.glb`), script-generated,
   textured by `wood.gdshader` and `stone.gdshader` swapped in on import. See `art/stage/README.md`.
@@ -40,6 +43,7 @@ godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   #
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb
 blender --background --factory-startup --python art/samurai/build_samurai.py   # rebuild samurai .blend + .glb
+blender --background --factory-startup --python art/hobo/build_hobo.py         # rebuild hobo .blend + .glb
 blender --background --factory-startup --python art/beach/build_beach.py       # rebuild backdrop props
 blender --background --factory-startup --python art/stage/build_stage.py       # rebuild stage platforms
 godot --headless --path godot --import             # after a .glb changes
