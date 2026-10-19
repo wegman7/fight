@@ -21,6 +21,10 @@ pub enum Character {
     /// and headband, and throws shuriken; his specials are a shadow dash, a smoke-bomb
     /// recovery and a substitution counter.
     Ninja,
+    /// The heavyweight: a soldier in fatigues and a helmet with a rifle and bayonet.
+    /// Slow and falls fast, but hits hard — and shoots, lobs grenades, blast-jumps and
+    /// counters with a riot shield.
+    Soldier,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -194,8 +198,37 @@ static NINJA_MOVES: Moveset = Moveset {
     dthrow: MoveId::NinjaThrowDown,
 };
 
+/// The soldier uses his own grab, dash grab, pummel and all four throws, unlike the
+/// samurai, which shares the chef's.
+static SOLDIER_MOVES: Moveset = Moveset {
+    jab: MoveId::SoldierButtStrike,
+    ftilt: MoveId::SoldierBayonet,
+    utilt: MoveId::SoldierRifleUp,
+    dtilt: MoveId::SoldierLegSweep,
+    dash_attack: MoveId::SoldierShoulderCharge,
+    fsmash: MoveId::SoldierStockSmash,
+    usmash: MoveId::SoldierBayonetUpper,
+    dsmash: MoveId::SoldierStockSweep,
+    nair: MoveId::SoldierAirSpin,
+    fair: MoveId::SoldierAirBayonet,
+    bair: MoveId::SoldierBackElbow,
+    uair: MoveId::SoldierAirUp,
+    dair: MoveId::SoldierAirStomp,
+    neutral_special: MoveId::SoldierRifleShot,
+    side_special: MoveId::SoldierGrenade,
+    up_special: MoveId::SoldierBlastJump,
+    down_special: MoveId::SoldierRiotShield,
+    grab: MoveId::SoldierGrab,
+    dash_grab: MoveId::SoldierDashGrab,
+    pummel: MoveId::SoldierPummel,
+    fthrow: MoveId::SoldierThrowForward,
+    bthrow: MoveId::SoldierThrowBack,
+    uthrow: MoveId::SoldierThrowUp,
+    dthrow: MoveId::SoldierThrowDown,
+};
+
 impl Character {
-    pub const ALL: [Character; 4] = [Character::Chef, Character::Pug, Character::Samurai, Character::Ninja];
+    pub const ALL: [Character; 5] = [Character::Chef, Character::Pug, Character::Samurai, Character::Ninja, Character::Soldier];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -203,6 +236,7 @@ impl Character {
             Character::Pug => "Pug",
             Character::Samurai => "Samurai",
             Character::Ninja => "Ninja",
+            Character::Soldier => "Soldier",
         }
     }
 
@@ -212,6 +246,7 @@ impl Character {
             Character::Pug => &FighterParams::PUG,
             Character::Samurai => &FighterParams::SAMURAI,
             Character::Ninja => &FighterParams::NINJA,
+            Character::Soldier => &FighterParams::SOLDIER,
         }
     }
 
@@ -221,6 +256,7 @@ impl Character {
             Character::Pug => &PUG_MOVES,
             Character::Samurai => &SAMURAI_MOVES,
             Character::Ninja => &NINJA_MOVES,
+            Character::Soldier => &SOLDIER_MOVES,
         }
     }
 
