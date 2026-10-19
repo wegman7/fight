@@ -94,6 +94,35 @@ pub enum MoveId {
     SamuraiShoulderThrow,
     SamuraiTossUp,
     SamuraiPin,
+    // The soldier's moves. Every one of the 24 slots is his own, including grab,
+    // dash grab, pummel and all four throws (he never uses the chef's shared ones).
+    SoldierButtStrike,
+    SoldierButtStrike2,
+    SoldierBayonet,
+    SoldierRifleUp,
+    SoldierLegSweep,
+    SoldierShoulderCharge,
+    SoldierStockSmash,
+    SoldierBayonetUpper,
+    SoldierStockSweep,
+    SoldierAirSpin,
+    SoldierAirBayonet,
+    SoldierBackElbow,
+    SoldierAirUp,
+    SoldierAirStomp,
+    SoldierRifleShot,
+    SoldierGrenade,
+    SoldierBlastJump,
+    SoldierRiotShield,
+    /// The riot shield's answer: blocks the hit and bashes the attacker back.
+    SoldierShieldBash,
+    SoldierGrab,
+    SoldierDashGrab,
+    SoldierPummel,
+    SoldierThrowForward,
+    SoldierThrowBack,
+    SoldierThrowUp,
+    SoldierThrowDown,
 }
 
 #[derive(Debug)]
@@ -154,6 +183,8 @@ pub struct ProjectileData {
     pub kb_growth: i32,
     /// For a move with a `charge_frame`: what the projectile gains when fully charged.
     pub growth: Option<ProjectileGrowth>,
+    /// Explodes in a blast instead of a single-target hit (see [`Explosion`]).
+    pub explosion: Option<Explosion>,
 }
 
 /// Added to a projectile at full charge (`MAX_CHARGE` frames), in proportion to how
@@ -166,6 +197,22 @@ pub struct ProjectileGrowth {
     pub lifetime: u16,
     /// Pushes the shooter backward at this speed when it fires.
     pub recoil: Fx,
+}
+
+/// An exploding projectile. When it comes down on a platform — or, with
+/// `on_contact`, the moment it touches a fighter — it bursts and hits every fighter
+/// (except its owner) within `radius` of the blast, instead of just the one it hit.
+/// This is a generic mechanic: any character's projectile can carry one.
+#[derive(Clone, Copy, Debug)]
+pub struct Explosion {
+    pub radius: Fx,
+    pub damage: i32,
+    /// Launch angle in degrees, as on a hitbox (0 = forward, 90 = up).
+    pub angle: i32,
+    pub base_kb: i32,
+    pub kb_growth: i32,
+    /// Explode the instant it touches a fighter, not only on landing.
+    pub on_contact: bool,
 }
 
 /// For a move with a `charge_frame`: what each of its hitboxes gains at full charge
@@ -344,6 +391,32 @@ impl MoveId {
             MoveId::SamuraiShoulderThrow => &SAMURAI_SHOULDER_THROW,
             MoveId::SamuraiTossUp => &SAMURAI_TOSS_UP,
             MoveId::SamuraiPin => &SAMURAI_PIN,
+            MoveId::SoldierButtStrike => &SOLDIER_BUTT_STRIKE,
+            MoveId::SoldierButtStrike2 => &SOLDIER_BUTT_STRIKE2,
+            MoveId::SoldierBayonet => &SOLDIER_BAYONET,
+            MoveId::SoldierRifleUp => &SOLDIER_RIFLE_UP,
+            MoveId::SoldierLegSweep => &SOLDIER_LEG_SWEEP,
+            MoveId::SoldierShoulderCharge => &SOLDIER_SHOULDER_CHARGE,
+            MoveId::SoldierStockSmash => &SOLDIER_STOCK_SMASH,
+            MoveId::SoldierBayonetUpper => &SOLDIER_BAYONET_UPPER,
+            MoveId::SoldierStockSweep => &SOLDIER_STOCK_SWEEP,
+            MoveId::SoldierAirSpin => &SOLDIER_AIR_SPIN,
+            MoveId::SoldierAirBayonet => &SOLDIER_AIR_BAYONET,
+            MoveId::SoldierBackElbow => &SOLDIER_BACK_ELBOW,
+            MoveId::SoldierAirUp => &SOLDIER_AIR_UP,
+            MoveId::SoldierAirStomp => &SOLDIER_AIR_STOMP,
+            MoveId::SoldierRifleShot => &SOLDIER_RIFLE_SHOT,
+            MoveId::SoldierGrenade => &SOLDIER_GRENADE,
+            MoveId::SoldierBlastJump => &SOLDIER_BLAST_JUMP,
+            MoveId::SoldierRiotShield => &SOLDIER_RIOT_SHIELD,
+            MoveId::SoldierShieldBash => &SOLDIER_SHIELD_BASH,
+            MoveId::SoldierGrab => &SOLDIER_GRAB,
+            MoveId::SoldierDashGrab => &SOLDIER_DASH_GRAB,
+            MoveId::SoldierPummel => &SOLDIER_PUMMEL,
+            MoveId::SoldierThrowForward => &SOLDIER_THROW_FORWARD,
+            MoveId::SoldierThrowBack => &SOLDIER_THROW_BACK,
+            MoveId::SoldierThrowUp => &SOLDIER_THROW_UP,
+            MoveId::SoldierThrowDown => &SOLDIER_THROW_DOWN,
         }
     }
 }
@@ -511,6 +584,7 @@ static PIE_THROW: MoveData = MoveData {
         base_kb: 25,
         kb_growth: 50,
         growth: None,
+        explosion: None,
     }),
     landing: Landing::Lag(8),
     ..BASE
@@ -779,6 +853,7 @@ static PUG_SNEEZE: MoveData = MoveData {
         base_kb: 20,
         kb_growth: 60,
         growth: Some(ProjectileGrowth { radius: int(3), damage: 12, base_kb: 45, lifetime: 22, recoil: Fx::ratio(15, 10) }),
+        explosion: None,
     }),
     charge_frame: Some(13),
     charge_with: Input::SPECIAL,
@@ -1207,3 +1282,261 @@ static ROLL_BACK: DodgeData = DodgeData { name: "roll_b", total_frames: 32, inta
 static AIR_DODGE: DodgeData = DodgeData { name: "airdodge", total_frames: 40, intangible: (3, 25), moving: (0, 0), speed: Fx::ZERO };
 static AIR_DODGE_DIRECTIONAL: DodgeData =
     DodgeData { name: "airdodge", total_frames: 34, intangible: (3, 18), moving: (1, 20), speed: Fx::int(3) };
+
+// --- Soldier ----------------------------------------------------------------
+// A heavyweight in fatigues with a rifle and bayonet. He hits harder and reaches
+// further than the chef's fists, in exchange for slower startups, and he falls
+// like a stone (see `FighterParams::SOLDIER`). The rifle is a two-handed prop, so
+// several moves hit out at x 8-13.
+
+/// Rifle-butt jab. Press attack again for a second, harder butt strike.
+static SOLDIER_BUTT_STRIKE: MoveData = MoveData {
+    name: "soldier_butt_strike",
+    total_frames: 20,
+    hitboxes: &[hit(4, 5, int(7), int(7), int(4), 4, 50, 10, 50)],
+    combo: Some((MoveId::SoldierButtStrike2, 7)),
+    ..BASE
+};
+
+static SOLDIER_BUTT_STRIKE2: MoveData = MoveData {
+    name: "soldier_butt_strike_2",
+    total_frames: 24,
+    hitboxes: &[hit(4, 6, int(8), int(7), int(4), 6, 40, 40, 95)],
+    ..BASE
+};
+
+/// Bayonet thrust, the forward tilt: long and straight, hardest at the tip.
+static SOLDIER_BAYONET: MoveData = MoveData {
+    name: "soldier_bayonet",
+    total_frames: 32,
+    hitboxes: &[hit(7, 9, int(12), int(7), int(3), 13, 35, 28, 100), hit(7, 9, int(8), int(7), int(4), 10, 40, 25, 90)],
+    ..BASE
+};
+
+/// Swings the rifle up over his head.
+static SOLDIER_RIFLE_UP: MoveData = MoveData {
+    name: "soldier_rifle_up",
+    total_frames: 32,
+    hitboxes: &[hit(7, 9, int(5), int(10), int(5), 9, 85, 32, 105), hit(10, 13, int(2), int(16), int(5), 9, 88, 32, 105)],
+    ..BASE
+};
+
+/// Low leg sweep that trips and pops opponents up.
+static SOLDIER_LEG_SWEEP: MoveData = MoveData {
+    name: "soldier_leg_sweep",
+    total_frames: 26,
+    hitboxes: &[hit(7, 9, int(9), int(2), int(4), 8, 70, 30, 75)],
+    ..BASE
+};
+
+/// Shoulder charge out of a run, carried forward on the run's momentum.
+static SOLDIER_SHOULDER_CHARGE: MoveData = MoveData {
+    name: "soldier_shoulder_charge",
+    total_frames: 42,
+    hitboxes: &[hit(7, 11, int(7), int(6), int(5), 14, 45, 45, 75), hit(12, 18, int(6), int(6), int(4), 8, 55, 30, 55)],
+    motion: &[Motion { first: 5, last: 14, vx: Some(Fx::int(2)), vy: None }],
+    ..BASE
+};
+
+/// Heavy rifle-stock smash. The charge pose is held while charging.
+static SOLDIER_STOCK_SMASH: MoveData = MoveData {
+    name: "soldier_stock_smash",
+    total_frames: 52,
+    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 20, 38, 34, 103), hit(16, 18, int(7), int(7), int(4), 16, 40, 30, 100)],
+    charge_frame: Some(12),
+    ..BASE
+};
+
+static SOLDIER_BAYONET_UPPER: MoveData = MoveData {
+    name: "soldier_bayonet_upper",
+    total_frames: 48,
+    hitboxes: &[hit(12, 16, int(3), int(17), int(6), 17, 90, 34, 100), hit(11, 12, int(7), int(10), int(5), 15, 85, 32, 100)],
+    charge_frame: Some(8),
+    ..BASE
+};
+
+/// Spinning stock sweep: in front first, then behind.
+static SOLDIER_STOCK_SWEEP: MoveData = MoveData {
+    name: "soldier_stock_sweep",
+    total_frames: 46,
+    hitboxes: &[hit(9, 11, int(10), int(3), int(5), 15, 30, 28, 98), hit(15, 17, int(-10), int(3), int(5), 16, 150, 28, 100)],
+    charge_frame: Some(6),
+    ..BASE
+};
+
+/// Spins with the rifle out level: strong early, weaker as it slows.
+static SOLDIER_AIR_SPIN: MoveData = MoveData {
+    name: "soldier_air_spin",
+    total_frames: 38,
+    hitboxes: &[hit(5, 8, int(8), int(6), int(6), 11, 45, 15, 95), hit(9, 20, int(0), int(6), int(6), 6, 45, 8, 80)],
+    landing: Landing::Lag(14),
+    ..BASE
+};
+
+/// Airborne bayonet thrust.
+static SOLDIER_AIR_BAYONET: MoveData = MoveData {
+    name: "soldier_air_bayonet",
+    total_frames: 40,
+    hitboxes: &[hit(9, 12, int(11), int(7), int(4), 14, 40, 26, 95)],
+    landing: Landing::Lag(16),
+    ..BASE
+};
+
+/// Back elbow.
+static SOLDIER_BACK_ELBOW: MoveData = MoveData {
+    name: "soldier_back_elbow",
+    total_frames: 36,
+    hitboxes: &[hit(7, 10, int(-7), int(7), int(5), 14, 145, 28, 100)],
+    landing: Landing::Lag(13),
+    ..BASE
+};
+
+/// Upward rifle jab.
+static SOLDIER_AIR_UP: MoveData = MoveData {
+    name: "soldier_air_up",
+    total_frames: 34,
+    hitboxes: &[hit(6, 10, int(2), int(15), int(5), 11, 85, 27, 95)],
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Stomps straight down: a meteor, with a lot of landing lag.
+static SOLDIER_AIR_STOMP: MoveData = MoveData {
+    name: "soldier_air_stomp",
+    total_frames: 46,
+    hitboxes: &[hit(13, 16, int(1), int(-1), int(5), 15, 270, 20, 90)],
+    landing: Landing::Lag(20),
+    ..BASE
+};
+
+/// Rifle shot: a fast, straight bullet.
+static SOLDIER_RIFLE_SHOT: MoveData = MoveData {
+    name: "soldier_rifle_shot",
+    total_frames: 30,
+    projectile: Some(ProjectileData {
+        frame: 10,
+        x: int(9),
+        y: int(7),
+        speed: Fx::ratio(35, 10),
+        vy: Fx::ZERO,
+        gravity: Fx::ZERO,
+        lifetime: 40,
+        radius: int(2),
+        damage: 8,
+        angle: 30,
+        base_kb: 30,
+        kb_growth: 60,
+        growth: None,
+        explosion: None,
+    }),
+    ..BASE
+};
+
+/// Grenade: a lobbed shell that explodes where it lands or on whatever it touches.
+static SOLDIER_GRENADE: MoveData = MoveData {
+    name: "soldier_grenade",
+    total_frames: 40,
+    projectile: Some(ProjectileData {
+        frame: 14,
+        x: int(7),
+        y: int(8),
+        speed: Fx::int(2),
+        vy: Fx::ratio(1, 2),
+        gravity: Fx::ratio(7, 200),
+        lifetime: 60,
+        radius: int(2),
+        // The shell itself doesn't hit: the blast it sets off does.
+        damage: 0,
+        angle: 45,
+        base_kb: 0,
+        kb_growth: 0,
+        growth: None,
+        explosion: Some(Explosion { radius: int(8), damage: 13, angle: 70, base_kb: 45, kb_growth: 75, on_contact: true }),
+    }),
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// Blast jump: an explosion below launches him up (his recovery) while spiking
+/// whoever is underneath.
+static SOLDIER_BLAST_JUMP: MoveData = MoveData {
+    name: "soldier_blast_jump",
+    total_frames: 46,
+    hitboxes: &[hit(4, 7, int(0), int(-4), int(6), 10, 270, 30, 60), hit(6, 12, int(0), int(4), int(5), 5, 80, 25, 60)],
+    motion: &[
+        Motion { first: 1, last: 3, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 4, last: 18, vx: None, vy: Some(Fx::ratio(26, 10)) },
+        Motion { first: 19, last: 20, vx: None, vy: Some(Fx::ratio(8, 10)) },
+    ],
+    landing: Landing::Lag(22),
+    special_fall: true,
+    ..BASE
+};
+
+/// Riot shield stance. Hit during the window, he blocks the blow and bashes back.
+static SOLDIER_RIOT_SHIELD: MoveData = MoveData {
+    name: "soldier_riot_shield",
+    total_frames: 48,
+    counter: Some(Counter { first: 6, last: 26, into: MoveId::SoldierShieldBash }),
+    ..BASE
+};
+
+static SOLDIER_SHIELD_BASH: MoveData = MoveData {
+    name: "soldier_shield_bash",
+    total_frames: 34,
+    hitboxes: &[hit(5, 8, int(8), int(7), int(6), 15, 40, 50, 90)],
+    ..BASE
+};
+
+/// Grabs with one hand while the rifle stays in the other.
+static SOLDIER_GRAB: MoveData = MoveData {
+    name: "soldier_grab",
+    total_frames: 32,
+    grabbox: Some(GrabBox { first: 7, last: 8, x: int(8), y: int(6), radius: int(4), misses_shields: false }),
+    ..BASE
+};
+
+static SOLDIER_DASH_GRAB: MoveData = MoveData {
+    name: "soldier_dash_grab",
+    total_frames: 42,
+    grabbox: Some(GrabBox { first: 9, last: 10, x: int(9), y: int(6), radius: int(4), misses_shields: false }),
+    ..BASE
+};
+
+/// Rifle-butt pommel.
+static SOLDIER_PUMMEL: MoveData = MoveData {
+    name: "soldier_pummel",
+    total_frames: 18,
+    throws: &[Throw { frame: 3, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 }],
+    ..BASE
+};
+
+static SOLDIER_THROW_FORWARD: MoveData = MoveData {
+    name: "soldier_throw_forward",
+    total_frames: 32,
+    throws: &[Throw { frame: 13, release: true, x: int(9), damage: 8, angle: 45, base_kb: 65, kb_growth: 60 }],
+    ..BASE
+};
+
+/// The kill throw: swings the opponent over and out behind.
+static SOLDIER_THROW_BACK: MoveData = MoveData {
+    name: "soldier_throw_back",
+    total_frames: 38,
+    throws: &[Throw { frame: 16, release: true, x: int(-9), damage: 11, angle: 135, base_kb: 60, kb_growth: 80 }],
+    ..BASE
+};
+
+static SOLDIER_THROW_UP: MoveData = MoveData {
+    name: "soldier_throw_up",
+    total_frames: 34,
+    throws: &[Throw { frame: 14, release: true, x: int(2), damage: 7, angle: 90, base_kb: 72, kb_growth: 60 }],
+    ..BASE
+};
+
+/// Slams them down in front, popping them up: the combo throw.
+static SOLDIER_THROW_DOWN: MoveData = MoveData {
+    name: "soldier_throw_down",
+    total_frames: 34,
+    throws: &[Throw { frame: 15, release: true, x: int(7), damage: 7, angle: 70, base_kb: 55, kb_growth: 40 }],
+    ..BASE
+};

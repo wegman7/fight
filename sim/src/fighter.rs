@@ -98,6 +98,30 @@ impl FighterParams {
         height: Fx::int(12),
         radius: Fx::int(4),
     };
+
+    /// The heavyweight: heaviest of the lot, the slowest to run, and it falls fast
+    /// and hard. Its hits land hard to make up for the slow startups.
+    pub const SOLDIER: FighterParams = FighterParams {
+        weight: 122,
+        walk_speed: Fx::ratio(95, 100),
+        run_speed: Fx::ratio(125, 100),
+        ground_accel: Fx::ratio(2, 10),
+        traction: Fx::ratio(7, 100),
+        air_speed: Fx::ratio(8, 10),
+        air_accel: Fx::ratio(4, 100),
+        air_friction: Fx::ratio(2, 100),
+        gravity: Fx::ratio(13, 100),
+        max_fall: Fx::ratio(21, 10),
+        fast_fall: Fx::ratio(29, 10),
+        jump_squat: 5,
+        full_hop: Fx::ratio(20, 10),
+        short_hop: Fx::ratio(13, 10),
+        double_jump: Fx::ratio(19, 10),
+        air_jumps: 1,
+        landing_lag: 5,
+        height: Fx::int(12),
+        radius: Fx::int(4),
+    };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

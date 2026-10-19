@@ -16,6 +16,10 @@ pub enum Character {
     /// slashes, a chargeable focus cut, a vault over the opponent, a spinning recovery
     /// and a parry that ripostes.
     Samurai,
+    /// The heavyweight: a soldier in fatigues and a helmet with a rifle and bayonet.
+    /// Slow and falls fast, but hits hard — and shoots, lobs grenades, blast-jumps and
+    /// counters with a riot shield.
+    Soldier,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -160,14 +164,44 @@ static SAMURAI_MOVES: Moveset = Moveset {
     dthrow: MoveId::SamuraiPin,
 };
 
+/// The soldier uses his own grab, dash grab, pummel and all four throws, unlike the
+/// samurai, which shares the chef's.
+static SOLDIER_MOVES: Moveset = Moveset {
+    jab: MoveId::SoldierButtStrike,
+    ftilt: MoveId::SoldierBayonet,
+    utilt: MoveId::SoldierRifleUp,
+    dtilt: MoveId::SoldierLegSweep,
+    dash_attack: MoveId::SoldierShoulderCharge,
+    fsmash: MoveId::SoldierStockSmash,
+    usmash: MoveId::SoldierBayonetUpper,
+    dsmash: MoveId::SoldierStockSweep,
+    nair: MoveId::SoldierAirSpin,
+    fair: MoveId::SoldierAirBayonet,
+    bair: MoveId::SoldierBackElbow,
+    uair: MoveId::SoldierAirUp,
+    dair: MoveId::SoldierAirStomp,
+    neutral_special: MoveId::SoldierRifleShot,
+    side_special: MoveId::SoldierGrenade,
+    up_special: MoveId::SoldierBlastJump,
+    down_special: MoveId::SoldierRiotShield,
+    grab: MoveId::SoldierGrab,
+    dash_grab: MoveId::SoldierDashGrab,
+    pummel: MoveId::SoldierPummel,
+    fthrow: MoveId::SoldierThrowForward,
+    bthrow: MoveId::SoldierThrowBack,
+    uthrow: MoveId::SoldierThrowUp,
+    dthrow: MoveId::SoldierThrowDown,
+};
+
 impl Character {
-    pub const ALL: [Character; 3] = [Character::Chef, Character::Pug, Character::Samurai];
+    pub const ALL: [Character; 4] = [Character::Chef, Character::Pug, Character::Samurai, Character::Soldier];
 
     pub fn name(self) -> &'static str {
         match self {
             Character::Chef => "Chef",
             Character::Pug => "Pug",
             Character::Samurai => "Samurai",
+            Character::Soldier => "Soldier",
         }
     }
 
@@ -176,6 +210,7 @@ impl Character {
             Character::Chef => &FighterParams::CHEF,
             Character::Pug => &FighterParams::PUG,
             Character::Samurai => &FighterParams::SAMURAI,
+            Character::Soldier => &FighterParams::SOLDIER,
         }
     }
 
@@ -184,6 +219,7 @@ impl Character {
             Character::Chef => &CHEF_MOVES,
             Character::Pug => &PUG_MOVES,
             Character::Samurai => &SAMURAI_MOVES,
+            Character::Soldier => &SOLDIER_MOVES,
         }
     }
 

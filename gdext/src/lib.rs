@@ -7,7 +7,7 @@ mod menu;
 mod menu_view;
 mod music;
 
-use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, SHIELD_MAX, STATE_ANIMS, Stage, StageId, State, World};
+use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, MoveId, SHIELD_MAX, STATE_ANIMS, Stage, StageId, State, World};
 use menu::{DEFAULT_CPU_LEVEL, DEFAULT_STOCKS, MatchSetup, Menu, MenuEvent, PORTS, Player, PortInput, Screen};
 use menu_view::MenuView;
 use music::Music;
@@ -79,6 +79,22 @@ fn look(character: Character) -> Look {
         Character::Pug => Look { model: "res://models/pug.glb", shot: Some(Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8))) },
         // Built by art/samurai/build_samurai.py. All his specials are sword moves.
         Character::Samurai => Look { model: "res://models/samurai.glb", shot: None },
+        // Built by art/soldier/build_soldier.py. He has two projectiles (a bullet and
+        // a grenade), so his `shot` is chosen per projectile by `shot_for`.
+        Character::Soldier => Look { model: "res://models/soldier.glb", shot: None },
+    }
+}
+
+/// The `Shot` for a projectile in flight, by the move that fired it, so a character
+/// can throw several different-looking projectiles (the soldier's bullet and grenade).
+/// Falls back to `look(character).shot` for characters with a single projectile.
+fn shot_for(character: Character, mv: MoveId) -> Option<Shot> {
+    match (character, mv) {
+        (Character::Soldier, MoveId::SoldierRifleShot) => Some(Shot::Orb(Color::from_rgb(0.95, 0.9, 0.5))),
+        (Character::Soldier, MoveId::SoldierGrenade) => {
+            Some(Shot::Model { path: "res://models/grenade.glb", scale: 1.2, splat: Color::from_rgb(0.35, 0.35, 0.3) })
+        }
+        _ => look(character).shot,
     }
 }
 /// Surfaces with this material name get the player's color.
@@ -301,6 +317,10 @@ impl INode3D for FightWorld {
                         let at = to_godot(x, y);
                         self.spawn_splat(at, cream, Some(at.y));
                     }
+                }
+                Event::Explosion { x, y, .. } => {
+                    self.spawn_spark(to_godot(x, y), 0.9);
+                    self.shake = self.shake.max(0.25);
                 }
                 Event::ShieldBreak { fighter } => {
                     self.shake = 0.4;
@@ -621,7 +641,7 @@ impl FightWorld {
     fn update_projectiles(&mut self) {
         let projectiles = self.world.projectiles.clone();
         for (i, p) in projectiles.iter().enumerate() {
-            let shot = look(self.world.fighters[p.owner].character).shot.expect("projectile from a character without a Shot");
+            let shot = shot_for(self.world.fighters[p.owner].character, p.mv).expect("projectile from a character without a Shot");
             if self.projectile_pool.get(i).is_none_or(|view| view.shot != shot) {
                 let view = self.projectile_view(shot);
                 self.arena.add_child(&view.node);

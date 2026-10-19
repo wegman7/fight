@@ -7,7 +7,7 @@
   plus the Melee-style menus (stocks → character select → stage select). See `gdext/CLAUDE.md`.
 - `godot/`: Godot project. `main.tscn` root node is `FightWorld` (defined in Rust); it
   also holds the beach backdrop (purely decorative; sand and ocean shaders in `godot/shaders/`,
-  next to the pug's `fur.gdshader`).
+  next to the pug's `fur.gdshader` and the soldier's `camo.gdshader`).
 - `godot/music/`: the two background tracks — `rising_motif.mp3` during matches,
   `untitled.mp3` in the menus — loaded and looped by `gdext/src/music.rs`.
 - `art/fighter/`: Blender source for the chef model (`godot/models/fighter.glb`) and his
@@ -16,6 +16,9 @@
   four-legged rig. Its fur shader is swapped in by `pug.glb.import`. See `art/pug/README.md`.
 - `art/samurai/`: the samurai model (`godot/models/samurai.glb`), script-generated on the
   chef's skeleton plus a katana bone, reusing the chef script's helpers. See `art/samurai/README.md`.
+- `art/soldier/`: the soldier model (`godot/models/soldier.glb`) and his grenade
+  (`godot/models/grenade.glb`), script-generated on the chef's skeleton plus a rifle
+  bone. His fatigues' camo shader is swapped in by `soldier.glb.import`. See `art/soldier/README.md`.
 - `art/beach/`: script-generated backdrop props (palms, rock, sailboat). See `art/beach/README.md`.
 - `art/stage/`: the stage's platform models (`stage.glb`, `raft.glb`), script-generated,
   textured by `wood.gdshader` and `stone.gdshader` swapped in on import. See `art/stage/README.md`.
@@ -40,6 +43,7 @@ godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   #
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb
 blender --background --factory-startup --python art/samurai/build_samurai.py   # rebuild samurai .blend + .glb
+blender --background --factory-startup --python art/soldier/build_soldier.py   # rebuild soldier .blend + .glb, and grenade.glb
 blender --background --factory-startup --python art/beach/build_beach.py       # rebuild backdrop props
 blender --background --factory-startup --python art/stage/build_stage.py       # rebuild stage platforms
 godot --headless --path godot --import             # after a .glb changes

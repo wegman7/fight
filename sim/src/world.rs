@@ -18,6 +18,8 @@ pub enum Event {
     ShieldHit { attacker: usize, defender: usize, x: Fx, y: Fx, damage: i32, projectile: bool },
     /// A lobbed projectile (the chef's pie) came down on a platform at x, y and is gone.
     ProjectileLanded { owner: usize, x: Fx, y: Fx },
+    /// A projectile's blast went off at x, y (the soldier's grenade), hitting everyone in range.
+    Explosion { owner: usize, x: Fx, y: Fx },
     ShieldBreak { fighter: usize },
     Grab { attacker: usize, defender: usize },
     /// `fighter` countered a hit from `attacker` (the pug playing dead) at x, y.
@@ -82,6 +84,19 @@ pub struct World {
     pub fighters: Vec<Fighter>,
     pub projectiles: Vec<Projectile>,
     pub events: Vec<Event>,
+    /// Explosions collected this frame (grenade landings, contact blasts) and applied
+    /// by `resolve_hits`. Cleared at the start of every step.
+    pending_explosions: Vec<PendingExplosion>,
+}
+
+/// An explosion to resolve this frame: a projectile's blast at a point, whose numbers
+/// come from its move's [`Explosion`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct PendingExplosion {
+    owner: usize,
+    mv: MoveId,
+    x: Fx,
+    y: Fx,
 }
 
 /// A hit found during detection, applied once everything has been collected.
@@ -97,6 +112,8 @@ struct Strike {
     /// Knockback is mirrored toward this side (attacker's facing, or projectile's travel).
     direction: i32,
     projectile: Option<usize>,
+    /// A blast hit (see [`Explosion`]): it doesn't freeze or mark the thrower's swing.
+    explosion: bool,
 }
 
 impl World {
@@ -112,13 +129,14 @@ impl World {
                 Fighter::new(character, x, y, facing, &stage, stocks)
             })
             .collect();
-        World { frame: 0, stage, fighters, projectiles: Vec::new(), events: Vec::new() }
+        World { frame: 0, stage, fighters, projectiles: Vec::new(), events: Vec::new(), pending_explosions: Vec::new() }
     }
 
     /// Advances one frame (1/60 s). `inputs[i]` drives fighter `i`.
     pub fn step(&mut self, inputs: &[Input]) {
         self.frame += 1;
         self.events.clear();
+        self.pending_explosions.clear();
         for (i, fighter) in self.fighters.iter_mut().enumerate() {
             fighter.step(inputs.get(i).copied().unwrap_or_default(), &self.stage);
         }
@@ -213,6 +231,7 @@ impl World {
     fn move_projectiles(&mut self) {
         let s = &self.stage;
         let events = &mut self.events;
+        let mut landed = Vec::new();
         self.projectiles.retain_mut(|p| {
             let gravity = p.data().gravity;
             let was_y = p.y;
@@ -221,13 +240,18 @@ impl World {
             p.y += p.vy;
             p.frames_left = p.frames_left.saturating_sub(1);
             // Coming down through the top of a platform: it lands there.
-            let landed = s.platforms.iter().find(|pl| p.vy < Fx::ZERO && was_y >= pl.y && p.y < pl.y && pl.contains_x(p.x));
-            if let Some(pl) = landed {
-                events.push(Event::ProjectileLanded { owner: p.owner, x: p.x, y: pl.y });
+            let on_platform = s.platforms.iter().find(|pl| p.vy < Fx::ZERO && was_y >= pl.y && p.y < pl.y && pl.contains_x(p.x));
+            if let Some(pl) = on_platform {
+                if p.data().explosion.is_some() {
+                    landed.push(PendingExplosion { owner: p.owner, mv: p.mv, x: p.x, y: pl.y });
+                } else {
+                    events.push(Event::ProjectileLanded { owner: p.owner, x: p.x, y: pl.y });
+                }
                 return false;
             }
             p.frames_left > 0 && p.x > s.blast_left && p.x < s.blast_right && p.y > s.blast_bottom
         });
+        self.pending_explosions.extend(landed);
     }
 
     fn fire_projectiles(&mut self) {
@@ -278,11 +302,14 @@ impl World {
                             kb_growth: hb.kb_growth,
                             direction: attacker.facing,
                             projectile: None,
+                            explosion: false,
                         });
                     }
                 }
             }
         }
+        let mut spent_projectiles: Vec<usize> = Vec::new();
+        let mut contact_explosions: Vec<PendingExplosion> = Vec::new();
         for (pi, p) in self.projectiles.iter().enumerate() {
             let data = p.data();
             let target = (0..self.fighters.len()).find(|&di| {
@@ -290,17 +317,58 @@ impl World {
                 di != p.owner && d.hittable() && d.hurtbox_overlaps(p.x, p.y, p.radius())
             });
             if let Some(di) = target {
+                if let Some(explosion) = data.explosion
+                    && explosion.on_contact
+                {
+                    // It blows up where it touched, instead of a single-target hit.
+                    contact_explosions.push(PendingExplosion { owner: p.owner, mv: p.mv, x: p.x, y: p.y });
+                    spent_projectiles.push(pi);
+                } else {
+                    strikes.push(Strike {
+                        attacker: p.owner,
+                        defender: di,
+                        x: p.x,
+                        y: p.y,
+                        damage: p.damage(),
+                        angle: data.angle,
+                        base_kb: p.base_kb(),
+                        kb_growth: data.kb_growth,
+                        direction: p.vx.signum(),
+                        projectile: Some(pi),
+                        explosion: false,
+                    });
+                }
+            }
+        }
+
+        // Blasts from projectiles that landed this frame (or just touched a fighter):
+        // each one hits every fighter in range, like a hitbox but without freezing
+        // the thrower.
+        let mut explosions = std::mem::take(&mut self.pending_explosions);
+        explosions.extend(contact_explosions);
+        for e in explosions {
+            let blast = e.mv.data().projectile.as_ref().and_then(|p| p.explosion).expect("explosion without Explosion data");
+            self.events.push(Event::Explosion { owner: e.owner, x: e.x, y: e.y });
+            let owner_facing = self.fighters[e.owner].facing;
+            for (di, defender) in self.fighters.iter().enumerate() {
+                if di == e.owner || !defender.hittable() || !defender.hurtbox_overlaps(e.x, e.y, blast.radius) {
+                    continue;
+                }
+                // Pushed away from the center of the blast.
+                let away = (defender.x - e.x).signum();
+                let direction = if away == 0 { owner_facing } else { away };
                 strikes.push(Strike {
-                    attacker: p.owner,
+                    attacker: e.owner,
                     defender: di,
-                    x: p.x,
-                    y: p.y,
-                    damage: p.damage(),
-                    angle: data.angle,
-                    base_kb: p.base_kb(),
-                    kb_growth: data.kb_growth,
-                    direction: p.vx.signum(),
-                    projectile: Some(pi),
+                    x: e.x,
+                    y: e.y,
+                    damage: blast.damage,
+                    angle: blast.angle,
+                    base_kb: blast.base_kb,
+                    kb_growth: blast.kb_growth,
+                    direction,
+                    projectile: None,
+                    explosion: true,
                 });
             }
         }
@@ -328,7 +396,6 @@ impl World {
             first
         });
 
-        let mut spent_projectiles = Vec::new();
         // Fighters that countered a strike this frame ignore the rest of them.
         let mut countered = 0u8;
         for s in strikes {
@@ -338,6 +405,7 @@ impl World {
             let lag = hitlag_frames(s.damage);
             match s.projectile {
                 Some(pi) => spent_projectiles.push(pi),
+                None if s.explosion => {}
                 None => {
                     let attacker = &mut self.fighters[s.attacker];
                     if let State::Attack { hit_mask, .. } = &mut attacker.state {

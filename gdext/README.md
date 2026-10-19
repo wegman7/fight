@@ -78,10 +78,11 @@ screen doesn't also act on the next one.
   menu track. Volume is `FIGHT_MUSIC_VOLUME` (0-100) and the `-` / `=` keys (in
   `unhandled_input`, so they work in both modes).
 - Each player plays the `fight_sim::Character` chosen in the menus. `look()` maps it to
-  a model, `res://models/fighter.glb`, `pug.glb` or `samurai.glb` (made in Blender, see
-  [`art/fighter/README.md`](../art/fighter/README.md),
-  [`art/pug/README.md`](../art/pug/README.md) and
-  [`art/samurai/README.md`](../art/samurai/README.md)); `tinted_model` loads it with the `Body`
+  a model, `res://models/fighter.glb`, `pug.glb`, `samurai.glb` or `soldier.glb` (made
+  in Blender, see [`art/fighter/README.md`](../art/fighter/README.md),
+  [`art/pug/README.md`](../art/pug/README.md),
+  [`art/samurai/README.md`](../art/samurai/README.md) and
+  [`art/soldier/README.md`](../art/soldier/README.md)); `tinted_model` loads it with the `Body`
   material swapped for the player's color (in game and in the menus). At startup,
   `check_models` logs an `ERROR` for every animation a character can need
   (`STATE_ANIMS`, `Character::moves()`, dodges) that its model lacks. The HUD shows each
@@ -91,16 +92,20 @@ screen doesn't also act on the next one.
   rollback. Clips switch instantly (no blending yet). The `Body` material is
   replaced per player for the color and state tints: white hit flash, pale blue
   while a dodge is invincible, flashing while charging a smash attack (the model also
-  shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar; on the samurai, his headband and sash.
+  shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar; on the
+  samurai, his headband and sash; on the soldier, his armband.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
   Projectiles come from `World::projectiles` and are drawn from a pool, each as its
-  owner's `Look::shot`: `Shot::Orb` is a glowing sphere (the pug's sneeze, a pale puff;
-  sized by `Projectile::radius()`, which grows with charge); `Shot::Model` loads a model
-  (the chef's `res://models/pie.glb`), turns it the way it flies and tilts it with its
-  arc. Model shots burst into cream blobs (`Splat`) where they hit (`Event::Hit` /
+  owner's `shot_for(character, move)` (a character with one projectile just falls back
+  to `look().shot`; the soldier has two): `Shot::Orb` is a glowing sphere (the pug's
+  sneeze, a pale puff, and the soldier's bullet; sized by `Projectile::radius()`, which
+  grows with charge); `Shot::Model` loads a model (the chef's `res://models/pie.glb`,
+  the soldier's `res://models/grenade.glb`), turns it the way it flies and tilts it with
+  its arc. Model shots burst into cream blobs (`Splat`) where they hit (`Event::Hit` /
   `ShieldHit` with `projectile: true`) or land (`Event::ProjectileLanded`, a puddle on
-  the floor); other hits make a spark. `Event::Counter` (the pug's play dead, the samurai's parry) makes a spark and a
-  small shake. With **H**, hitboxes are red and grab boxes purple.
+  the floor); other hits make a spark. `Event::Counter` (the pug's play dead, the samurai's parry,
+  the soldier's riot shield) makes a spark and a small shake, and `Event::Explosion`
+  (the grenade's blast) a bigger spark and shake. With **H**, hitboxes are red and grab boxes purple.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600` (sits in
   the menus) and `FIGHT_DEMO=1 godot --headless --path godot --quit-after 900` (plays a
   match). They should print no `ERROR` lines.
