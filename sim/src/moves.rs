@@ -94,6 +94,36 @@ pub enum MoveId {
     SamuraiShoulderThrow,
     SamuraiTossUp,
     SamuraiPin,
+    // The drunk hobo's moves (see `character.rs`). He uses none of the shared moves:
+    // even his grab, dash grab and pummel are his own.
+    HoboSlap,
+    HoboSlap2,
+    HoboSlap3,
+    HoboPunch,
+    HoboUpSwing,
+    HoboTrip,
+    HoboStumble,
+    HoboBottleSwing,
+    HoboUpHeave,
+    HoboSpinFlail,
+    HoboFlail,
+    HoboHaymaker,
+    HoboBackhand,
+    HoboUpFlail,
+    HoboStomp,
+    HoboBottleThrow,
+    HoboCartCharge,
+    HoboFizzRocket,
+    HoboPassedOut,
+    /// The passed-out counter's answer: he jolts awake and swings.
+    HoboJolt,
+    HoboGrab,
+    HoboDashGrab,
+    HoboPummel,
+    HoboThrowForward,
+    HoboThrowBack,
+    HoboThrowUp,
+    HoboThrowDown,
 }
 
 #[derive(Debug)]
@@ -177,6 +207,21 @@ pub struct HitGrowth {
     pub base_kb: i32,
 }
 
+/// A projectile that bursts when it stops: when it comes down on a platform or runs
+/// out of lifetime, every fighter within `radius` of where it stopped takes this hit,
+/// sent away from the burst point (0 = forward from that point, 90 = up). The
+/// projectile's own direct hit is unchanged, and shattering never happens on a direct
+/// hit — only when it lands or expires. Declared on the *move* (`MoveData::shatter`),
+/// so any character's lobbed projectile can use it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shatter {
+    pub radius: Fx,
+    pub damage: i32,
+    pub angle: i32,
+    pub base_kb: i32,
+    pub kb_growth: i32,
+}
+
 /// Applied to the held opponent on `frame`. A pummel (`release: false`) only deals
 /// damage; a throw puts the opponent at `x` and launches them.
 #[derive(Debug)]
@@ -223,6 +268,8 @@ pub struct MoveData {
     pub on_grab: Option<MoveId>,
     pub motion: &'static [Motion],
     pub projectile: Option<ProjectileData>,
+    /// A shattering projectile bursts (an area hit) when it lands or expires.
+    pub shatter: Option<Shatter>,
     /// Pummels and throws, in frame order. Once one releases, the rest are skipped.
     pub throws: &'static [Throw],
     pub landing: Landing,
@@ -250,6 +297,7 @@ const BASE: MoveData = MoveData {
     on_grab: None,
     motion: &[],
     projectile: None,
+    shatter: None,
     throws: &[],
     landing: Landing::Continue,
     charge_frame: None,
@@ -344,6 +392,33 @@ impl MoveId {
             MoveId::SamuraiShoulderThrow => &SAMURAI_SHOULDER_THROW,
             MoveId::SamuraiTossUp => &SAMURAI_TOSS_UP,
             MoveId::SamuraiPin => &SAMURAI_PIN,
+            MoveId::HoboSlap => &HOBO_SLAP,
+            MoveId::HoboSlap2 => &HOBO_SLAP2,
+            MoveId::HoboSlap3 => &HOBO_SLAP3,
+            MoveId::HoboPunch => &HOBO_PUNCH,
+            MoveId::HoboUpSwing => &HOBO_UP_SWING,
+            MoveId::HoboTrip => &HOBO_TRIP,
+            MoveId::HoboStumble => &HOBO_STUMBLE,
+            MoveId::HoboBottleSwing => &HOBO_BOTTLE_SWING,
+            MoveId::HoboUpHeave => &HOBO_UP_HEAVE,
+            MoveId::HoboSpinFlail => &HOBO_SPIN_FLAIL,
+            MoveId::HoboFlail => &HOBO_FLAIL,
+            MoveId::HoboHaymaker => &HOBO_HAYMAKER,
+            MoveId::HoboBackhand => &HOBO_BACKHAND,
+            MoveId::HoboUpFlail => &HOBO_UP_FLAIL,
+            MoveId::HoboStomp => &HOBO_STOMP,
+            MoveId::HoboBottleThrow => &HOBO_BOTTLE_THROW,
+            MoveId::HoboCartCharge => &HOBO_CART_CHARGE,
+            MoveId::HoboFizzRocket => &HOBO_FIZZ_ROCKET,
+            MoveId::HoboPassedOut => &HOBO_PASSED_OUT,
+            MoveId::HoboJolt => &HOBO_JOLT,
+            MoveId::HoboGrab => &HOBO_GRAB,
+            MoveId::HoboDashGrab => &HOBO_DASH_GRAB,
+            MoveId::HoboPummel => &HOBO_PUMMEL,
+            MoveId::HoboThrowForward => &HOBO_THROW_FORWARD,
+            MoveId::HoboThrowBack => &HOBO_THROW_BACK,
+            MoveId::HoboThrowUp => &HOBO_THROW_UP,
+            MoveId::HoboThrowDown => &HOBO_THROW_DOWN,
         }
     }
 }
@@ -1151,6 +1226,281 @@ static SAMURAI_TOSS_UP: MoveData = MoveData {
 /// Pins them with a knee, then lets them pop up in front: the combo throw.
 static SAMURAI_PIN: MoveData = MoveData {
     name: "pin",
+    total_frames: 34,
+    throws: &[Throw { frame: 15, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }],
+    ..BASE
+};
+
+// --- Hobo -------------------------------------------------------------------
+// A floaty, wobbly drunken brawler: the chef's height, but his swings come out late
+// and lurch through odd arcs. Startups run a few frames longer than the other cast
+// and several moves carry him forward as he over-commits to the swing.
+
+/// A swaying slap. Press attack again for a backhand, then a shove.
+static HOBO_SLAP: MoveData = MoveData {
+    name: "hobo_slap",
+    total_frames: 20,
+    hitboxes: &[hit(4, 5, int(6), int(6), half(7), 3, 40, 8, 55)],
+    combo: Some((MoveId::HoboSlap2, 7)),
+    ..BASE
+};
+
+static HOBO_SLAP2: MoveData = MoveData {
+    name: "hobo_slap2",
+    total_frames: 20,
+    hitboxes: &[hit(5, 6, half(13), int(6), half(7), 3, 40, 8, 55)],
+    combo: Some((MoveId::HoboSlap3, 7)),
+    ..BASE
+};
+
+/// Combo finisher: a lurching two-handed shove that sends.
+static HOBO_SLAP3: MoveData = MoveData {
+    name: "hobo_slap3",
+    total_frames: 32,
+    hitboxes: &[hit(7, 9, int(8), int(5), half(9), 6, 35, 40, 95)],
+    ..BASE
+};
+
+/// A punch that lurches forward as it lands.
+static HOBO_PUNCH: MoveData = MoveData {
+    name: "hobo_punch",
+    total_frames: 28,
+    hitboxes: &[hit(8, 10, int(8), int(7), int(4), 9, 35, 22, 100)],
+    motion: &[Motion { first: 7, last: 10, vx: Some(Fx::ONE), vy: None }],
+    ..BASE
+};
+
+/// An upward flail, arms swinging past his head.
+static HOBO_UP_SWING: MoveData = MoveData {
+    name: "hobo_up_swing",
+    total_frames: 32,
+    hitboxes: &[hit(7, 14, int(2), int(14), int(5), 7, 85, 30, 110)],
+    ..BASE
+};
+
+/// A low trip: he swings a leg out and sweeps the floor.
+static HOBO_TRIP: MoveData = MoveData {
+    name: "hobo_trip",
+    total_frames: 24,
+    hitboxes: &[hit(6, 8, int(8), int(2), int(4), 6, 80, 30, 70)],
+    ..BASE
+};
+
+/// A stumbling dash that flails into the target: strong early, weaker as he loses his
+/// footing and coasts.
+static HOBO_STUMBLE: MoveData = MoveData {
+    name: "hobo_stumble",
+    total_frames: 40,
+    hitboxes: &[hit(8, 12, int(6), int(6), int(5), 10, 50, 40, 70), hit(13, 20, int(5), int(6), int(4), 6, 55, 30, 50)],
+    motion: &[
+        Motion { first: 4, last: 12, vx: Some(Fx::int(2)), vy: None },
+        Motion { first: 13, last: 18, vx: Some(Fx::ONE), vy: None },
+    ],
+    ..BASE
+};
+
+// --- Hobo smash attacks -----------------------------------------------------
+
+/// A huge two-handed swing of the bottle.
+static HOBO_BOTTLE_SWING: MoveData = MoveData {
+    name: "hobo_bottle_swing",
+    total_frames: 50,
+    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 16, 38, 30, 105)],
+    charge_frame: Some(12),
+    ..BASE
+};
+
+/// Heaves the bottle straight up.
+static HOBO_UP_HEAVE: MoveData = MoveData {
+    name: "hobo_up_heave",
+    total_frames: 48,
+    hitboxes: &[hit(12, 16, int(1), int(16), int(6), 14, 88, 32, 100)],
+    charge_frame: Some(8),
+    ..BASE
+};
+
+/// A drunken spin: flails in front first, then around behind.
+static HOBO_SPIN_FLAIL: MoveData = MoveData {
+    name: "hobo_spin_flail",
+    total_frames: 46,
+    hitboxes: &[hit(10, 12, int(8), int(2), int(5), 13, 30, 25, 100), hit(15, 17, int(-8), int(2), int(5), 14, 150, 25, 100)],
+    charge_frame: Some(6),
+    ..BASE
+};
+
+// --- Hobo aerials -----------------------------------------------------------
+
+/// A flailing spin, limbs thrown out around him.
+static HOBO_FLAIL: MoveData = MoveData {
+    name: "hobo_flail",
+    total_frames: 38,
+    hitboxes: &[hit(5, 8, int(3), int(6), int(6), 8, 45, 10, 100), hit(9, 24, int(3), int(6), int(5), 5, 45, 5, 80)],
+    landing: Landing::Lag(16),
+    ..BASE
+};
+
+/// A wild haymaker, telegraphed but heavy.
+static HOBO_HAYMAKER: MoveData = MoveData {
+    name: "hobo_haymaker",
+    total_frames: 42,
+    hitboxes: &[hit(10, 13, int(7), int(6), half(9), 12, 40, 25, 95)],
+    landing: Landing::Lag(18),
+    ..BASE
+};
+
+/// A backhand swing behind him.
+static HOBO_BACKHAND: MoveData = MoveData {
+    name: "hobo_backhand",
+    total_frames: 36,
+    hitboxes: &[hit(8, 11, int(-7), int(6), half(9), 12, 140, 25, 100)],
+    landing: Landing::Lag(14),
+    ..BASE
+};
+
+static HOBO_UP_FLAIL: MoveData = MoveData {
+    name: "hobo_up_flail",
+    total_frames: 34,
+    hitboxes: &[hit(6, 10, int(1), int(15), int(5), 9, 85, 25, 95)],
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// A downward stomp: a meteor with a lot of landing lag.
+static HOBO_STOMP: MoveData = MoveData {
+    name: "hobo_stomp",
+    total_frames: 46,
+    hitboxes: &[hit(13, 16, int(1), int(-1), half(9), 13, 270, 20, 90)],
+    landing: Landing::Lag(22),
+    ..BASE
+};
+
+// --- Hobo specials ----------------------------------------------------------
+
+/// Bottle throw: lobs a bottle overhand. It arcs and shatters where it lands, catching
+/// anyone close by; a direct hit mid-flight still counts for a smaller hit.
+static HOBO_BOTTLE_THROW: MoveData = MoveData {
+    name: "hobo_bottle_throw",
+    total_frames: 36,
+    projectile: Some(ProjectileData {
+        frame: 12,
+        x: int(8),
+        y: int(7),
+        speed: Fx::ratio(16, 10),
+        vy: Fx::ratio(11, 20),
+        gravity: Fx::ratio(7, 200),
+        lifetime: 90,
+        radius: int(3),
+        damage: 5,
+        angle: 40,
+        base_kb: 22,
+        kb_growth: 50,
+        growth: None,
+    }),
+    shatter: Some(Shatter { radius: int(8), damage: 6, angle: 70, base_kb: 30, kb_growth: 55 }),
+    landing: Landing::Lag(8),
+    ..BASE
+};
+
+/// Shopping-cart charge: crouches, then bursts forward fast behind the cart, plowing
+/// through whoever's in the way. The ride leaves him wobbling (a long coast out), and
+/// helpless if he goes off a ledge.
+static HOBO_CART_CHARGE: MoveData = MoveData {
+    name: "hobo_cart_charge",
+    total_frames: 44,
+    hitboxes: &[hit(7, 20, int(6), int(6), int(6), 12, 40, 40, 90)],
+    motion: &[
+        Motion { first: 1, last: 6, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 7, last: 20, vx: Some(Fx::int(3)), vy: Some(Fx::ZERO) },
+        Motion { first: 21, last: 28, vx: Some(Fx::ratio(1, 2)), vy: None },
+    ],
+    landing: Landing::Lag(18),
+    special_fall: true,
+    ..BASE
+};
+
+/// Fizz rocket: shakes a soda bottle and lets the fizz launch him upward, a steerable
+/// recovery that ends helpless.
+static HOBO_FIZZ_ROCKET: MoveData = MoveData {
+    name: "hobo_fizz_rocket",
+    total_frames: 44,
+    hitboxes: &[hit(5, 7, int(3), int(12), int(5), 8, 80, 40, 80), hit(8, 15, int(1), int(14), int(4), 4, 80, 20, 60)],
+    motion: &[
+        Motion { first: 1, last: 4, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 5, last: 18, vx: None, vy: Some(Fx::ratio(26, 10)) },
+        Motion { first: 19, last: 20, vx: None, vy: Some(Fx::ratio(8, 10)) },
+    ],
+    landing: Landing::Lag(20),
+    special_fall: true,
+    ..BASE
+};
+
+/// Passed out: flops over and lies there. Hit on frames 8-28, he shrugs it off and
+/// jolts awake swinging.
+static HOBO_PASSED_OUT: MoveData = MoveData {
+    name: "hobo_passed_out",
+    total_frames: 46,
+    counter: Some(Counter { first: 8, last: 28, into: MoveId::HoboJolt }),
+    ..BASE
+};
+
+static HOBO_JOLT: MoveData = MoveData {
+    name: "hobo_jolt",
+    total_frames: 30,
+    hitboxes: &[hit(5, 8, int(6), int(4), half(11), 12, 40, 45, 95)],
+    motion: &[Motion { first: 2, last: 8, vx: Some(Fx::ratio(18, 10)), vy: None }],
+    ..BASE
+};
+
+// --- Hobo grabs and throws --------------------------------------------------
+
+/// A rough headlock grab.
+static HOBO_GRAB: MoveData = MoveData {
+    name: "hobo_grab",
+    total_frames: 30,
+    grabbox: Some(GrabBox { first: 7, last: 8, x: int(7), y: int(6), radius: int(4), misses_shields: false }),
+    ..BASE
+};
+
+static HOBO_DASH_GRAB: MoveData = MoveData {
+    name: "hobo_dash_grab",
+    total_frames: 40,
+    grabbox: Some(GrabBox { first: 9, last: 10, x: int(9), y: int(6), radius: half(9), misses_shields: false }),
+    ..BASE
+};
+
+/// Shakes the held fighter by the collar.
+static HOBO_PUMMEL: MoveData = MoveData {
+    name: "hobo_pummel",
+    total_frames: 16,
+    throws: &[Throw { frame: 3, release: false, x: Fx::ZERO, damage: 2, angle: 0, base_kb: 0, kb_growth: 0 }],
+    ..BASE
+};
+
+static HOBO_THROW_FORWARD: MoveData = MoveData {
+    name: "hobo_throw_forward",
+    total_frames: 32,
+    throws: &[Throw { frame: 13, release: true, x: int(9), damage: 8, angle: 40, base_kb: 60, kb_growth: 60 }],
+    ..BASE
+};
+
+/// The kill throw: slings them over his shoulder and out behind.
+static HOBO_THROW_BACK: MoveData = MoveData {
+    name: "hobo_throw_back",
+    total_frames: 38,
+    throws: &[Throw { frame: 16, release: true, x: int(-9), damage: 11, angle: 135, base_kb: 58, kb_growth: 78 }],
+    ..BASE
+};
+
+static HOBO_THROW_UP: MoveData = MoveData {
+    name: "hobo_throw_up",
+    total_frames: 34,
+    throws: &[Throw { frame: 12, release: true, x: int(2), damage: 7, angle: 90, base_kb: 70, kb_growth: 55 }],
+    ..BASE
+};
+
+/// Drops them at his feet and stumbles over them, popping them up: the combo throw.
+static HOBO_THROW_DOWN: MoveData = MoveData {
+    name: "hobo_throw_down",
     total_frames: 34,
     throws: &[Throw { frame: 15, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }],
     ..BASE

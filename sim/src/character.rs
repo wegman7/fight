@@ -16,6 +16,9 @@ pub enum Character {
     /// slashes, a chargeable focus cut, a vault over the opponent, a spinning recovery
     /// and a parry that ripostes.
     Samurai,
+    /// A drunken-fist brawler: floaty and wobbly, attacking from odd angles at odd
+    /// timings. A ragged coat, a bottle and a shopping cart.
+    Hobo,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -160,14 +163,42 @@ static SAMURAI_MOVES: Moveset = Moveset {
     dthrow: MoveId::SamuraiPin,
 };
 
+static HOBO_MOVES: Moveset = Moveset {
+    jab: MoveId::HoboSlap,
+    ftilt: MoveId::HoboPunch,
+    utilt: MoveId::HoboUpSwing,
+    dtilt: MoveId::HoboTrip,
+    dash_attack: MoveId::HoboStumble,
+    fsmash: MoveId::HoboBottleSwing,
+    usmash: MoveId::HoboUpHeave,
+    dsmash: MoveId::HoboSpinFlail,
+    nair: MoveId::HoboFlail,
+    fair: MoveId::HoboHaymaker,
+    bair: MoveId::HoboBackhand,
+    uair: MoveId::HoboUpFlail,
+    dair: MoveId::HoboStomp,
+    neutral_special: MoveId::HoboBottleThrow,
+    side_special: MoveId::HoboCartCharge,
+    up_special: MoveId::HoboFizzRocket,
+    down_special: MoveId::HoboPassedOut,
+    grab: MoveId::HoboGrab,
+    dash_grab: MoveId::HoboDashGrab,
+    pummel: MoveId::HoboPummel,
+    fthrow: MoveId::HoboThrowForward,
+    bthrow: MoveId::HoboThrowBack,
+    uthrow: MoveId::HoboThrowUp,
+    dthrow: MoveId::HoboThrowDown,
+};
+
 impl Character {
-    pub const ALL: [Character; 3] = [Character::Chef, Character::Pug, Character::Samurai];
+    pub const ALL: [Character; 4] = [Character::Chef, Character::Pug, Character::Samurai, Character::Hobo];
 
     pub fn name(self) -> &'static str {
         match self {
             Character::Chef => "Chef",
             Character::Pug => "Pug",
             Character::Samurai => "Samurai",
+            Character::Hobo => "Hobo",
         }
     }
 
@@ -176,6 +207,7 @@ impl Character {
             Character::Chef => &FighterParams::CHEF,
             Character::Pug => &FighterParams::PUG,
             Character::Samurai => &FighterParams::SAMURAI,
+            Character::Hobo => &FighterParams::HOBO,
         }
     }
 
@@ -184,6 +216,7 @@ impl Character {
             Character::Chef => &CHEF_MOVES,
             Character::Pug => &PUG_MOVES,
             Character::Samurai => &SAMURAI_MOVES,
+            Character::Hobo => &HOBO_MOVES,
         }
     }
 

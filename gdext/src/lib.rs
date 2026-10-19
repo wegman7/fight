@@ -79,6 +79,9 @@ fn look(character: Character) -> Look {
         Character::Pug => Look { model: "res://models/pug.glb", shot: Some(Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8))) },
         // Built by art/samurai/build_samurai.py. All his specials are sword moves.
         Character::Samurai => Look { model: "res://models/samurai.glb", shot: None },
+        // Built by art/hobo/build_hobo.py. His neutral special lobs a bottle (a green
+        // glass orb that shatters where it lands).
+        Character::Hobo => Look { model: "res://models/hobo.glb", shot: Some(Shot::Orb(Color::from_rgb(0.35, 0.55, 0.25))) },
     }
 }
 /// Surfaces with this material name get the player's color.
@@ -310,6 +313,10 @@ impl INode3D for FightWorld {
                 Event::Counter { x, y, .. } => {
                     self.spawn_spark(to_godot(x, y), 0.6);
                     self.shake = self.shake.max(0.15);
+                }
+                Event::Shatter { x, y, .. } => {
+                    self.spawn_spark(to_godot(x, y), 0.5);
+                    self.shake = self.shake.max(0.1);
                 }
                 Event::Ko { fighter } => {
                     self.shake = 0.6;
