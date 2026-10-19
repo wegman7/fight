@@ -31,7 +31,7 @@ world.step(&[p1_input, p2_input]);
 |---|---|
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
-| `character.rs` | `Character` (Chef, Pug, Samurai): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
+| `character.rs` | `Character` (Chef, Pug, Samurai, Ninja): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
 | `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
@@ -91,8 +91,10 @@ cargo test -p fight_sim -- --nocapture
 ## Writing tests
 
 Gameplay tests live in `tests/gameplay.rs` (the chef), `tests/pug.rs` (the pug's
-moves, tuning and play-dead counter) and `tests/samurai.rs` (the samurai's moves, reach,
-tipper, charged focus cut, vault and its strike, cyclone and parry). CPU behaviour tests (engages,
+moves, tuning and play-dead counter), `tests/samurai.rs` (the samurai's moves, reach,
+tipper, charged focus cut, vault and its strike, cyclone and parry) and `tests/ninja.rs`
+(the ninja's moves, tuning, shuriken, shadow dash, smoke bomb and substitution counter).
+CPU behaviour tests (engages,
 recovers with and without a double jump, doesn't self-destruct at any level on any stage,
 higher levels attack more, mashes out of grabs, grabs, shields, stays deterministic) live
 in `tests/cpu.rs`.

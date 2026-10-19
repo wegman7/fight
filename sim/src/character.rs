@@ -16,6 +16,11 @@ pub enum Character {
     /// slashes, a chargeable focus cut, a vault over the opponent, a spinning recovery
     /// and a parry that ripostes.
     Samurai,
+    /// The lightest and fastest fighter: low damage per hit but quick, combo-heavy
+    /// knife-hand attacks, fast movement, low landing lag. Wears a dark gi, face wrap
+    /// and headband, and throws shuriken; his specials are a shadow dash, a smoke-bomb
+    /// recovery and a substitution counter.
+    Ninja,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -160,14 +165,44 @@ static SAMURAI_MOVES: Moveset = Moveset {
     dthrow: MoveId::SamuraiPin,
 };
 
+/// Every slot is the ninja's own move — even grab, dash grab and pummel, which the
+/// samurai shares with the chef.
+static NINJA_MOVES: Moveset = Moveset {
+    jab: MoveId::NinjaKunai,
+    ftilt: MoveId::NinjaPalmThrust,
+    utilt: MoveId::NinjaRisingChop,
+    dtilt: MoveId::NinjaSweep,
+    dash_attack: MoveId::NinjaDashSlice,
+    fsmash: MoveId::NinjaChop,
+    usmash: MoveId::NinjaFlipKick,
+    dsmash: MoveId::NinjaSpinKick,
+    nair: MoveId::NinjaAirSpin,
+    fair: MoveId::NinjaFlyingKick,
+    bair: MoveId::NinjaBackHook,
+    uair: MoveId::NinjaUpFlip,
+    dair: MoveId::NinjaAxeKick,
+    neutral_special: MoveId::NinjaShuriken,
+    side_special: MoveId::NinjaShadowDash,
+    up_special: MoveId::NinjaSmokeBomb,
+    down_special: MoveId::NinjaSubstitution,
+    grab: MoveId::NinjaGrab,
+    dash_grab: MoveId::NinjaDashGrab,
+    pummel: MoveId::NinjaPummel,
+    fthrow: MoveId::NinjaThrowForward,
+    bthrow: MoveId::NinjaThrowBack,
+    uthrow: MoveId::NinjaThrowUp,
+    dthrow: MoveId::NinjaThrowDown,
+};
+
 impl Character {
-    pub const ALL: [Character; 3] = [Character::Chef, Character::Pug, Character::Samurai];
+    pub const ALL: [Character; 4] = [Character::Chef, Character::Pug, Character::Samurai, Character::Ninja];
 
     pub fn name(self) -> &'static str {
         match self {
             Character::Chef => "Chef",
             Character::Pug => "Pug",
             Character::Samurai => "Samurai",
+            Character::Ninja => "Ninja",
         }
     }
 
@@ -176,6 +211,7 @@ impl Character {
             Character::Chef => &FighterParams::CHEF,
             Character::Pug => &FighterParams::PUG,
             Character::Samurai => &FighterParams::SAMURAI,
+            Character::Ninja => &FighterParams::NINJA,
         }
     }
 
@@ -184,6 +220,7 @@ impl Character {
             Character::Chef => &CHEF_MOVES,
             Character::Pug => &PUG_MOVES,
             Character::Samurai => &SAMURAI_MOVES,
+            Character::Ninja => &NINJA_MOVES,
         }
     }
 

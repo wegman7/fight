@@ -98,6 +98,31 @@ impl FighterParams {
         height: Fx::int(12),
         radius: Fx::int(4),
     };
+
+    /// The lightest fighter, and the fastest: the top run speed and air speed of the
+    /// cast, quick acceleration, a short jump squat and almost no landing lag, but
+    /// shorter than the chef.
+    pub const NINJA: FighterParams = FighterParams {
+        weight: 76,
+        walk_speed: Fx::ratio(12, 10),
+        run_speed: Fx::ratio(21, 10),
+        ground_accel: Fx::ratio(3, 10),
+        traction: Fx::ratio(7, 100),
+        air_speed: Fx::ratio(95, 100),
+        air_accel: Fx::ratio(55, 1000),
+        air_friction: Fx::ratio(2, 100),
+        gravity: Fx::ratio(95, 1000),
+        max_fall: Fx::ratio(18, 10),
+        fast_fall: Fx::ratio(26, 10),
+        jump_squat: 3,
+        full_hop: Fx::ratio(23, 10),
+        short_hop: Fx::ratio(14, 10),
+        double_jump: Fx::ratio(22, 10),
+        air_jumps: 1,
+        landing_lag: 2,
+        height: Fx::int(11),
+        radius: Fx::int(4),
+    };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -307,7 +332,7 @@ impl Fighter {
     }
 
     pub fn hittable(&self) -> bool {
-        self.intangible == 0 && !self.dodge_invincible() && !matches!(self.state, State::Respawning { .. } | State::Eliminated)
+        self.intangible == 0 && !self.dodge_invincible() && !self.move_intangible() && !matches!(self.state, State::Respawning { .. } | State::Eliminated)
     }
 
     /// In the invincible part of a dodge or roll.
@@ -317,6 +342,15 @@ impl Fighter {
                 let (first, last) = kind.data().intangible;
                 (first..=last).contains(&frame)
             }
+            _ => false,
+        }
+    }
+
+    /// In a move's own intangible frames (a shadow dash passing through, a smoke
+    /// bomb while it vanishes).
+    fn move_intangible(&self) -> bool {
+        match self.state {
+            State::Attack { mv, frame, .. } => mv.data().intangible.is_some_and(|(first, last)| (first..=last).contains(&frame)),
             _ => false,
         }
     }
@@ -552,6 +586,7 @@ impl Fighter {
         }
 
         self.scripted_motion();
+        self.apply_teleport();
         self.physics(stage);
     }
 
@@ -764,6 +799,22 @@ impl Fighter {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// A move that teleports (a smoke-bomb recovery) moves the fighter once, on its
+    /// `Teleport::frame`. `dx` is forward (mirrored by facing), `dy` is up.
+    fn apply_teleport(&mut self) {
+        let State::Attack { mv, frame, .. } = self.state else { return };
+        let Some(t) = &mv.data().teleport else { return };
+        if self.frame_advanced && t.frame == frame {
+            self.x += t.dx * self.facing;
+            self.y += t.dy;
+            self.vx = Fx::ZERO;
+            self.vy = Fx::ZERO;
+            if t.dy > Fx::ZERO {
+                self.grounded_on = None;
+            }
         }
     }
 

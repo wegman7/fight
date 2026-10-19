@@ -94,6 +94,36 @@ pub enum MoveId {
     SamuraiShoulderThrow,
     SamuraiTossUp,
     SamuraiPin,
+    // The ninja's moves. Unlike the samurai, every slot is his own, including grab,
+    // dash grab and pummel.
+    NinjaKunai,
+    NinjaKunai2,
+    NinjaKunai3,
+    NinjaPalmThrust,
+    NinjaRisingChop,
+    NinjaSweep,
+    NinjaDashSlice,
+    NinjaChop,
+    NinjaFlipKick,
+    NinjaSpinKick,
+    NinjaAirSpin,
+    NinjaFlyingKick,
+    NinjaBackHook,
+    NinjaUpFlip,
+    NinjaAxeKick,
+    NinjaShuriken,
+    NinjaShadowDash,
+    NinjaSmokeBomb,
+    NinjaSubstitution,
+    /// The substitution counter's answer: a strike from behind.
+    NinjaSubstitutionStrike,
+    NinjaGrab,
+    NinjaDashGrab,
+    NinjaPummel,
+    NinjaThrowForward,
+    NinjaThrowBack,
+    NinjaThrowUp,
+    NinjaThrowDown,
 }
 
 #[derive(Debug)]
@@ -200,6 +230,16 @@ pub struct Counter {
     pub into: MoveId,
 }
 
+/// A move that teleports the fighter on one frame (a smoke-bomb recovery): it moves
+/// straight to a new spot instead of travelling there. `dx` is a forward offset
+/// (mirrored by facing), `dy` is up.
+#[derive(Debug)]
+pub struct Teleport {
+    pub frame: u16,
+    pub dx: Fx,
+    pub dy: Fx,
+}
+
 /// What happens when the fighter lands partway through the move.
 #[derive(Debug)]
 pub enum Landing {
@@ -240,6 +280,11 @@ pub struct MoveData {
     /// The fighter turns around on this frame (the samurai's vault, passing over an
     /// opponent). Motion and hitboxes from then on are relative to the new facing.
     pub turn: Option<u16>,
+    /// The fighter can't be hit or grabbed on these frames, inclusive (a shadow dash
+    /// passing through, a smoke bomb while it vanishes).
+    pub intangible: Option<(u16, u16)>,
+    /// The fighter teleports on `frame` (a smoke-bomb recovery).
+    pub teleport: Option<Teleport>,
 }
 
 const BASE: MoveData = MoveData {
@@ -259,6 +304,8 @@ const BASE: MoveData = MoveData {
     special_fall: false,
     counter: None,
     turn: None,
+    intangible: None,
+    teleport: None,
 };
 
 impl MoveId {
@@ -344,6 +391,33 @@ impl MoveId {
             MoveId::SamuraiShoulderThrow => &SAMURAI_SHOULDER_THROW,
             MoveId::SamuraiTossUp => &SAMURAI_TOSS_UP,
             MoveId::SamuraiPin => &SAMURAI_PIN,
+            MoveId::NinjaKunai => &NINJA_KUNAI,
+            MoveId::NinjaKunai2 => &NINJA_KUNAI2,
+            MoveId::NinjaKunai3 => &NINJA_KUNAI3,
+            MoveId::NinjaPalmThrust => &NINJA_PALM_THRUST,
+            MoveId::NinjaRisingChop => &NINJA_RISING_CHOP,
+            MoveId::NinjaSweep => &NINJA_SWEEP,
+            MoveId::NinjaDashSlice => &NINJA_DASH_SLICE,
+            MoveId::NinjaChop => &NINJA_CHOP,
+            MoveId::NinjaFlipKick => &NINJA_FLIP_KICK,
+            MoveId::NinjaSpinKick => &NINJA_SPIN_KICK,
+            MoveId::NinjaAirSpin => &NINJA_AIR_SPIN,
+            MoveId::NinjaFlyingKick => &NINJA_FLYING_KICK,
+            MoveId::NinjaBackHook => &NINJA_BACK_HOOK,
+            MoveId::NinjaUpFlip => &NINJA_UP_FLIP,
+            MoveId::NinjaAxeKick => &NINJA_AXE_KICK,
+            MoveId::NinjaShuriken => &NINJA_SHURIKEN,
+            MoveId::NinjaShadowDash => &NINJA_SHADOW_DASH,
+            MoveId::NinjaSmokeBomb => &NINJA_SMOKE_BOMB,
+            MoveId::NinjaSubstitution => &NINJA_SUBSTITUTION,
+            MoveId::NinjaSubstitutionStrike => &NINJA_SUBSTITUTION_STRIKE,
+            MoveId::NinjaGrab => &NINJA_GRAB,
+            MoveId::NinjaDashGrab => &NINJA_DASH_GRAB,
+            MoveId::NinjaPummel => &NINJA_PUMMEL,
+            MoveId::NinjaThrowForward => &NINJA_THROW_FORWARD,
+            MoveId::NinjaThrowBack => &NINJA_THROW_BACK,
+            MoveId::NinjaThrowUp => &NINJA_THROW_UP,
+            MoveId::NinjaThrowDown => &NINJA_THROW_DOWN,
         }
     }
 }
@@ -1153,6 +1227,260 @@ static SAMURAI_PIN: MoveData = MoveData {
     name: "pin",
     total_frames: 34,
     throws: &[Throw { frame: 15, release: true, x: int(7), damage: 6, angle: 75, base_kb: 50, kb_growth: 40 }],
+    ..BASE
+};
+
+// --- Ninja ------------------------------------------------------------------
+// The lightest, fastest fighter: low damage per hit, quick startup, short total
+// frames and low landing lag, all knife-hand chops and fast kicks.
+
+/// Quick knife-hand slash. Press attack again for a second, then a third.
+static NINJA_KUNAI: MoveData = MoveData {
+    name: "ninja_kunai",
+    total_frames: 16,
+    hitboxes: &[hit(2, 3, int(5), int(6), half(7), 2, 45, 8, 50)],
+    combo: Some((MoveId::NinjaKunai2, 4)),
+    ..BASE
+};
+
+static NINJA_KUNAI2: MoveData = MoveData {
+    name: "ninja_kunai2",
+    total_frames: 16,
+    hitboxes: &[hit(2, 3, int(5), int(6), half(7), 2, 45, 8, 50)],
+    combo: Some((MoveId::NinjaKunai3, 4)),
+    ..BASE
+};
+
+/// Combo finisher: a harder knife-hand that sends.
+static NINJA_KUNAI3: MoveData = MoveData {
+    name: "ninja_kunai3",
+    total_frames: 28,
+    hitboxes: &[hit(4, 6, int(6), int(5), int(4), 4, 40, 40, 100)],
+    ..BASE
+};
+
+/// A fast straight palm thrust.
+static NINJA_PALM_THRUST: MoveData = MoveData {
+    name: "ninja_palm_thrust",
+    total_frames: 20,
+    hitboxes: &[hit(3, 5, int(7), int(7), int(4), 6, 40, 20, 95)],
+    ..BASE
+};
+
+/// An upward knife-hand chop that juggles.
+static NINJA_RISING_CHOP: MoveData = MoveData {
+    name: "ninja_rising_chop",
+    total_frames: 24,
+    hitboxes: &[hit(4, 10, int(2), int(13), int(5), 5, 85, 30, 105)],
+    ..BASE
+};
+
+/// A low sweeping kick from a crouch.
+static NINJA_SWEEP: MoveData = MoveData {
+    name: "ninja_sweep",
+    total_frames: 20,
+    hitboxes: &[hit(4, 6, int(7), int(2), int(4), 5, 75, 28, 70)],
+    ..BASE
+};
+
+/// A sliding slash out of a run, carrying the fighter forward.
+static NINJA_DASH_SLICE: MoveData = MoveData {
+    name: "ninja_dash_slice",
+    total_frames: 34,
+    hitboxes: &[hit(5, 9, int(5), int(5), int(5), 7, 50, 35, 70)],
+    motion: &[Motion { first: 5, last: 9, vx: Some(Fx::ratio(15, 10)), vy: None }],
+    ..BASE
+};
+
+/// A two-hand overhead chop.
+static NINJA_CHOP: MoveData = MoveData {
+    name: "ninja_chop",
+    total_frames: 42,
+    hitboxes: &[hit(12, 14, int(9), int(7), int(5), 13, 40, 30, 100)],
+    charge_frame: Some(8),
+    ..BASE
+};
+
+/// A rising flip kick.
+static NINJA_FLIP_KICK: MoveData = MoveData {
+    name: "ninja_flip_kick",
+    total_frames: 40,
+    hitboxes: &[hit(9, 12, int(2), int(14), int(6), 12, 88, 30, 100)],
+    charge_frame: Some(6),
+    ..BASE
+};
+
+/// A low spin kick that hits both sides, each sending its own way.
+static NINJA_SPIN_KICK: MoveData = MoveData {
+    name: "ninja_spin_kick",
+    total_frames: 38,
+    hitboxes: &[hit(7, 9, int(7), int(2), int(5), 11, 30, 25, 95), hit(7, 9, int(-7), int(2), int(5), 11, 150, 25, 95)],
+    charge_frame: Some(5),
+    ..BASE
+};
+
+/// A spin kick around the body: strong early, weaker lingering hitbox.
+static NINJA_AIR_SPIN: MoveData = MoveData {
+    name: "ninja_air_spin",
+    total_frames: 30,
+    hitboxes: &[hit(3, 5, int(2), int(6), int(6), 6, 45, 10, 95), hit(6, 20, int(2), int(6), int(5), 4, 45, 5, 80)],
+    landing: Landing::Lag(8),
+    ..BASE
+};
+
+/// A side kick.
+static NINJA_FLYING_KICK: MoveData = MoveData {
+    name: "ninja_flying_kick",
+    total_frames: 32,
+    hitboxes: &[hit(5, 8, int(7), int(6), half(9), 8, 40, 22, 95)],
+    landing: Landing::Lag(10),
+    ..BASE
+};
+
+/// A back hook kick; the angle points backward.
+static NINJA_BACK_HOOK: MoveData = MoveData {
+    name: "ninja_back_hook",
+    total_frames: 30,
+    hitboxes: &[hit(4, 7, int(-6), int(6), half(9), 9, 140, 25, 95)],
+    landing: Landing::Lag(9),
+    ..BASE
+};
+
+/// An upward flip kick.
+static NINJA_UP_FLIP: MoveData = MoveData {
+    name: "ninja_up_flip",
+    total_frames: 28,
+    hitboxes: &[hit(4, 7, int(1), int(14), int(5), 7, 85, 24, 95)],
+    landing: Landing::Lag(8),
+    ..BASE
+};
+
+/// A downward axe kick that meteors (sends straight down).
+static NINJA_AXE_KICK: MoveData = MoveData {
+    name: "ninja_axe_kick",
+    total_frames: 38,
+    hitboxes: &[hit(10, 13, int(1), int(-1), half(9), 10, 270, 20, 90)],
+    landing: Landing::Lag(16),
+    ..BASE
+};
+
+/// Throws a shuriken straight ahead. No arc, no charge: quick and reusable.
+static NINJA_SHURIKEN: MoveData = MoveData {
+    name: "ninja_shuriken",
+    total_frames: 26,
+    projectile: Some(ProjectileData {
+        frame: 10,
+        x: int(7),
+        y: int(7),
+        speed: Fx::ratio(28, 10),
+        vy: Fx::ZERO,
+        gravity: Fx::ZERO,
+        lifetime: 60,
+        radius: int(2),
+        damage: 5,
+        angle: 40,
+        base_kb: 20,
+        kb_growth: 55,
+        growth: None,
+    }),
+    landing: Landing::Lag(6),
+    ..BASE
+};
+
+/// Shadow dash: a quick, intangible dash past the opponent, slashing as it goes.
+static NINJA_SHADOW_DASH: MoveData = MoveData {
+    name: "ninja_shadow_dash",
+    total_frames: 34,
+    hitboxes: &[hit(6, 14, int(5), int(6), int(5), 6, 45, 30, 80)],
+    motion: &[
+        Motion { first: 1, last: 5, vx: Some(Fx::ZERO), vy: Some(Fx::ZERO) },
+        Motion { first: 6, last: 14, vx: Some(Fx::ratio(34, 10)), vy: Some(Fx::ZERO) },
+        Motion { first: 15, last: 34, vx: Some(Fx::ZERO), vy: None },
+    ],
+    intangible: Some((6, 14)),
+    landing: Landing::Lag(12),
+    ..BASE
+};
+
+/// Smoke bomb: vanishes (intangible) and reappears higher, then helpless. It holds
+/// its height while it vanishes and hangs after the teleport (gravity off), then falls.
+static NINJA_SMOKE_BOMB: MoveData = MoveData {
+    name: "ninja_smoke_bomb",
+    total_frames: 40,
+    teleport: Some(Teleport { frame: 8, dx: Fx::ZERO, dy: int(34) }),
+    motion: &[Motion { first: 1, last: 16, vx: None, vy: Some(Fx::ZERO) }],
+    intangible: Some((1, 20)),
+    landing: Landing::Lag(20),
+    special_fall: true,
+    ..BASE
+};
+
+/// Substitution: if hit on frames 5-24, a log appears and the ninja strikes from
+/// behind (turning toward the attacker, briefly intangible).
+static NINJA_SUBSTITUTION: MoveData = MoveData {
+    name: "ninja_substitution",
+    total_frames: 40,
+    counter: Some(Counter { first: 5, last: 24, into: MoveId::NinjaSubstitutionStrike }),
+    ..BASE
+};
+
+static NINJA_SUBSTITUTION_STRIKE: MoveData = MoveData {
+    name: "ninja_substitution_strike",
+    total_frames: 28,
+    hitboxes: &[hit(4, 8, int(8), int(6), int(6), 12, 40, 45, 95)],
+    ..BASE
+};
+
+/// Grabs with the near hand; shorter reach than the chef's.
+static NINJA_GRAB: MoveData = MoveData {
+    name: "ninja_grab",
+    total_frames: 28,
+    grabbox: Some(GrabBox { first: 6, last: 7, x: int(7), y: int(6), radius: half(7), misses_shields: false }),
+    ..BASE
+};
+
+static NINJA_DASH_GRAB: MoveData = MoveData {
+    name: "ninja_dash_grab",
+    total_frames: 36,
+    grabbox: Some(GrabBox { first: 8, last: 9, x: int(8), y: int(6), radius: int(4), misses_shields: false }),
+    ..BASE
+};
+
+/// A kunai-hilt pommel: a quick, light pummel.
+static NINJA_PUMMEL: MoveData = MoveData {
+    name: "ninja_pummel",
+    total_frames: 14,
+    throws: &[Throw { frame: 3, release: false, x: Fx::ZERO, damage: 1, angle: 0, base_kb: 0, kb_growth: 0 }],
+    ..BASE
+};
+
+static NINJA_THROW_FORWARD: MoveData = MoveData {
+    name: "ninja_throw_forward",
+    total_frames: 28,
+    throws: &[Throw { frame: 11, release: true, x: int(8), damage: 7, angle: 40, base_kb: 60, kb_growth: 60 }],
+    ..BASE
+};
+
+/// The kill throw: flips them over and out behind.
+static NINJA_THROW_BACK: MoveData = MoveData {
+    name: "ninja_throw_back",
+    total_frames: 34,
+    throws: &[Throw { frame: 14, release: true, x: int(-8), damage: 9, angle: 140, base_kb: 55, kb_growth: 75 }],
+    ..BASE
+};
+
+static NINJA_THROW_UP: MoveData = MoveData {
+    name: "ninja_throw_up",
+    total_frames: 30,
+    throws: &[Throw { frame: 11, release: true, x: int(2), damage: 6, angle: 90, base_kb: 65, kb_growth: 60 }],
+    ..BASE
+};
+
+/// Flips them onto the floor and pops them up in front: the combo throw.
+static NINJA_THROW_DOWN: MoveData = MoveData {
+    name: "ninja_throw_down",
+    total_frames: 30,
+    throws: &[Throw { frame: 12, release: true, x: int(6), damage: 5, angle: 75, base_kb: 50, kb_growth: 40 }],
     ..BASE
 };
 

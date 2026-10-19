@@ -79,6 +79,8 @@ fn look(character: Character) -> Look {
         Character::Pug => Look { model: "res://models/pug.glb", shot: Some(Shot::Orb(Color::from_rgb(0.85, 0.95, 0.8))) },
         // Built by art/samurai/build_samurai.py. All his specials are sword moves.
         Character::Samurai => Look { model: "res://models/samurai.glb", shot: None },
+        // Built by art/ninja/build_ninja.py. His neutral special throws a shuriken.
+        Character::Ninja => Look { model: "res://models/ninja.glb", shot: Some(Shot::Orb(Color::from_rgb(0.72, 0.78, 0.86))) },
     }
 }
 /// Surfaces with this material name get the player's color.
