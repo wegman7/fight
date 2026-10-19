@@ -2,7 +2,7 @@ use crate::character::Character;
 use crate::fighter::{Fighter, GRAB_HOLD_DISTANCE, MAX_CHARGE, State, hitlag_frames, knockback};
 use crate::fixed::Fx;
 use crate::input::Input;
-use crate::moves::{GrabBox, Hitbox, MoveId, ProjectileData};
+use crate::moves::{GrabBox, Hitbox, MoveId, ProjectileData, Shatter};
 use crate::stage::Stage;
 
 pub const MAX_FIGHTERS: usize = 4;
@@ -24,6 +24,8 @@ pub enum Event {
     Grab { attacker: usize, defender: usize },
     /// `fighter` countered a hit from `attacker` (the pug playing dead) at x, y.
     Counter { fighter: usize, attacker: usize, x: Fx, y: Fx },
+    /// A shattering projectile (see `moves::Shatter`) burst at x, y as it landed or expired.
+    Shatter { owner: usize, x: Fx, y: Fx },
     Ko { fighter: usize },
 }
 
@@ -116,6 +118,15 @@ struct Strike {
     explosion: bool,
 }
 
+/// A projectile's shatter burst, collected as it stops and applied with the other hits.
+#[derive(Clone, Copy)]
+struct Burst {
+    owner: usize,
+    x: Fx,
+    y: Fx,
+    shatter: Shatter,
+}
+
 impl World {
     /// One fighter per entry of `characters`, at the stage's spawn points in order.
     pub fn new(stage: Stage, characters: &[Character], stocks: u8) -> World {
@@ -142,9 +153,10 @@ impl World {
         }
         self.sync_grabs();
         self.apply_throws();
-        self.move_projectiles();
+        let mut bursts: Vec<Burst> = Vec::new();
+        self.move_projectiles(&mut bursts);
         self.fire_projectiles();
-        self.resolve_hits();
+        self.resolve_hits(&bursts);
         self.check_blast_zones();
     }
 
@@ -228,7 +240,7 @@ impl World {
         }
     }
 
-    fn move_projectiles(&mut self) {
+    fn move_projectiles(&mut self, bursts: &mut Vec<Burst>) {
         let s = &self.stage;
         let events = &mut self.events;
         let mut landed = Vec::new();
@@ -242,14 +254,25 @@ impl World {
             // Coming down through the top of a platform: it lands there.
             let on_platform = s.platforms.iter().find(|pl| p.vy < Fx::ZERO && was_y >= pl.y && p.y < pl.y && pl.contains_x(p.x));
             if let Some(pl) = on_platform {
+                // An explosion goes off in place of the ordinary landing; otherwise the
+                // landing may still burst (a shattering bottle).
                 if p.data().explosion.is_some() {
                     landed.push(PendingExplosion { owner: p.owner, mv: p.mv, x: p.x, y: pl.y });
                 } else {
                     events.push(Event::ProjectileLanded { owner: p.owner, x: p.x, y: pl.y });
+                    if let Some(shatter) = p.mv.data().shatter {
+                        bursts.push(Burst { owner: p.owner, x: p.x, y: pl.y, shatter });
+                    }
                 }
                 return false;
             }
-            p.frames_left > 0 && p.x > s.blast_left && p.x < s.blast_right && p.y > s.blast_bottom
+            let alive = p.frames_left > 0 && p.x > s.blast_left && p.x < s.blast_right && p.y > s.blast_bottom;
+            if !alive
+                && let Some(shatter) = p.mv.data().shatter
+            {
+                bursts.push(Burst { owner: p.owner, x: p.x, y: p.y, shatter });
+            }
+            alive
         });
         self.pending_explosions.extend(landed);
     }
@@ -281,7 +304,7 @@ impl World {
 
     /// Detects every hit and grab first and applies them afterwards, so two attacks
     /// that connect on the same frame trade instead of depending on player order.
-    fn resolve_hits(&mut self) {
+    fn resolve_hits(&mut self, bursts: &[Burst]) {
         let mut strikes: Vec<Strike> = Vec::new();
         for (ai, attacker) in self.fighters.iter().enumerate() {
             let State::Attack { mv, hit_mask, .. } = attacker.state else { continue };
@@ -370,6 +393,30 @@ impl World {
                     projectile: None,
                     explosion: true,
                 });
+            }
+        }
+
+        // Shattering projectiles that stopped this frame burst on everyone nearby.
+        for b in bursts {
+            let s = b.shatter;
+            self.events.push(Event::Shatter { owner: b.owner, x: b.x, y: b.y });
+            for (di, d) in self.fighters.iter().enumerate() {
+                if di != b.owner && d.hittable() && d.hurtbox_overlaps(b.x, b.y, s.radius) {
+                    strikes.push(Strike {
+                        attacker: b.owner,
+                        defender: di,
+                        x: b.x,
+                        y: b.y,
+                        damage: s.damage,
+                        angle: s.angle,
+                        base_kb: s.base_kb,
+                        kb_growth: s.kb_growth,
+                        // Sent away from the burst point.
+                        direction: if d.x >= b.x { 1 } else { -1 },
+                        projectile: None,
+                        explosion: false,
+                    });
+                }
             }
         }
 

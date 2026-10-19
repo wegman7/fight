@@ -25,6 +25,9 @@ pub enum Character {
     /// Slow and falls fast, but hits hard — and shoots, lobs grenades, blast-jumps and
     /// counters with a riot shield.
     Soldier,
+    /// A drunken-fist brawler: floaty and wobbly, attacking from odd angles at odd
+    /// timings. A ragged coat, a bottle and a shopping cart.
+    Hobo,
 }
 
 /// The move each input starts. Follow-ups (jab chains, landings, counter attacks)
@@ -227,8 +230,36 @@ static SOLDIER_MOVES: Moveset = Moveset {
     dthrow: MoveId::SoldierThrowDown,
 };
 
+/// The hobo uses his own grab, dash grab, pummel and all four throws, too.
+static HOBO_MOVES: Moveset = Moveset {
+    jab: MoveId::HoboSlap,
+    ftilt: MoveId::HoboPunch,
+    utilt: MoveId::HoboUpSwing,
+    dtilt: MoveId::HoboTrip,
+    dash_attack: MoveId::HoboStumble,
+    fsmash: MoveId::HoboBottleSwing,
+    usmash: MoveId::HoboUpHeave,
+    dsmash: MoveId::HoboSpinFlail,
+    nair: MoveId::HoboFlail,
+    fair: MoveId::HoboHaymaker,
+    bair: MoveId::HoboBackhand,
+    uair: MoveId::HoboUpFlail,
+    dair: MoveId::HoboStomp,
+    neutral_special: MoveId::HoboBottleThrow,
+    side_special: MoveId::HoboCartCharge,
+    up_special: MoveId::HoboFizzRocket,
+    down_special: MoveId::HoboPassedOut,
+    grab: MoveId::HoboGrab,
+    dash_grab: MoveId::HoboDashGrab,
+    pummel: MoveId::HoboPummel,
+    fthrow: MoveId::HoboThrowForward,
+    bthrow: MoveId::HoboThrowBack,
+    uthrow: MoveId::HoboThrowUp,
+    dthrow: MoveId::HoboThrowDown,
+};
+
 impl Character {
-    pub const ALL: [Character; 5] = [Character::Chef, Character::Pug, Character::Samurai, Character::Ninja, Character::Soldier];
+    pub const ALL: [Character; 6] = [Character::Chef, Character::Pug, Character::Samurai, Character::Ninja, Character::Soldier, Character::Hobo];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -237,6 +268,7 @@ impl Character {
             Character::Samurai => "Samurai",
             Character::Ninja => "Ninja",
             Character::Soldier => "Soldier",
+            Character::Hobo => "Hobo",
         }
     }
 
@@ -247,6 +279,7 @@ impl Character {
             Character::Samurai => &FighterParams::SAMURAI,
             Character::Ninja => &FighterParams::NINJA,
             Character::Soldier => &FighterParams::SOLDIER,
+            Character::Hobo => &FighterParams::HOBO,
         }
     }
 
@@ -257,6 +290,7 @@ impl Character {
             Character::Samurai => &SAMURAI_MOVES,
             Character::Ninja => &NINJA_MOVES,
             Character::Soldier => &SOLDIER_MOVES,
+            Character::Hobo => &HOBO_MOVES,
         }
     }
 

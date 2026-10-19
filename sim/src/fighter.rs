@@ -147,6 +147,30 @@ impl FighterParams {
         height: Fx::int(12),
         radius: Fx::int(4),
     };
+
+    /// The drunk hobo: floaty and loose. He falls slowly, drifts sideways in the air,
+    /// slides on the ground, and is slow to get going — his wobble lives in the moves.
+    pub const HOBO: FighterParams = FighterParams {
+        weight: 90,
+        walk_speed: Fx::int(1),
+        run_speed: Fx::ratio(135, 100),
+        ground_accel: Fx::ratio(18, 100),
+        traction: Fx::ratio(5, 100),
+        air_speed: Fx::ratio(11, 10),
+        air_accel: Fx::ratio(35, 1000),
+        air_friction: Fx::ratio(15, 1000),
+        gravity: Fx::ratio(7, 100),
+        max_fall: Fx::ratio(14, 10),
+        fast_fall: Fx::ratio(20, 10),
+        jump_squat: 5,
+        full_hop: Fx::ratio(22, 10),
+        short_hop: Fx::ratio(14, 10),
+        double_jump: Fx::ratio(20, 10),
+        air_jumps: 1,
+        landing_lag: 5,
+        height: Fx::int(12),
+        radius: Fx::int(4),
+    };
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

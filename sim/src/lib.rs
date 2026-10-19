@@ -20,6 +20,6 @@ pub use cpu::{Cpu, CpuLevel};
 pub use fighter::{Fighter, FighterParams, SHIELD_MAX, STATE_ANIMS, State};
 pub use fixed::Fx;
 pub use input::Input;
-pub use moves::{Counter, DodgeKind, Explosion, Hitbox, MoveData, MoveId};
+pub use moves::{Counter, DodgeKind, Explosion, Hitbox, MoveData, MoveId, Shatter};
 pub use stage::{Platform, Stage, StageId};
 pub use world::{ActiveHitbox, Event, Projectile, World};

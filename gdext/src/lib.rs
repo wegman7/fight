@@ -84,6 +84,9 @@ fn look(character: Character) -> Look {
         // Built by art/soldier/build_soldier.py. He has two projectiles (a bullet and
         // a grenade), so his `shot` is chosen per projectile by `shot_for`.
         Character::Soldier => Look { model: "res://models/soldier.glb", shot: None },
+        // Built by art/hobo/build_hobo.py. His neutral special lobs a bottle (a green
+        // glass orb that shatters where it lands).
+        Character::Hobo => Look { model: "res://models/hobo.glb", shot: Some(Shot::Orb(Color::from_rgb(0.35, 0.55, 0.25))) },
     }
 }
 
@@ -332,6 +335,10 @@ impl INode3D for FightWorld {
                 Event::Counter { x, y, .. } => {
                     self.spawn_spark(to_godot(x, y), 0.6);
                     self.shake = self.shake.max(0.15);
+                }
+                Event::Shatter { x, y, .. } => {
+                    self.spawn_spark(to_godot(x, y), 0.5);
+                    self.shake = self.shake.max(0.1);
                 }
                 Event::Ko { fighter } => {
                     self.shake = 0.6;
