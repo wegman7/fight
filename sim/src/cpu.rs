@@ -133,6 +133,8 @@ impl Cpu {
             State::Held { .. } => return if self.prev.buttons == 0 { Input { buttons: Input::ATTACK, ..Input::default() } } else { Input::default() },
             State::Holding { .. } => return Input { stick_x: me.facing as i8 * TILT, ..Input::default() },
             State::Hitstun { .. } | State::ShieldBreak { .. } | State::Respawning { .. } | State::Eliminated => return Input::default(),
+            // Get back up: pushing up reads as the neutral ledge climb.
+            State::LedgeHang => return Input { stick_y: 100, ..Input::default() },
             _ => {}
         }
         let Some(stage) = world.stage.platforms.iter().find(|p| !p.soft) else { return Input::default() };

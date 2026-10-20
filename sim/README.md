@@ -32,11 +32,11 @@ world.step(&[p1_input, p2_input]);
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
 | `character.rs` | `Character` (Chef, Pug, Samurai, Ninja, Soldier, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
-| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, shield/grab/charge constants, `knockback()` |
+| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks, movement physics, ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), shield/grab/charge constants, `knockback()` |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
-| `world.rs` | `World::step`: fighters → grab bookkeeping → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
-| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, and recovers with double jump then up special. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. |
+| `world.rs` | `World::step`: fighters → grab bookkeeping → ledge occupancy (`sync_ledges`: one per edge, a fresh grab steals it) → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
+| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, recovers with double jump then up special, and climbs back up from a ledge. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. |
 
 ## How a move works
 
@@ -84,9 +84,11 @@ without the flick, so the CPU (and tests) use a stick value of 60 for tilts.
 
 ## Units
 
-Melee-style: 1 unit ≈ 0.1 m in Godot. The main stage is 136 units wide. Speeds
-are in units per frame, and frame numbers are 1-based like Smash frame data
-(a hitbox with `first: 2` is a "frame 2 jab").
+Melee-style: 1 unit ≈ 0.1 m in Godot. The main stage is laid out at 5/6 scale
+(≈113 units wide, down from 136) so characters read ~20% larger relative to it;
+every stage coordinate goes through `stage.rs`'s `s()`. Speeds are in units per
+frame, and frame numbers are 1-based like Smash frame data (a hitbox with
+`first: 2` is a "frame 2 jab").
 
 ## Run tests
 

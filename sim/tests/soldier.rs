@@ -123,6 +123,7 @@ fn attacking_out_of_a_run_is_a_shoulder_charge_and_a_dash_grab() {
 #[test]
 fn rifle_shot_fires_on_frame_10_and_hits_straight() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::ZERO;
     w.step(&[press(Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::SoldierRifleShot));
@@ -151,7 +152,8 @@ fn rifle_shot_fires_on_frame_10_and_hits_straight() {
 fn grenade_arcs_and_explodes_where_it_lands() {
     let mut w = world();
     // Far from P2, so the grenade lands on the floor well short of them.
-    w.fighters[0].x = Fx::int(-60);
+    w.fighters[0].x = Fx::int(-50);
+    w.fighters[1].x = Fx::int(50);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::SoldierGrenade));
     run(&mut w, 12, NONE, NONE);
@@ -175,7 +177,7 @@ fn grenade_arcs_and_explodes_where_it_lands() {
     assert!(heights[apex] > Fx::int(8), "arcs upward: {heights:?}");
     let (_, x, y) = exploded.expect("the grenade never exploded");
     assert_eq!(y, Fx::ZERO, "explodes on the main stage");
-    assert!(x > Fx::int(-53) && x < Fx::int(40), "lands on the stage short of P2, at {x:?}");
+    assert!(x > Fx::int(-53) && x < Fx::int(50), "lands on the stage short of P2, at {x:?}");
     assert!(w.projectiles.is_empty());
     assert_eq!(w.fighters[1].percent, 0, "P2 was out of the blast");
 }
@@ -212,7 +214,7 @@ fn blast_jump_launches_him_up_and_ends_helpless() {
     let climb = |drift: i8| {
         let mut w = world();
         w.fighters[0].x = Fx::ZERO; // clear of the side platforms
-        airborne(&mut w, 0, 0, 150);
+        airborne(&mut w, 0, 0, 100);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
         assert_eq!(mv(&w, 0), Some(MoveId::SoldierBlastJump));
         let mut peak = Fx::ZERO;
@@ -225,7 +227,7 @@ fn blast_jump_launches_him_up_and_ends_helpless() {
         (peak, w.fighters[0].x)
     };
     let (peak, x) = climb(0);
-    assert!(peak >= Fx::int(150 + 38), "peak {peak:?}");
+    assert!(peak >= Fx::int(100 + 38), "peak {peak:?}");
     let (_, steered) = climb(100);
     assert!(steered > x + Fx::int(10), "steered to {steered:?}");
 }

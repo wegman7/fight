@@ -155,9 +155,11 @@ fn thrown_and_shattered(w: &mut World) -> Fx {
 
 #[test]
 fn bottle_arcs_then_shatters_and_catches_a_nearby_fighter() {
-    // P2 stands at its spawn (x = 40): just past where the bottle comes down, so it's
-    // inside the shatter's blast but the bottle never beans it mid-flight.
+    // P2 stands 80 units ahead: just past where the bottle comes down, so it's inside
+    // the shatter's blast but the bottle never beans it mid-flight.
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
+    w.fighters[1].x = Fx::int(40);
     let peak = thrown_and_shattered(&mut w);
     assert!(peak > Fx::int(7), "the bottle rose above its throw height: peak {peak:?}");
     assert!(w.projectiles.is_empty(), "shattered, so it's gone");
@@ -187,7 +189,7 @@ fn cart_charge_is_fast_strong_and_wobbly() {
 fn fizz_rocket_climbs_steers_and_ends_helpless() {
     let climb = |drift: i8| {
         let mut w = world();
-        airborne(&mut w, 0, 0, 150);
+        airborne(&mut w, 0, 0, 100);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
         assert_eq!(mv(&w, 0), Some(MoveId::HoboFizzRocket));
         let mut peak = Fx::ZERO;
@@ -200,7 +202,7 @@ fn fizz_rocket_climbs_steers_and_ends_helpless() {
         (peak, w.fighters[0].x)
     };
     let (peak, x) = climb(0);
-    assert!(peak >= Fx::int(150 + 34), "peak {peak:?}");
+    assert!(peak >= Fx::int(100 + 34), "peak {peak:?}");
     let (_, steered) = climb(100);
     assert!(steered > x + Fx::int(10), "steered to {steered:?}");
 }
@@ -208,6 +210,7 @@ fn fizz_rocket_climbs_steers_and_ends_helpless() {
 #[test]
 fn passed_out_counters_a_hit_and_jolts_awake() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Hobo], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::HoboPassedOut));

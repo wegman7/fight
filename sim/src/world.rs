@@ -152,6 +152,7 @@ impl World {
             fighter.step(inputs.get(i).copied().unwrap_or_default(), &self.stage);
         }
         self.sync_grabs();
+        self.sync_ledges();
         self.apply_throws();
         let mut bursts: Vec<Burst> = Vec::new();
         self.move_projectiles(&mut bursts);
@@ -168,6 +169,9 @@ impl World {
             }
             if let Some((gb, x, y)) = active_grabbox(f) {
                 out.push(ActiveHitbox { owner, x, y, radius: gb.radius, grab: true });
+            }
+            if let Some((hb, x, y)) = ledge_attack_hitbox(f) {
+                out.push(ActiveHitbox { owner, x, y, radius: hb.radius, grab: false });
             }
         }
         out
@@ -211,6 +215,28 @@ impl World {
                 let away = -self.fighters[v].facing;
                 self.fighters[v].escape_hold(away);
             }
+        }
+    }
+
+    /// One fighter per ledge: a fresh grab knocks whoever already hung there off.
+    fn sync_ledges(&mut self) {
+        for i in 0..self.fighters.len() {
+            let Some(pi) = self.fighters[i].ledge_on else { continue };
+            let side = self.fighters[i].ledge_side;
+            let i_fresh = self.fighters[i].ledge_fresh;
+            let stolen = (0..self.fighters.len()).any(|j| {
+                j != i
+                    && self.fighters[j].ledge_on == Some(pi)
+                    && self.fighters[j].ledge_side == side
+                    && (self.fighters[j].ledge_fresh && !i_fresh
+                        || (self.fighters[j].ledge_fresh == i_fresh && j < i))
+            });
+            if stolen {
+                self.fighters[i].steal_ledge();
+            }
+        }
+        for f in &mut self.fighters {
+            f.ledge_fresh = false;
         }
     }
 
@@ -331,6 +357,31 @@ impl World {
                 }
             }
         }
+        // The ledge getup attack swings like any other hit, but it isn't a `MoveId`.
+        for (ai, attacker) in self.fighters.iter().enumerate() {
+            let State::LedgeAttack { hit_mask, .. } = attacker.state else { continue };
+            let Some((hb, x, y)) = ledge_attack_hitbox(attacker) else { continue };
+            for (di, defender) in self.fighters.iter().enumerate() {
+                let already_hit = hit_mask & (1 << di) != 0
+                    || strikes.iter().any(|s| s.projectile.is_none() && s.attacker == ai && s.defender == di);
+                if di != ai && !already_hit && defender.hittable() && defender.hurtbox_overlaps(x, y, hb.radius) {
+                    strikes.push(Strike {
+                        attacker: ai,
+                        defender: di,
+                        x,
+                        y,
+                        damage: hb.damage,
+                        angle: hb.angle,
+                        base_kb: hb.base_kb,
+                        kb_growth: hb.kb_growth,
+                        direction: attacker.facing,
+                        projectile: None,
+                        explosion: false,
+                    });
+                }
+            }
+        }
+
         let mut spent_projectiles: Vec<usize> = Vec::new();
         let mut contact_explosions: Vec<PendingExplosion> = Vec::new();
         for (pi, p) in self.projectiles.iter().enumerate() {
@@ -455,8 +506,10 @@ impl World {
                 None if s.explosion => {}
                 None => {
                     let attacker = &mut self.fighters[s.attacker];
-                    if let State::Attack { hit_mask, .. } = &mut attacker.state {
-                        *hit_mask |= 1 << s.defender;
+                    match &mut attacker.state {
+                        State::Attack { hit_mask, .. } => *hit_mask |= 1 << s.defender,
+                        State::LedgeAttack { hit_mask, .. } => *hit_mask |= 1 << s.defender,
+                        _ => {}
                     }
                     attacker.hitlag = lag;
                 }
@@ -564,4 +617,23 @@ fn active_grabbox(f: &Fighter) -> Option<(&'static GrabBox, Fx, Fx)> {
     let State::Attack { mv, frame, .. } = f.state else { return None };
     let gb = mv.data().grabbox.as_ref()?;
     (gb.first..=gb.last).contains(&frame).then(|| (gb, f.x + gb.x * f.facing, f.y + gb.y))
+}
+
+/// The getup attack's single swing hitbox (shared by every character).
+static LEDGE_ATTACK_HITBOX: Hitbox = Hitbox {
+    first: 15,
+    last: 18,
+    x: Fx::int(6),
+    y: Fx::int(6),
+    radius: Fx::int(6),
+    damage: 8,
+    angle: 45,
+    base_kb: 40,
+    kb_growth: 70,
+};
+
+fn ledge_attack_hitbox(f: &Fighter) -> Option<(&'static Hitbox, Fx, Fx)> {
+    let State::LedgeAttack { frame, .. } = f.state else { return None };
+    let hb = &LEDGE_ATTACK_HITBOX;
+    (hb.first..=hb.last).contains(&(frame as u16)).then(|| (hb, f.x + hb.x * f.facing, f.y + hb.y))
 }

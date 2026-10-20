@@ -130,6 +130,11 @@ How each input works, with the chef's moves:
 | Shield | Stick sideways / down | Roll forward or back / spot dodge, both invincible partway through. Pressing shield with the stick already held does the same. |
 | Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
 
+Falling past a ledge grabs it: you hang there briefly invincible, and your double jump
+is restored. From a hang, up or toward the stage climbs up, jump ledge-jumps, shield
+rolls up, attack does a getup attack, and down or away drops off. Only one fighter can
+hold a ledge — grabbing an occupied one knocks its holder off.
+
 The pug's moves for the same inputs:
 
 | Input | Pug move |
@@ -253,7 +258,7 @@ joypad's name to the console at startup and whenever one connects.
 
 ## Not built yet
 
-Ledges (grabbing, getup options), tap jump (up to jump), DI, teching, tilting the shield, perfect
+Tap jump (up to jump), DI, teching, tilting the shield, perfect
 shield, pivots, aerial grabs, hit flashes on the pug's fur (only its `Body` collar tints), animation blending, move data in hot-reloadable
 files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that punish or
 edge-guard (higher levels only react faster and attack more), stages that look different from each other

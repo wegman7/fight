@@ -158,6 +158,7 @@ fn shuriken_fires_on_frame_10_and_hits() {
 #[test]
 fn shadow_dash_is_intangible_and_dashes_past_the_target() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-28);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::NinjaShadowDash));
@@ -189,14 +190,14 @@ fn shadow_dash_passes_through_a_jab_unhurt() {
 #[test]
 fn smoke_bomb_vanishes_and_reappears_higher_then_helpless() {
     let mut w = world();
-    airborne(&mut w, 0, 0, 150);
+    airborne(&mut w, 0, 0, 100);
     w.step(&[input(0, 100, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::NinjaSmokeBomb));
     run(&mut w, 6, NONE, NONE);
-    assert_eq!(w.fighters[0].y, Fx::int(150), "hasn't moved before the teleport");
+    assert_eq!(w.fighters[0].y, Fx::int(100), "hasn't moved before the teleport");
     assert!(!w.fighters[0].hittable(), "intangible while it vanishes");
     w.step(&[NONE, NONE]);
-    assert_eq!(w.fighters[0].y, Fx::int(184), "teleported 34 units up on frame 8");
+    assert_eq!(w.fighters[0].y, Fx::int(134), "teleported 34 units up on frame 8");
     run(&mut w, 33, NONE, NONE);
     assert_eq!(w.fighters[0].state, State::SpecialFall);
 }

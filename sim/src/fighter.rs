@@ -198,6 +198,15 @@ pub enum State {
     /// Caught by fighter `by`. Breaks free when `frames_left` runs out; mashing speeds it up.
     Held { by: u8, frames_left: u16 },
     Hitstun { frames_left: u16 },
+    /// Hanging from a platform's edge (`Fighter::ledge_on` / `ledge_side`).
+    LedgeHang,
+    /// Climbing straight up onto the stage from the ledge.
+    LedgeClimb { frame: u8 },
+    /// Rolling up past the ledge, deeper onto the stage.
+    LedgeRoll { frame: u8 },
+    /// The getup attack: rises from the ledge and swings. Its hitbox is resolved in
+    /// `World::resolve_hits` (see `ledge_attack_hitbox`).
+    LedgeAttack { frame: u8, hit_mask: u8 },
     Respawning { frames_left: u16 },
     Eliminated,
 }
@@ -216,6 +225,26 @@ const DODGE_THRESHOLD: Fx = Fx::ratio(7, 10);
 /// (e.g. during landing lag) still comes out on the first actionable frame.
 const BUFFER_FRAMES: u8 = 6;
 const DROP_THROUGH_FRAMES: u8 = 10;
+/// A falling fighter grabs a ledge this far outside its edge.
+const LEDGE_REACH: Fx = Fx::int(5);
+/// How far above / below the platform top the fighter's head may be to grab.
+const LEDGE_LIFT: Fx = Fx::int(2);
+const LEDGE_DROP: Fx = Fx::int(8);
+/// Hanging hands sit this far outside the edge.
+const LEDGE_HANG_X: Fx = Fx::int(1);
+/// Ledge grab invincibility, in frames.
+const LEDGE_INVINCIBLE: u16 = 30;
+/// Frames a fighter knocked off a ledge can't grab one again.
+const LEDGE_REGRAB_LOCKOUT: u8 = 15;
+/// Getup frame counts and how far onto the stage each getup lands.
+const LEDGE_CLIMB_FRAMES: u8 = 20;
+const LEDGE_ROLL_FRAMES: u8 = 25;
+const LEDGE_ATTACK_FRAMES: u8 = 30;
+const LEDGE_CLIMB_IN: Fx = Fx::int(8);
+const LEDGE_ROLL_IN: Fx = Fx::int(15);
+const LEDGE_ATTACK_IN: Fx = Fx::int(10);
+/// Outward pop when another fighter steals the ledge.
+const LEDGE_STEAL_POP: Fx = Fx::int(2);
 const RESPAWN_FRAMES: u16 = 60;
 const RESPAWN_INTANGIBLE_FRAMES: u16 = 120;
 const SPECIAL_FALL_LANDING_LAG: u8 = 20;
@@ -271,6 +300,15 @@ pub struct Fighter {
     pub facing: i32,
     /// Index of the platform being stood on, if grounded.
     pub grounded_on: Option<usize>,
+    /// Platform whose edge this fighter hangs from, while `State::LedgeHang`.
+    pub ledge_on: Option<usize>,
+    /// Which way the stage is from the ledge being hung from: +1 hangs from the
+    /// platform's left edge, -1 from its right (the direction to climb back in).
+    pub ledge_side: i32,
+    /// Set on the frame this fighter grabs a ledge; consumed by `World::sync_ledges`.
+    pub(crate) ledge_fresh: bool,
+    /// Frames before this fighter may grab a ledge again (after being knocked off).
+    pub(crate) no_regrab: u8,
     pub air_jumps_left: u8,
     pub fast_falling: bool,
     /// One air dodge and one aerial side special per trip through the air.
@@ -339,6 +377,10 @@ impl Fighter {
             kb_decay_y: Fx::ZERO,
             facing,
             grounded_on,
+            ledge_on: None,
+            ledge_side: 1,
+            ledge_fresh: false,
+            no_regrab: 0,
             air_jumps_left: params.air_jumps,
             fast_falling: false,
             air_dodge_used: false,
@@ -453,6 +495,10 @@ impl Fighter {
             State::Holding { .. } => "grab_hold",
             State::Held { .. } => "grabbed",
             State::Hitstun { .. } => "hitstun",
+            // Ledge poses reuse existing clips until dedicated art is added:
+            // hang/climb/attack pose like the air animation, the roll like a dodge roll.
+            State::LedgeHang | State::LedgeClimb { .. } | State::LedgeAttack { .. } => "air",
+            State::LedgeRoll { .. } => "roll_f",
             State::Respawning { .. } => "respawning",
             State::Eliminated => "eliminated",
         }
@@ -623,6 +669,59 @@ impl Fighter {
                     self.start_attack(moves.pummel);
                 } else {
                     self.state = State::Holding { frame: frame.saturating_add(1) };
+                }
+            }
+            State::LedgeHang => {
+                self.vx = Fx::ZERO;
+                let side = self.ledge_side;
+                if take(&mut self.jump_buffer) {
+                    // Ledge jump: up and inward, without spending the restored double jump.
+                    self.ledge_on = None;
+                    self.vy = p.full_hop;
+                    self.vx = p.air_speed * side;
+                    self.state = State::Air;
+                } else if intent.down_tap || sx * side <= -TILT_THRESHOLD {
+                    // Drop off: down or away from the stage. Can't regrab right away.
+                    self.ledge_on = None;
+                    self.vy = Fx::ZERO;
+                    self.no_regrab = LEDGE_REGRAB_LOCKOUT;
+                    self.state = State::Air;
+                } else if take(&mut self.attack_buffer) {
+                    self.intangible = self.intangible.max(LEDGE_ATTACK_FRAMES as u16);
+                    self.state = State::LedgeAttack { frame: 1, hit_mask: 0 };
+                } else if take(&mut self.shield_buffer) {
+                    self.intangible = self.intangible.max(LEDGE_ROLL_FRAMES as u16);
+                    self.state = State::LedgeRoll { frame: 1 };
+                } else if sx * side >= TILT_THRESHOLD || sy >= TILT_THRESHOLD {
+                    self.intangible = self.intangible.max(LEDGE_CLIMB_FRAMES as u16);
+                    self.state = State::LedgeClimb { frame: 1 };
+                }
+            }
+            State::LedgeClimb { frame } => {
+                let (x, y) = self.ledge_getup_pos(stage, frame, LEDGE_CLIMB_FRAMES, LEDGE_CLIMB_IN);
+                (self.x, self.y) = (x, y);
+                if frame >= LEDGE_CLIMB_FRAMES {
+                    self.finish_getup(stage);
+                } else {
+                    self.state = State::LedgeClimb { frame: frame + 1 };
+                }
+            }
+            State::LedgeRoll { frame } => {
+                let (x, y) = self.ledge_getup_pos(stage, frame, LEDGE_ROLL_FRAMES, LEDGE_ROLL_IN);
+                (self.x, self.y) = (x, y);
+                if frame >= LEDGE_ROLL_FRAMES {
+                    self.finish_getup(stage);
+                } else {
+                    self.state = State::LedgeRoll { frame: frame + 1 };
+                }
+            }
+            State::LedgeAttack { frame, hit_mask } => {
+                let (x, y) = self.ledge_getup_pos(stage, frame, LEDGE_ATTACK_FRAMES, LEDGE_ATTACK_IN);
+                (self.x, self.y) = (x, y);
+                if frame >= LEDGE_ATTACK_FRAMES {
+                    self.finish_getup(stage);
+                } else {
+                    self.state = State::LedgeAttack { frame: frame + 1, hit_mask };
                 }
             }
             State::Hitstun { frames_left } => {
@@ -891,6 +990,10 @@ impl Fighter {
     }
 
     fn physics(&mut self, stage: &Stage) {
+        // Hanging and getup poses are fully scripted: no gravity, drift or landing.
+        if matches!(self.state, State::LedgeHang | State::LedgeClimb { .. } | State::LedgeRoll { .. } | State::LedgeAttack { .. }) {
+            return;
+        }
         let p = self.params;
         if !self.grounded() && !self.vertical_scripted() {
             self.vy = if self.fast_falling { -p.fast_fall } else { (self.vy - p.gravity).max(-p.max_fall) };
@@ -898,6 +1001,7 @@ impl Fighter {
         self.kb_x = self.kb_x.approach(Fx::ZERO, self.kb_decay_x);
         self.kb_y = self.kb_y.approach(Fx::ZERO, self.kb_decay_y);
         self.drop_through = self.drop_through.saturating_sub(1);
+        self.no_regrab = self.no_regrab.saturating_sub(1);
 
         let prev_y = self.y;
         self.x += self.vx + self.kb_x;
@@ -926,10 +1030,90 @@ impl Fighter {
                 });
                 if let Some(i) = landed_on {
                     self.land(i, stage.platforms[i].y);
+                } else {
+                    self.try_grab_ledge(stage);
                 }
             }
             None => {}
         }
+    }
+
+    /// A falling fighter grabs the first platform edge within the grab box.
+    fn try_grab_ledge(&mut self, stage: &Stage) -> bool {
+        if self.vy + self.kb_y > Fx::ZERO || self.no_regrab > 0 {
+            return false;
+        }
+        let top = self.y + self.params.height;
+        for (i, plat) in stage.platforms.iter().enumerate() {
+            for (edge_x, side) in [(plat.left, 1), (plat.right, -1)] {
+                let outside = (edge_x - self.x) * side;
+                if outside <= Fx::ZERO || outside > LEDGE_REACH {
+                    continue;
+                }
+                if top > plat.y + LEDGE_LIFT || top < plat.y - LEDGE_DROP {
+                    continue;
+                }
+                self.ledge_on = Some(i);
+                self.ledge_side = side;
+                self.ledge_fresh = true;
+                self.x = edge_x - LEDGE_HANG_X * side;
+                self.y = plat.y - self.params.height;
+                self.vx = Fx::ZERO;
+                self.vy = Fx::ZERO;
+                self.kb_x = Fx::ZERO;
+                self.kb_y = Fx::ZERO;
+                self.fast_falling = false;
+                self.grounded_on = None;
+                self.facing = side;
+                self.intangible = LEDGE_INVINCIBLE;
+                self.air_jumps_left = self.params.air_jumps;
+                self.air_dodge_used = false;
+                self.side_special_used = false;
+                self.state = State::LedgeHang;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Where a ledge getup of `total` frames puts the fighter on `frame` (1-based),
+    /// lerping from the hang spot to a point `inward` onto the stage.
+    fn ledge_getup_pos(&self, stage: &Stage, frame: u8, total: u8, inward: Fx) -> (Fx, Fx) {
+        let Some(i) = self.ledge_on else { return (self.x, self.y) };
+        let plat = &stage.platforms[i];
+        let side = self.ledge_side;
+        let edge_x = if side > 0 { plat.left } else { plat.right };
+        let hang_x = edge_x - LEDGE_HANG_X * side;
+        let hang_y = plat.y - self.params.height;
+        let t = Fx::int(frame as i32) / Fx::int(total as i32);
+        (hang_x + (edge_x + inward * side - hang_x) * t, hang_y + (plat.y - hang_y) * t)
+    }
+
+    /// Knocked off the ledge by another fighter grabbing it: falls away, and can't
+    /// regrab for a short lockout.
+    pub(crate) fn steal_ledge(&mut self) {
+        let side = self.ledge_side;
+        self.ledge_on = None;
+        self.intangible = 0;
+        self.no_regrab = LEDGE_REGRAB_LOCKOUT;
+        self.vx = -(LEDGE_STEAL_POP * side);
+        self.vy = Fx::ZERO;
+        self.state = State::Air;
+    }
+
+    /// Ends a getup standing on the platform it was hanging from.
+    fn finish_getup(&mut self, stage: &Stage) {
+        let Some(i) = self.ledge_on else {
+            self.state = State::Air;
+            return;
+        };
+        self.y = stage.platforms[i].y;
+        self.grounded_on = Some(i);
+        self.ledge_on = None;
+        self.vx = Fx::ZERO;
+        self.vy = Fx::ZERO;
+        self.fast_falling = false;
+        self.state = State::Ground;
     }
 
     fn land(&mut self, platform: usize, y: Fx) {
@@ -980,6 +1164,7 @@ impl Fighter {
         self.air_dodge_used = false;
         self.side_special_used = false;
         self.charge = 0;
+        self.ledge_on = None;
         if self.grounded() && (knockback < GROUNDED_KB_THRESHOLD || self.kb_y <= Fx::ZERO) {
             self.kb_y = Fx::ZERO;
         } else {
@@ -1056,6 +1241,8 @@ impl Fighter {
         self.kb_x = Fx::ZERO;
         self.kb_y = Fx::ZERO;
         self.grounded_on = None;
+        self.ledge_on = None;
+        self.no_regrab = 0;
         self.fast_falling = false;
         self.holding = None;
         self.charge = 0;
@@ -1068,6 +1255,8 @@ impl Fighter {
         (self.x, self.y) = stage.respawn;
         self.vx = Fx::ZERO;
         self.vy = Fx::ZERO;
+        self.ledge_on = None;
+        self.no_regrab = 0;
         self.air_jumps_left = self.params.air_jumps;
         self.air_dodge_used = false;
         self.side_special_used = false;
