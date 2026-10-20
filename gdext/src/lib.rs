@@ -967,8 +967,9 @@ fn read_menu_input(port: usize, joypad: Option<i32>) -> PortInput {
         let x = strongest(axis(JoyAxis::LEFT_X), dpad(JoyButton::DPAD_RIGHT, JoyButton::DPAD_LEFT));
         let y = strongest(axis(JoyAxis::LEFT_Y), dpad(JoyButton::DPAD_DOWN, JoyButton::DPAD_UP));
         menu.stick = Vector2::new(strongest(menu.stick.x, x), strongest(menu.stick.y, y));
-        menu.confirm |= button(JoyButton::A);
-        menu.back |= button(JoyButton::B);
+        // Switch layout: the right face button (Switch A) confirms, the bottom one (Switch B) backs out.
+        menu.confirm |= button(JoyButton::B);
+        menu.back |= button(JoyButton::A);
         menu.start |= button(JoyButton::START);
         menu.exit |= button(JoyButton::BACK);
     }
@@ -1008,8 +1009,10 @@ fn read_input(port: usize, joypad: Option<i32>, cstick_out: &mut bool) -> SimInp
         x = strongest(x, [jx, dx]);
         y = strongest(y, [jy, dy]);
         let pad = [
-            (button(JoyButton::A), SimInput::ATTACK),
-            (button(JoyButton::B), SimInput::SPECIAL),
+            // Switch layout: SDL names buttons by position, so JoyButton::B is the right
+            // face button (labelled A on a Switch pad) and JoyButton::A the bottom one (B).
+            (button(JoyButton::B), SimInput::ATTACK),
+            (button(JoyButton::A), SimInput::SPECIAL),
             (button(JoyButton::X) || button(JoyButton::Y), SimInput::JUMP),
             (axis(JoyAxis::TRIGGER_LEFT) > TRIGGER_THRESHOLD || axis(JoyAxis::TRIGGER_RIGHT) > TRIGGER_THRESHOLD, SimInput::SHIELD),
             (button(JoyButton::LEFT_SHOULDER) || button(JoyButton::RIGHT_SHOULDER), SimInput::GRAB),

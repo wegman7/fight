@@ -62,7 +62,9 @@ screen doesn't also act on the next one.
   `TIME`; that's fine because it's scenery, never gameplay.
 - Controls are hard-coded in `KEYS`, `read_input` and `read_menu_input` (tables in the
   root README). The nth connected gamepad is port n, like Melee's ports; ports 1 and 2
-  also have keyboard keys. Triggers are
+  also have keyboard keys. Face buttons follow the Switch layout by position: SDL's
+  `JoyButton::B` (right) is attack / confirm and `JoyButton::A` (bottom) is special /
+  back. Triggers are
   axes, so shield is "trigger past 0.3". The right stick acts as a C-stick. On the
   frame it is pushed, it sends `SMASH` with the left-stick direction replaced by the
   right stick's, so it gives a smash attack on the ground and an aerial in the air.

@@ -85,7 +85,7 @@ Like Melee, a match is set up in three screens:
 |---|---|---|---|---|---|
 | P1 keyboard | WASD | J | L | Enter | Esc (quits from the first screen) |
 | P2 keyboard | Arrows | , | / | | |
-| Gamepad in port n | Left stick / D-pad | A | B | Start | View / Back |
+| Gamepad in port n | Left stick / D-pad | A (right) | B (bottom) | Start | View / Back / − |
 
 The nth connected gamepad is port n (pad 1 shares port 1 with the P1 keys). Ports 3 and
 4 only have a hand when a third / fourth pad is connected; without one they can still be CPUs.
@@ -96,7 +96,7 @@ The nth connected gamepad is port n (pad 1 shares port 1 with the P1 keys). Port
 |---|---|---|---|---|---|---|---|
 | P1 keyboard | WASD | J | K / Space | L | ; | U | I |
 | P2 keyboard | Arrows | , | . | / | M | N | B |
-| Gamepad in that player's port | Left stick / D-pad | A (bottom) | X / Y | B (right) | LT / RT | LB / RB | Right stick |
+| Gamepad in that player's port | Left stick / D-pad | A (right) | X / Y | B (bottom) | ZL / ZR | L / R | Right stick |
 
 The controls follow Smash. "Forward" is the way you face. There are six characters
 with their own movesets and tuning: the **chef** (an all-rounder in chef's whites, toque
@@ -230,6 +230,11 @@ Debug: **H** hitboxes · **P** pause · **F** frame-advance · **-** / **=** mus
 
 Music: `untitled` plays in the menus and `rising_motif` during every match, both looping.
 Set the volume with `FIGHT_MUSIC_VOLUME` (0-100) or the `-` / `=` keys (works in menus and matches).
+
+Pad buttons use the Switch layout, as in Smash Ultimate: A is the right face button and
+B the bottom one, by position. So on an Xbox pad attack is B and special is A; on a
+PlayStation pad they are ○ and ✕. In the tables, ZL / ZR are the triggers (LT / RT,
+L2 / R2) and L / R the bumpers (LB / RB, L1 / R1).
 
 Xbox, PlayStation and Switch Pro pads all work (Godot uses SDL's mappings). On
 macOS, pair Xbox One/Series pads over Bluetooth. The game prints each detected
