@@ -118,6 +118,7 @@ fn slashes_chain_into_a_thrust() {
 /// Forward tilt at a target standing `distance` units in front.
 fn forward_cut_at(distance: i32) -> i32 {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-40 + distance);
     w.step(&[input(60, 0, Input::ATTACK), NONE]);
     run(&mut w, 12, NONE, NONE);
@@ -135,6 +136,7 @@ fn forward_cut_outreaches_the_chefs_kick() {
     let distance = 18;
     assert!(forward_cut_at(distance) > 0);
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Chef], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-40 + distance);
     w.step(&[input(60, 0, Input::ATTACK), NONE]);
     run(&mut w, 12, NONE, NONE);
@@ -176,12 +178,14 @@ fn fully_charged_focus_cut_swings_by_itself_and_hits_far_harder() {
 
 #[test]
 fn vault_hops_over_the_target_and_lands_behind_it_turned_around() {
+    // Start in the gap between the side platforms, so the arc doesn't clip a ledge.
     let mut w = world();
-    w.fighters[1].x = Fx::int(-28);
+    w.fighters[0].x = Fx::int(-20);
+    w.fighters[1].x = Fx::int(-8);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::SamuraiVault));
     run(&mut w, 5, NONE, NONE);
-    assert_eq!((w.fighters[0].x, w.fighters[0].y), (Fx::int(-40), Fx::ZERO), "crouches on 1-6");
+    assert_eq!((w.fighters[0].x, w.fighters[0].y), (Fx::int(-20), Fx::ZERO), "crouches on 1-6");
     run(&mut w, 8, NONE, NONE);
     assert_eq!(w.fighters[0].facing, 1, "still facing forward on 14");
     assert!(w.fighters[0].y > w.fighters[1].params.height, "over P2's head: {:?}", w.fighters[0].y);
@@ -225,7 +229,7 @@ fn vault_strike_meteors_airborne_targets() {
 #[test]
 fn vault_works_once_per_airtime() {
     let mut w = world();
-    airborne(&mut w, 0, -60, 150);
+    airborne(&mut w, 0, -60, 100);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::SamuraiVault));
     run(&mut w, 34, NONE, NONE);
@@ -240,7 +244,7 @@ fn cyclone_climbs_steers_and_ends_helpless() {
     let climb = |drift: i8| {
         // High in the air: it climbs fast enough to land again before it ends.
         let mut w = world();
-        airborne(&mut w, 0, 0, 150);
+        airborne(&mut w, 0, 0, 100);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
         assert_eq!(mv(&w, 0), Some(MoveId::SamuraiCyclone));
         let mut peak = Fx::ZERO;
@@ -253,7 +257,7 @@ fn cyclone_climbs_steers_and_ends_helpless() {
         (peak, w.fighters[0].x)
     };
     let (peak, x) = climb(0);
-    assert!(peak >= Fx::int(150 + 38), "peak {peak:?}");
+    assert!(peak >= Fx::int(100 + 38), "peak {peak:?}");
     let (_, steered) = climb(100);
     assert!(steered > x + Fx::int(10), "steered to {steered:?}");
 }

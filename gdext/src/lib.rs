@@ -865,6 +865,7 @@ fn pose(anim: &mut Gd<AnimationPlayer>, f: &Fighter, world_frame: u32) {
         State::Attack { frame, .. } => u32::from(frame).saturating_sub(1),
         State::JumpSquat { frame } => u32::from(frame),
         State::Dodge { frame, .. } => u32::from(frame).saturating_sub(1),
+        State::LedgeClimb { frame } | State::LedgeRoll { frame } | State::LedgeAttack { frame, .. } => u32::from(frame).saturating_sub(1),
         // Counts down, so play the clip's end: it always finishes back on the idle pose.
         State::Landing { frames_left } => length.saturating_sub(u32::from(frames_left)),
         _ => world_frame % length.max(1),

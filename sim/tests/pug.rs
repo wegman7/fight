@@ -315,6 +315,7 @@ fn ear_copter_climbs_slowly_steers_and_ends_helpless() {
 #[test]
 fn play_dead_counters_a_hit_and_pounces_back() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::PugPlayDead));

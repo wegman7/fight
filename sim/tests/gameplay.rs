@@ -42,9 +42,19 @@ fn run(w: &mut World, frames: usize, p1: Input, p2: Input) {
 fn idle_fighters_stay_on_their_spawns() {
     let mut w = world();
     run(&mut w, 120, NONE, NONE);
-    assert_eq!((w.fighters[0].x, w.fighters[0].y), (Fx::int(-40), Fx::ZERO));
+    let (sx, sy) = w.stage.spawns[0];
+    assert_eq!((w.fighters[0].x, w.fighters[0].y), (sx, sy));
     assert_eq!(w.fighters[0].state, State::Ground);
     assert_eq!(w.fighters[1].facing, -1);
+}
+
+#[test]
+fn stages_are_scaled_down_so_fighters_read_bigger() {
+    // The main stage was 136 units wide; at 5/6 it reads ~113 (68 -> 56 2/3), so
+    // characters are ~20% larger relative to it.
+    let stage = Stage::battlefield();
+    assert_eq!(stage.platforms[0].right.floor_to_int(), 56);
+    assert_eq!(stage.platforms[0].left.floor_to_int(), -57);
 }
 
 #[test]
@@ -110,8 +120,8 @@ fn ftilt_kos_at_high_percent_but_not_at_zero() {
     let stocks_after_ftilt = |percent| {
         let mut w = world();
         let (p1, p2) = (0, 1);
-        w.fighters[p1].x = Fx::int(40);
-        w.fighters[p2].x = Fx::int(48);
+        w.fighters[p1].x = Fx::int(16);
+        w.fighters[p2].x = Fx::int(24);
         w.fighters[p2].percent = percent;
         // Tilt strength: a full flick from neutral with attack would be a smash attack.
         w.step(&[Input { stick_x: 60, ..press(Input::ATTACK) }, NONE]);
@@ -146,12 +156,13 @@ fn walking_off_stage_falls_into_blast_zone_then_respawns() {
 #[test]
 fn tapping_down_drops_through_soft_platforms() {
     let mut w = world();
+    let plat = w.stage.platforms[1].clone();
     let f = &mut w.fighters[0];
-    (f.x, f.y, f.grounded_on) = (Fx::int(-40), Fx::int(27), Some(1));
+    (f.x, f.y, f.grounded_on) = (plat.left + Fx::int(8), plat.y, Some(1));
 
     w.step(&[stick(0, -100), NONE]);
     run(&mut w, 5, NONE, NONE);
-    assert!(w.fighters[0].y < Fx::int(27));
+    assert!(w.fighters[0].y < plat.y);
     run(&mut w, 120, NONE, NONE);
     assert_eq!(w.fighters[0].grounded_on, Some(0), "lands on the main stage");
 }
@@ -335,6 +346,7 @@ fn each_aerial_has_its_own_landing_lag() {
 #[test]
 fn pie_throw_lobs_a_pie_that_arcs_into_its_target() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::ZERO;
     w.step(&[press(Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::PieThrow));
@@ -358,7 +370,8 @@ fn pie_throw_lobs_a_pie_that_arcs_into_its_target() {
 #[test]
 fn a_pie_that_misses_lands_on_the_floor_about_half_a_stage_away() {
     let mut w = world();
-    w.fighters[0].x = Fx::int(-60);
+    w.fighters[0].x = Fx::int(-40);
+    w.fighters[1].x = Fx::int(-50); // out of the pie's rightward path
     w.step(&[press(Input::SPECIAL), NONE]);
     let mut landed = None;
     let mut heights = Vec::new();
@@ -379,10 +392,10 @@ fn a_pie_that_misses_lands_on_the_floor_about_half_a_stage_away() {
     let (frame, x, y) = landed.expect("the pie never landed");
     assert!(w.projectiles.is_empty());
     assert_eq!(y, Fx::ZERO, "on the main stage");
-    // Thrown at x = -52 on frame 12, then 2 units a frame for the 39 frames of its arc,
-    // short of P2 at x = 40.
+    // Thrown at x = -32 on frame 12, then 2 units a frame for the 39 frames of its arc;
+    // P2 waits behind the throw, and the pie lands just past half a stage.
     assert_eq!(frame, 51, "{heights:?}");
-    assert_eq!(x, Fx::int(26));
+    assert_eq!(x, Fx::int(46));
     assert_eq!(w.fighters[1].percent, 0);
 }
 
@@ -639,4 +652,177 @@ fn projectiles_hit_shields() {
     assert!(blocked);
     assert_eq!(w.fighters[1].percent, 0);
     assert!(w.projectiles.is_empty());
+}
+
+// --- Ledge hang and getups ---------------------------------------------------
+
+/// Puts fighter `i` just outside the main stage's right edge, falling into a grab.
+fn falling_off_right_edge(w: &mut World, i: usize) {
+    let right = w.stage.platforms[0].right;
+    let h = w.fighters[i].params.height;
+    let f = &mut w.fighters[i];
+    (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy) = (right + Fx::int(2), -h, None, State::Air, Fx::ZERO, -Fx::ONE);
+}
+
+/// Steps once and asserts `i` grabbed the main stage's right edge.
+fn grab_right_edge(w: &mut World, i: usize) {
+    falling_off_right_edge(w, i);
+    w.step(&[NONE, NONE]);
+    assert_eq!(w.fighters[i].state, State::LedgeHang, "fighter {i} should hang from the ledge");
+}
+
+/// Stick pushed toward the stage (`side` = the direction into it).
+fn toward_stage(side: i32) -> Input {
+    stick((side * 100) as i8, 0)
+}
+
+#[test]
+fn falling_past_an_edge_grabs_the_ledge() {
+    let mut w = world();
+    let right = w.stage.platforms[0].right;
+    let h = w.fighters[0].params.height;
+    grab_right_edge(&mut w, 0);
+    assert_eq!(w.fighters[0].ledge_on, Some(0));
+    assert_eq!(w.fighters[0].ledge_side, -1, "the right edge: the stage is to the left");
+    assert_eq!(w.fighters[0].facing, -1, "faces the stage");
+    assert_eq!(w.fighters[0].y + h, Fx::ZERO, "hands at the ledge");
+    assert!(w.fighters[0].x > right, "hangs just off the edge");
+}
+
+#[test]
+fn the_left_edge_grabs_too() {
+    let mut w = world();
+    let left = w.stage.platforms[0].left;
+    let h = w.fighters[0].params.height;
+    let f = &mut w.fighters[0];
+    (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy) = (left - Fx::int(2), -h, None, State::Air, Fx::ZERO, -Fx::ONE);
+    w.step(&[NONE, NONE]);
+    assert_eq!(w.fighters[0].state, State::LedgeHang);
+    assert_eq!(w.fighters[0].ledge_side, 1, "the left edge: the stage is to the right");
+    assert_eq!(w.fighters[0].facing, 1);
+}
+
+#[test]
+fn ledge_grab_restores_the_double_jump() {
+    let mut w = world();
+    w.fighters[0].air_jumps_left = 0;
+    grab_right_edge(&mut w, 0);
+    assert_eq!(w.fighters[0].air_jumps_left, w.fighters[0].params.air_jumps);
+}
+
+#[test]
+fn ledge_grab_grants_brief_invincibility() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    assert!(w.fighters[0].intangible > 0, "invincible just after grabbing");
+    assert!(!w.fighters[0].hittable());
+}
+
+#[test]
+fn ledge_climb_gets_back_on_stage() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    let side = w.fighters[0].ledge_side;
+    for _ in 0..40 {
+        w.step(&[toward_stage(side), NONE]);
+    }
+    assert_eq!(w.fighters[0].state, State::Ground);
+    assert_eq!(w.fighters[0].grounded_on, Some(0));
+    assert_eq!(w.fighters[0].y, Fx::ZERO);
+    assert_eq!(w.fighters[0].ledge_on, None);
+}
+
+#[test]
+fn ledge_jump_leaves_the_ledge_airborne() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    w.step(&[press(Input::JUMP), NONE]);
+    assert_eq!(w.fighters[0].state, State::Air);
+    assert_eq!(w.fighters[0].ledge_on, None);
+    assert!(w.fighters[0].vy > Fx::ZERO, "launched upward");
+}
+
+#[test]
+fn ledge_roll_gets_back_on_stage() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    w.step(&[press(Input::SHIELD), NONE]);
+    for _ in 0..40 {
+        w.step(&[NONE, NONE]);
+    }
+    assert_eq!(w.fighters[0].state, State::Ground);
+    assert_eq!(w.fighters[0].grounded_on, Some(0));
+}
+
+#[test]
+fn ledge_drop_falls_off() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    w.step(&[stick(0, -100), NONE]);
+    assert_eq!(w.fighters[0].state, State::Air);
+    assert_eq!(w.fighters[0].ledge_on, None);
+}
+
+#[test]
+fn ledge_attack_swings_and_can_hit() {
+    let mut w = world();
+    let right = w.stage.platforms[0].right;
+    w.fighters[1].x = right - Fx::int(3); // standing just inside the ledge
+    w.fighters[1].facing = -1;
+    grab_right_edge(&mut w, 0);
+    w.step(&[press(Input::ATTACK), NONE]);
+    let mut hit = false;
+    for _ in 0..40 {
+        w.step(&[NONE, NONE]);
+        hit |= w.events.iter().any(|e| matches!(e, Event::Hit { attacker: 0, defender: 1, .. }));
+    }
+    assert!(hit, "the getup attack reaches the defender on the ledge");
+    assert!(w.fighters[1].percent > 0);
+}
+
+#[test]
+fn grabbing_an_occupied_ledge_steals_it() {
+    let mut w = world();
+    grab_right_edge(&mut w, 0);
+    // P2 falls into the same edge and takes it over.
+    falling_off_right_edge(&mut w, 1);
+    w.step(&[NONE, NONE]);
+    assert_eq!(w.fighters[1].state, State::LedgeHang, "the new grabber holds the ledge");
+    assert_eq!(w.fighters[1].ledge_on, Some(0));
+    assert_eq!(w.fighters[0].state, State::Air, "the previous holder is knocked off");
+    assert_eq!(w.fighters[0].ledge_on, None);
+}
+
+#[test]
+fn ledge_play_resimulates_bit_identically() {
+    // Both fighters grab opposite ledges, then take every getup option in turn.
+    let script = |f: usize| {
+        let side = if f % 240 < 120 { 1 } else { -1 };
+        let p1 = match f % 60 {
+            0..=2 => toward_stage(side),
+            3 => press(Input::JUMP),
+            _ => NONE,
+        };
+        let p2 = match f % 60 {
+            0..=2 => toward_stage(-side),
+            3 => press(Input::SHIELD),
+            _ => NONE,
+        };
+        [p1, p2]
+    };
+    let inputs: Vec<[Input; 2]> = (0..400).map(script).collect();
+
+    let mut w = world();
+    for i in &inputs[..200] {
+        w.step(i);
+    }
+    let snapshot = w.clone();
+    for i in &inputs[200..] {
+        w.step(i);
+    }
+    let mut replay = snapshot;
+    for i in &inputs[200..] {
+        replay.step(i);
+    }
+    assert_eq!(w, replay);
 }

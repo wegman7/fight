@@ -24,8 +24,9 @@
   and while a smash attack charges.
 - Interactions between two fighters (hits, grabs, throws, keeping a held fighter in
   hand) happen in `World`, never in `Fighter::step`, which only sees itself.
-  `sync_grabs` keeps `holding` and `State::Held` consistent. Run it after
-  anything that can break a grab.
+  `sync_grabs` keeps `holding` and `State::Held` consistent, and `sync_ledges`
+  enforces one fighter per ledge (a fresh grab steals it). Run them after
+  anything that can break a grab or a ledge hang.
 - Tests that press attack with a direction from neutral get a smash attack. Use stick
   60 (not 100) for tilts.
 - New stage → a `StageId` variant (name, `stage()`), added to `StageId::ALL`. Its spawns
