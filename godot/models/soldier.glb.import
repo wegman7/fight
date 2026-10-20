@@ -41,10 +41,70 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={
 "materials": {
+"Balaclava": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_balaclava.tres",
+"use_external/path": "res://models/soldier_balaclava.tres"
+},
+"Boot": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_boot.tres",
+"use_external/path": "res://models/soldier_boot.tres"
+},
 "Camo": {
 "use_external/enabled": true,
 "use_external/fallback_path": "res://models/soldier_camo.tres",
 "use_external/path": "res://models/soldier_camo.tres"
+},
+"Glove": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"GoggleFrame": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"Helmet": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_helmet.tres",
+"use_external/path": "res://models/soldier_helmet.tres"
+},
+"HelmetBand": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"Pad": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"Polymer": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_polymer.tres",
+"use_external/path": "res://models/soldier_polymer.tres"
+},
+"Sole": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"Strap": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_hardware.tres",
+"use_external/path": "res://models/soldier_hardware.tres"
+},
+"Vest": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_vest.tres",
+"use_external/path": "res://models/soldier_vest.tres"
+},
+"VestPouch": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/soldier_vest_pouch.tres",
+"use_external/path": "res://models/soldier_vest_pouch.tres"
 }
 }
 }

@@ -1,0 +1,16 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/gear.gdshader" id="1_gear"]
+
+[resource]
+resource_name = "Vest"
+render_priority = 0
+shader = ExtResource("1_gear")
+shader_parameter/color = Color(0.44, 0.40, 0.29, 1)
+shader_parameter/dirt_color = Color(0.13, 0.12, 0.09, 1)
+shader_parameter/roughness = 0.94
+shader_parameter/specular = 0.2
+shader_parameter/grime = 0.4
+shader_parameter/variation = 0.32
+shader_parameter/grain = 0.35
+shader_parameter/grain_scale = 200.0

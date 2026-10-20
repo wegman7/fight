@@ -1,7 +1,9 @@
-"""Builds the soldier: a heavy infantryman in a helmet, webbing and baggy fatigues,
-with a two-handed rifle that ends in a bayonet. Then his armature and one action per
-pose name the sim reports (`Fighter::anim()`). Saves `soldier.blend` next to this
-script, exports `godot/models/soldier.glb`, and builds the lobbed grenade as
+"""Builds the soldier: a heavy infantryman in a combat helmet and tactical goggles,
+his face covered by a balaclava, a plate carrier with magazine pouches over his
+fatigues and pads on his shoulders, elbows and knees, with a two-handed rifle that
+ends in a bayonet. Then his armature and one action per pose name the sim reports
+(`Fighter::anim()`). Saves `soldier.blend` next to this script, exports
+`godot/models/soldier.glb`, and builds the lobbed grenade as
 `godot/models/grenade.glb` (his side special's projectile).
 
     blender --background --factory-startup --python art/soldier/build_soldier.py
@@ -20,7 +22,8 @@ import sys
 
 import bmesh
 import bpy
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -65,28 +68,30 @@ BONES.append(("rifle", "forearm.R", tuple(GRIP), tuple(GRIP + Vector((0.55, 0, 0
 BONE_NAMES = [b[0] for b in BONES]
 
 # Material name -> (base color, roughness, metallic). Godot replaces "Body" (the
-# armband and chest patch) with the player's color; "Camo" (the fatigues) is swapped
-# for a procedural camo shader on import; the rest keep their own.
+# armband and shoulder patch) with the player's color; "Camo" (the fatigues) and
+# "Vest"/"VestPouch" (the carrier and its pouches) are swapped for cloth shaders on
+# import; the rest keep their own.
 MATERIALS = {
-    "Body": ((0.70, 0.12, 0.12, 1), 0.7, 0.0),
-    "Camo": ((0.33, 0.38, 0.22, 1), 0.9, 0.0),
-    "Skin": ((0.82, 0.62, 0.48, 1), 0.55, 0.0),
-    "Lip": ((0.62, 0.38, 0.33, 1), 0.45, 0.0),
-    "Hair": ((0.16, 0.12, 0.09, 1), 0.6, 0.0),
-    "Eye": ((0.93, 0.91, 0.87, 1), 0.12, 0.0),
-    "Iris": ((0.20, 0.16, 0.09, 1), 0.15, 0.0),
-    "Pupil": ((0.01, 0.01, 0.01, 1), 0.1, 0.0),
-    "Helmet": ((0.30, 0.33, 0.20, 1), 0.5, 0.0),
-    "HelmetBand": ((0.22, 0.24, 0.15, 1), 0.7, 0.0),
-    "Boot": ((0.09, 0.08, 0.07, 1), 0.35, 0.0),
-    "Glove": ((0.20, 0.22, 0.16, 1), 0.7, 0.0),
-    "Web": ((0.24, 0.27, 0.16, 1), 0.8, 0.0),
-    "Seam": ((0.20, 0.22, 0.14, 1), 0.9, 0.0),
-    "Wood": ((0.42, 0.30, 0.18, 1), 0.5, 0.0),
-    "Gunmetal": ((0.20, 0.21, 0.23, 1), 0.3, 0.8),
-    "Barrel": ((0.12, 0.12, 0.13, 1), 0.35, 0.7),
-    "Steel": ((0.72, 0.74, 0.77, 1), 0.15, 0.9),
-    "Polymer": ((0.14, 0.15, 0.13, 1), 0.6, 0.0),
+    "Body": ((0.62, 0.10, 0.10, 1), 0.85, 0.0),
+    "Camo": ((0.30, 0.33, 0.21, 1), 0.95, 0.0),
+    "Vest": ((0.42, 0.38, 0.28, 1), 0.95, 0.0),
+    "VestPouch": ((0.35, 0.31, 0.22, 1), 0.95, 0.0),
+    "Strap": ((0.13, 0.125, 0.10, 1), 0.9, 0.0),
+    "Buckle": ((0.34, 0.35, 0.36, 1), 0.5, 0.4),
+    "Pad": ((0.095, 0.095, 0.09, 1), 0.6, 0.0),
+    "Boot": ((0.17, 0.125, 0.085, 1), 0.55, 0.0),
+    "Sole": ((0.045, 0.045, 0.045, 1), 0.85, 0.0),
+    "Lace": ((0.30, 0.26, 0.20, 1), 0.9, 0.0),
+    "Glove": ((0.095, 0.09, 0.085, 1), 0.8, 0.0),
+    "Balaclava": ((0.055, 0.055, 0.062, 1), 0.95, 0.0),
+    "Helmet": ((0.17, 0.18, 0.13, 1), 0.8, 0.0),
+    "HelmetBand": ((0.10, 0.11, 0.08, 1), 0.85, 0.0),
+    "GoggleFrame": ((0.035, 0.035, 0.04, 1), 0.55, 0.0),
+    "GoggleGlass": ((0.028, 0.035, 0.045, 1), 0.14, 0.0),
+    "Steel": ((0.52, 0.54, 0.57, 1), 0.38, 0.6),
+    "Gunmetal": ((0.135, 0.142, 0.15, 1), 0.7, 0.25),
+    "Barrel": ((0.10, 0.105, 0.11, 1), 0.72, 0.15),
+    "Polymer": ((0.10, 0.105, 0.10, 1), 0.65, 0.0),
     "Grenade": ((0.26, 0.30, 0.16, 1), 0.55, 0.0),
 }
 MAT = {name: i for i, name in enumerate(MATERIALS)}
@@ -108,233 +113,490 @@ class Model(chef.Model):
 
 
 # --- Shapes -----------------------------------------------------------------
+# Cloth is metaball surfaces, one family per piece so the limbs don't fuse to the
+# torso; hard gear (plates, buckles, rails, the rifle) is modeled in bmesh and
+# either weighted to a bone or given the weights of the surface it is sewn onto.
+# Meters, feet at the origin, facing +X, the character's left = +Y.
 
 
-def head_blob():
-    """A lean, hard face: square jaw and chin, a straight nose."""
+def box(bm, center, size):
+    """An axis-aligned box at `center` with full extents `size`, for hard gear."""
+    matrix = Matrix.Translation(Vector(center)) @ Matrix.Diagonal((*size, 1))
+    return bmesh.ops.create_cube(bm, size=1.0, matrix=matrix)["verts"]
+
+
+def slab(bm, a, b, wa, ha, wb, hb, up=Vector((0, 0, 1))):
+    """A rectangular prism from `a` to `b`, `wa` x `ha` at `a` and `wb` x `hb` at `b`.
+    The cross-section is square to the axis, `up` picking which way it is rotated."""
+    a, b = Vector(a), Vector(b)
+    t = (b - a).normalized()
+    up = Vector(up)
+    n = (up - t * up.dot(t)).normalized()
+    s = t.cross(n)
+    rings = []
+    for p, w, h in ((a, wa, ha), (b, wb, hb)):
+        rings.append([bm.verts.new(p + s * (w / 2) + n * (h / 2)),
+                      bm.verts.new(p - s * (w / 2) + n * (h / 2)),
+                      bm.verts.new(p - s * (w / 2) - n * (h / 2)),
+                      bm.verts.new(p + s * (w / 2) - n * (h / 2))])
+    for j in range(4):
+        bm.faces.new((rings[0][j], rings[0][(j + 1) % 4], rings[1][(j + 1) % 4], rings[1][j]))
+    bm.faces.new(tuple(reversed(rings[0])))
+    bm.faces.new(tuple(rings[1]))
+    return rings[0] + rings[1]
+
+
+def register(m, name, verts):
+    """Make a bmesh part a ray-castable surface, so later details can be laid on it."""
+    faces = {f for v in verts for f in v.link_faces}
+    index = {v: i for i, v in enumerate(verts)}
+    polys = [[index[v] for v in f.verts] for f in faces if all(v in index for v in f.verts)]
+    m.surfaces[name] = BVHTree.FromPolygons([v.co.copy() for v in verts], polys)
+
+
+def hug_patch(m, piece, center_at, angles, zs, lift, thickness, mat, weights="head"):
+    """A curved plate laid on `piece`: a ray-cast grid over `angles` x `zs`, pushed out
+    by `lift` and closed with `thickness`, so it reads as gear sitting on the cloth."""
+    outer, inner = [], []
+    for z in zs:
+        row_out, row_in = [], []
+        for a in angles:
+            c = center_at(z)
+            d = Vector((math.cos(a), math.sin(a), 0.0))
+            loc, normal = m.hit(piece, c, d)
+            if loc is None:
+                loc, normal = c + d * 0.12, d
+            row_out.append(m.bm.verts.new(loc + normal * lift))
+            row_in.append(m.bm.verts.new(loc + normal * (lift - thickness)))
+        outer.append(row_out)
+        inner.append(row_in)
+    na, nz = len(angles), len(zs)
+    for rows, flip in ((outer, False), (inner, True)):
+        for r0, r1 in zip(rows, rows[1:]):
+            for j in range(na - 1):
+                quad = (r0[j], r0[j + 1], r1[j + 1], r1[j])
+                m.bm.faces.new(tuple(reversed(quad)) if flip else quad)
+    edge = ([(0, j) for j in range(na)] + [(i, na - 1) for i in range(1, nz)] +
+            [(nz - 1, j) for j in range(na - 2, -1, -1)] + [(i, 0) for i in range(nz - 2, 0, -1)])
+    for k, (i0, j0) in enumerate(edge):
+        i1, j1 = edge[(k + 1) % len(edge)]
+        m.bm.faces.new((outer[i0][j0], outer[i1][j1], inner[i1][j1], inner[i0][j0]))
+    verts = [v for row in outer + inner for v in row]
+    m.weigh(verts, weights)
+    m.paint(verts, mat)
+    return verts
+
+
+# The rifle's working axis: the barrel runs a little above the fist, so the hand wraps
+# the pistol grip the way it should. The `rifle` bone itself still starts at GRIP.
+AXIS = GRIP + Vector((0.0, 0.0, 0.05))
+
+
+def balaclava_blob():
+    """A knit balaclava: the whole head and jaw covered, a gaiter bunched over the
+    collar, and a soft ridge where the cloth tents over the nose."""
     b = Blob(resolution=0.0035)
-    b.ell((-0.005, 0, 1.085), (0.088, 0.075, 0.09))  # cranium
-    b.ell((0.022, 0, 1.03), (0.072, 0.063, 0.074))  # face and jaw
-    b.ell((0.054, 0, 0.98), (0.04, 0.043, 0.024), stiffness=3)  # square chin
-    b.cap((-0.012, 0, 0.84), (0.0, 0, 0.99), 0.05)  # neck
+    b.ell((-0.005, 0, 1.086), (0.096, 0.083, 0.098))  # crown
+    b.ell((0.024, 0, 1.028), (0.079, 0.072, 0.081))  # face and jaw
+    b.ell((0.044, 0, 0.981), (0.045, 0.052, 0.036), stiffness=3)  # chin, masked
+    b.cap((-0.014, 0, 0.85), (0.0, 0, 1.0), 0.059)  # neck, down into the collar
+    b.ell((0.0, 0, 0.932), (0.063, 0.063, 0.028), stiffness=3)  # gaiter bunched up
+    b.cap((0.088, 0, 1.086), (0.098, 0, 1.054), 0.015, stiffness=3)  # nose ridge
+    b.ell((0.099, 0, 1.05), (0.011, 0.016, 0.011), stiffness=3)
     for s in (1, -1):
-        b.ell((0.062, s * 0.042, 1.045), (0.022, 0.024, 0.018), stiffness=3)  # cheekbones
-        b.cap((-0.02, s * 0.056, 1.015), (0.06, s * 0.032, 0.968), 0.016, stiffness=3)  # jawline
-        b.cap((0.082, s * 0.012, 1.097), (0.076, s * 0.05, 1.103), 0.012, stiffness=3)  # brow ridge
-        b.ball((0.075, s * 0.031, 1.072), 0.013, stiffness=4, negative=True)  # eye socket
-        b.ell((-0.012, s * 0.078, 1.06), (0.017, 0.01, 0.028), stiffness=4, rot=Quaternion((1, 0, 0), math.radians(-10 * s)))  # ears
-        b.ell((-0.006, s * 0.086, 1.062), (0.008, 0.007, 0.015), stiffness=5, negative=True)
-    b.cap((0.086, 0, 1.092), (0.103, 0, 1.048), 0.009, stiffness=3)  # nose bridge
-    b.ell((0.101, 0, 1.044), (0.012, 0.014, 0.01), stiffness=3)  # tip
-    b.cap((0.09, -0.019, 1.006), (0.09, 0.019, 1.006), 0.0035, stiffness=6, negative=True)  # mouth
-    b.ell((0.087, 0, 0.998), (0.009, 0.018, 0.006), stiffness=4)  # lower lip
-    return b
-
-
-def hair_blob():
-    """Short back-and-sides hair, cropped where the helmet covers the top."""
-    b = Blob(resolution=0.004)
-    b.ell((-0.03, 0, 1.09), (0.09, 0.085, 0.075))
-    for s in (1, -1):
-        b.ell((0.03, s * 0.077, 1.07), (0.014, 0.008, 0.03), stiffness=4)  # sideburns
-        b.ell((-0.01, s * 0.09, 1.06), (0.028, 0.02, 0.036), stiffness=4, negative=True)  # room for the ears
-    b.ell((0.05, 0, 1.06), (0.05, 0.08, 0.06), stiffness=4, negative=True)  # clear of the face
-    b.ell((0.0, 0, 1.18), (0.09, 0.09, 0.07), stiffness=5, negative=True)  # the helmet covers the crown
+        b.ell((0.062, s * 0.043, 1.048), (0.021, 0.024, 0.019), stiffness=3)  # cheekbone
+        b.ell((-0.012, s * 0.078, 1.058), (0.016, 0.011, 0.026), stiffness=4)  # ear under cloth
+        # Folds: a crease from the cheek to the jaw, and two around the gaiter.
+        b.cap((0.07, s * 0.052, 1.018), (0.045, s * 0.068, 0.985), 0.007, stiffness=5, negative=True)
+        b.cap((0.02, s * 0.06, 0.905), (0.02, s * 0.06, 0.945), 0.008, stiffness=5, negative=True)
+        b.cap((0.03, s * 0.05, 0.968), (0.05, s * 0.03, 1.006), 0.006, stiffness=5, negative=True)
     return b
 
 
 def fatigues_blob():
-    """The fatigue shirt: a lean chest and narrow waist with soft folds at the hem."""
-    b = Blob(resolution=0.006)
-    b.ell((0.005, 0, 0.775), (0.1, 0.14, 0.11))  # chest
-    b.ell((0.0, 0, 0.62), (0.09, 0.12, 0.1))  # waist
+    """The field shirt: a thick chest and shoulders, tapering hard to the waist, with
+    the cloth folded where the plate carrier and the belt ride."""
+    b = Blob(resolution=0.0055)
+    b.ell((0.005, 0, 0.78), (0.104, 0.146, 0.114))  # chest
+    b.ell((0.0, 0, 0.625), (0.093, 0.124, 0.104))  # waist
+    b.ell((0.0, 0, 0.545), (0.101, 0.121, 0.058))  # hips and hem
     for s in (1, -1):
-        b.ell((-0.005, s * 0.09, 0.845), (0.055, 0.07, 0.035))  # trapezius
-        b.ell((0.0, s * 0.15, 0.83), (0.052, 0.045, 0.045))  # shoulder seam
-        b.ell((-0.055, s * 0.06, 0.77), (0.04, 0.06, 0.07))  # shoulder blades
-    b.ell((0.0, 0, 0.46), (0.12, 0.14, 0.02), stiffness=4)  # hem
+        b.ell((-0.005, s * 0.094, 0.848), (0.056, 0.072, 0.038))  # trapezius
+        b.ell((0.0, s * 0.152, 0.828), (0.053, 0.046, 0.05))  # shoulder
+        b.ell((-0.058, s * 0.062, 0.775), (0.042, 0.062, 0.074))  # shoulder blade
+        b.ell((-0.012, s * 0.10, 0.715), (0.038, 0.042, 0.058))  # lat
+        # Cloth folds: creases at the waist, the armpit and over the shoulders.
+        b.cap((0.085, s * 0.07, 0.615), (0.07, s * 0.11, 0.63), 0.006, stiffness=5, negative=True)
+        b.cap((0.06, s * 0.03, 0.575), (0.08, s * 0.09, 0.585), 0.005, stiffness=5, negative=True)
+        b.cap((-0.09, s * 0.05, 0.70), (-0.07, s * 0.10, 0.71), 0.005, stiffness=5, negative=True)
+        b.cap((0.05, s * 0.12, 0.775), (0.01, s * 0.145, 0.79), 0.006, stiffness=5, negative=True)
+        b.cap((-0.02, s * 0.02, 0.655), (0.03, s * 0.06, 0.665), 0.005, stiffness=5, negative=True)
     return b
 
 
 def sleeve_blob(s):
-    """A baggy fatigue sleeve, with the cloth bunched a little above the cuff."""
+    """A field-shirt sleeve: a padded deltoid, a bunched cuff at the wrist."""
     y = s * SHOULDER[0]
-    b = Blob(resolution=0.005)
-    b.ell((0.0, y - s * 0.005, 0.825), (0.055, 0.055, 0.06))  # deltoid
-    b.cap((0, y, SHOULDER[1] - 0.03), (0, y, ELBOW[1]), 0.046)
-    b.ell((0.012, y, 0.73), (0.035, 0.038, 0.06), stiffness=3)  # biceps
-    b.cap((0, y, ELBOW[1]), (0, y, WRIST[1] + 0.06), 0.043)
-    b.ell((-0.008, y, 0.6), (0.036, 0.038, 0.05), stiffness=3)  # forearm
-    b.ell((-0.012, y, WRIST[1] + 0.03), (0.032, 0.034, 0.03), stiffness=3)  # bunched cuff
+    b = Blob(resolution=0.0045)
+    b.ell((0.0, y - s * 0.004, 0.822), (0.058, 0.058, 0.062))  # deltoid
+    b.cap((0, y, SHOULDER[1] - 0.03), (0, y, ELBOW[1]), 0.049)
+    b.ell((0.012, y, 0.73), (0.037, 0.041, 0.062), stiffness=3)  # biceps
+    b.cap((0, y, ELBOW[1]), (0, y, WRIST[1] + 0.05), 0.045)
+    b.ell((-0.008, y, 0.60), (0.039, 0.041, 0.055), stiffness=3)  # forearm muscle
+    b.ell((0.0, y, WRIST[1] + 0.045), (0.036, 0.039, 0.026), stiffness=3)  # cuff roll
+    # Creases bunched at the inside of the elbow and above the cuff.
+    b.cap((-0.035, y, 0.672), (0.0, y, 0.655), 0.006, stiffness=5, negative=True)
+    b.cap((-0.03, y, 0.63), (0.01, y, 0.618), 0.005, stiffness=5, negative=True)
+    b.cap((-0.036, y - s * 0.02, 0.70), (-0.02, y + s * 0.03, 0.69), 0.005, stiffness=5, negative=True)
+    b.cap((0.02, y - s * 0.03, 0.55), (0.015, y + s * 0.03, 0.545), 0.004, stiffness=5, negative=True)
     return b
 
 
 def hand_blob(s):
-    """A gloved hand with separate fingers, curled to grip the rifle's fore-end."""
+    """A gloved fist with a gauntlet cuff and four fingers plus a thumb, curled to
+    grip the rifle."""
     y = s * SHOULDER[0]
-    b = Blob(resolution=0.0025)
-    b.cap((0, y, WRIST[1] + 0.03), (0, y, WRIST[1] - 0.01), 0.021)  # wrist
-    b.ell((0.0, y - s * 0.002, WRIST[1] - 0.03), (0.034, 0.02, 0.036), stiffness=3)  # palm
-    # Four separate fingers, each curled over toward the palm.
-    for i, x in enumerate((0.03, 0.014, -0.002, -0.018)):
+    b = Blob(resolution=0.0022)
+    b.cap((0, y, WRIST[1] + 0.05), (0, y, WRIST[1] - 0.004), 0.027)  # gauntlet cuff
+    b.ell((0.0, y - s * 0.002, WRIST[1] - 0.03), (0.036, 0.022, 0.038), stiffness=3)  # palm
+    b.ell((0.012, y - s * 0.004, WRIST[1] - 0.045), (0.024, 0.019, 0.02), stiffness=4)  # knuckles
+    for x in (0.031, 0.014, -0.003, -0.019):
         knuckle = Vector((x, y, WRIST[1] - 0.065))
-        b.cap(knuckle + Vector((0, 0, 0.015)), knuckle, 0.0085, stiffness=4)
-        b.cap(knuckle, knuckle + Vector((0, -s * 0.03, -0.002)), 0.008, stiffness=4)
-        b.cap(knuckle + Vector((0, -s * 0.03, -0.002)), knuckle + Vector((0, -s * 0.032, 0.02)), 0.0075, stiffness=4)
-    # Thumb, wrapped over the curled fingers.
-    b.cap((0.028, y - s * 0.004, WRIST[1] - 0.02), (0.038, y - s * 0.016, WRIST[1] - 0.045), 0.01, stiffness=4)
-    b.cap((0.038, y - s * 0.016, WRIST[1] - 0.045), (0.02, y - s * 0.03, WRIST[1] - 0.055), 0.0085, stiffness=4)
+        b.cap(knuckle + Vector((0, 0, 0.017)), knuckle, 0.0095, stiffness=4)
+        b.cap(knuckle, knuckle + Vector((0, -s * 0.03, -0.002)), 0.009, stiffness=4)
+        b.cap(knuckle + Vector((0, -s * 0.03, -0.002)), knuckle + Vector((0, -s * 0.03, 0.02)), 0.0085, stiffness=4)
+    b.cap((0.03, y - s * 0.004, WRIST[1] - 0.018), (0.04, y - s * 0.018, WRIST[1] - 0.046), 0.011, stiffness=4)
+    b.cap((0.04, y - s * 0.018, WRIST[1] - 0.046), (0.02, y - s * 0.032, WRIST[1] - 0.056), 0.0095, stiffness=4)
     return b
 
 
 def leg_blob(s):
-    """One leg of the fatigue trousers, bloused into the boot."""
+    """Fatigue trousers: a heavy thigh with a cargo pocket, a calf, and the cuff
+    bloused over the boot."""
     y = s * HIP[0]
-    b = Blob(resolution=0.006)
-    b.ell((-0.025, s * 0.05, 0.48), (0.09, 0.07, 0.07))  # seat
-    b.cap((0, y, HIP[1] - 0.05), (0, y, KNEE[1]), 0.062)
-    b.ell((0.01, y + s * 0.004, 0.43), (0.07, 0.066, 0.1), stiffness=3)  # thigh
-    b.cap((0, y, KNEE[1]), (0, y, ANKLE[1] + 0.02), 0.052)
-    b.ell((-0.012, y, 0.21), (0.052, 0.054, 0.08), stiffness=3)  # calf
-    b.ell((0.0, y, 0.09), (0.06, 0.058, 0.02), stiffness=4)  # bloused cuff
+    b = Blob(resolution=0.0055)
+    b.ell((-0.025, s * 0.05, 0.48), (0.095, 0.075, 0.075))  # seat
+    b.cap((0, y, HIP[1] - 0.05), (0, y, KNEE[1]), 0.066)
+    b.ell((0.012, y + s * 0.004, 0.43), (0.075, 0.07, 0.105), stiffness=3)  # thigh
+    b.ell((0.004, y + s * 0.052, 0.415), (0.052, 0.024, 0.068), stiffness=3)  # cargo pocket
+    b.cap((0, y, KNEE[1]), (0, y, ANKLE[1] + 0.03), 0.055)
+    b.ell((-0.012, y, 0.22), (0.055, 0.057, 0.085), stiffness=3)  # calf
+    b.ell((0.0, y, 0.158), (0.065, 0.063, 0.029), stiffness=3)  # bloused over the boot
+    # Cloth folds behind the knee, across the calf and where the cuff gathers.
+    b.cap((-0.06, y, 0.325), (-0.03, y, 0.36), 0.006, stiffness=5, negative=True)
+    b.cap((0.04, y, 0.185), (0.05, y, 0.2), 0.005, stiffness=5, negative=True)
+    b.cap((-0.05, y - s * 0.03, 0.255), (-0.055, y + s * 0.035, 0.245), 0.005, stiffness=5, negative=True)
+    b.cap((-0.03, y - s * 0.03, 0.19), (-0.035, y + s * 0.035, 0.18), 0.004, stiffness=5, negative=True)
+    b.cap((0.03, y - s * 0.04, 0.4), (0.035, y + s * 0.04, 0.39), 0.005, stiffness=5, negative=True)
     return b
 
 
 def boot_blob(s):
-    """A lace-up combat boot, its shaft rising over the trouser cuff."""
+    """A lace-up combat boot: a wide foot, a lugged sole line, a padded collar."""
     y = s * HIP[0]
-    b = Blob(resolution=0.004)
-    b.ell((0.04, y, 0.05), (0.09, 0.046, 0.045), stiffness=3)  # foot
-    b.ell((0.115, y, 0.04), (0.05, 0.045, 0.035), stiffness=3)  # toe box
-    b.ell((-0.025, y, 0.05), (0.042, 0.042, 0.05), stiffness=3)  # heel
-    b.cap((0, y, 0.05), (0, y, 0.17), 0.044)  # shaft
+    b = Blob(resolution=0.0035)
+    b.ell((0.04, y, 0.056), (0.098, 0.048, 0.052), stiffness=3)  # foot
+    b.ell((0.128, y, 0.046), (0.055, 0.043, 0.035), stiffness=3)  # toe box
+    b.ell((-0.03, y, 0.062), (0.042, 0.043, 0.056), stiffness=3)  # heel counter
+    b.cap((0.0, y, 0.05), (0.004, y, 0.172), 0.047)  # shaft
+    b.ell((0.012, y, 0.162), (0.05, 0.05, 0.028), stiffness=3)  # padded collar
     b.ell((0.05, y, -0.1), (0.4, 0.3, 0.1), stiffness=4, negative=True)  # flat sole
     return b
 
 
-def face(m):
-    """Eyes, brows and lips on the modeled face."""
-    def on_skin(y, z, lift):
-        loc, normal = m.hit("head", (0.4, y, z), (-1, 0, 0))
-        return loc + normal * lift
+def pouches_blob():
+    """The pouches hung on the carrier: three magazines in a row across the belly, an
+    admin pouch on the chest, and one utility pouch on either flank."""
+    b = Blob(resolution=0.0045)
+    for y in (-0.062, 0.0, 0.062):
+        b.ell((0.152, y, 0.694), (0.026, 0.027, 0.044), stiffness=3)  # magazine
+        b.ell((0.150, y, 0.724), (0.022, 0.028, 0.012), stiffness=4)  # flap, folded over
+    b.ell((0.140, 0, 0.788), (0.018, 0.05, 0.03), stiffness=3)  # admin pouch
+    b.ell((0.02, 0.158, 0.70), (0.048, 0.032, 0.052), stiffness=3)  # left utility pouch
+    b.ell((-0.02, -0.158, 0.70), (0.044, 0.03, 0.048), stiffness=3)  # right utility pouch
+    return b
 
+def strap(m, piece, center_at, z, pad, weights, height=0.016, mat="Strap"):
+    """A band round `piece` at height `z`, standing `pad` off its surface."""
+    fit = [m.fit((piece,), center_at(z), 2 * math.pi * j / 40) for j in range(40)]
+    band = ring_band(m.bm, center_at, lambda a, zz: fit[round(a / (2 * math.pi) * 40) % 40] + pad,
+                     z - height / 2, z + height / 2, rows=1, sides=40)
+    m.weigh(band, weights)
+    m.paint(band, mat)
+
+
+def carrier(m, on_fatigues):
+    """The plate carrier: front and back plates laid on the shirt, a cummerbund round
+    the ribs, and shoulder straps over the trapezius."""
+    center = lambda z: Vector((0.0, 0.0, z))  # noqa: E731
+    zs = [0.668, 0.70, 0.74, 0.78, 0.812, 0.84]
+    hug_patch(m, "fatigues", center, [math.radians(a) for a in range(-74, 75, 8)], zs, 0.018, 0.032, "Vest", on_fatigues)
+    hug_patch(m, "fatigues", center, [math.radians(a) for a in range(106, 255, 8)], zs, 0.018, 0.032, "Vest", on_fatigues)
+    for z in (0.706, 0.762):
+        strap(m, "fatigues", center, z, 0.015, on_fatigues, height=0.048, mat="Vest")
     for s in (1, -1):
-        socket = on_skin(s * 0.031, 1.072, 0)
-        eye = socket - Vector((0.012 - 0.004, 0, 0))
-        m.part(uv_ellipsoid(m.bm, eye, (0.012,) * 3, segments=(16, 10)), "head", "Eye")
-        m.part(uv_ellipsoid(m.bm, eye + Vector((0.011, 0, -0.001)), (0.0024, 0.007, 0.007), segments=(14, 8)), "head", "Iris")
-        m.part(uv_ellipsoid(m.bm, eye + Vector((0.013, 0, -0.001)), (0.0012, 0.0034, 0.0034), segments=(10, 6)), "head", "Pupil")
-        m.part(uv_ellipsoid(m.bm, eye + Vector((0.0005, 0, 0.0035)), (0.0128, 0.0138, 0.0098), segments=(16, 10)), "head", "Skin")
-        m.part(uv_ellipsoid(m.bm, eye + Vector((-0.001, 0, -0.0105)), (0.0128, 0.0136, 0.006), segments=(16, 8)), "head", "Skin")
-        brow = [on_skin(s * y, z, 0.002) for y, z in ((0.012, 1.098), (0.03, 1.099), (0.05, 1.096))]
-        m.part(tube(m.bm, brow, [0.0045, 0.006, 0.0038], sides=8), "head", "Hair")
-    m.part(uv_ellipsoid(m.bm, on_skin(0, 1.0095, -0.004), (0.009, 0.019, 0.005), segments=(14, 8)), "head", "Lip")
+        y = s * 0.064
+        pts = [Vector((0.098, y, 0.836)), Vector((0.07, y * 0.98, 0.872)), Vector((0.0, y, 0.892)),
+               Vector((-0.07, y * 0.98, 0.872)), Vector((-0.098, y, 0.838))]
+        verts = tube(m.bm, pts, [0.019, 0.021, 0.022, 0.021, 0.019], sides=8)
+        m.weigh(verts, on_fatigues)
+        m.paint(verts, "Vest")
+
+
+def pads(m, sleeve_r, sleeve_l, leg_r, leg_l):
+    """Hard pads as curved shells over the shoulders, elbows and knees, held on by
+    straps round the limb."""
+    for side, s, weights in (("R", -1, sleeve_r), ("L", 1, sleeve_l)):
+        y = s * SHOULDER[0]
+        center = lambda z, y=y: Vector((0.0, y, z))  # noqa: E731
+        outer = [math.radians(s * a) for a in range(8, 173, 11)]
+        hug_patch(m, f"sleeve.{side}", center, outer, [0.792, 0.816, 0.84, 0.862], 0.005, 0.014, "Pad", weights)
+        strap(m, f"sleeve.{side}", center, 0.781, 0.004, weights, height=0.013)
+        back = [math.radians(a) for a in range(128, 233, 11)]
+        hug_patch(m, f"sleeve.{side}", center, back, [0.616, 0.638, 0.662, 0.684], 0.004, 0.012, "Pad", weights)
+        strap(m, f"sleeve.{side}", center, 0.698, 0.004, weights, height=0.012)
+        strap(m, f"sleeve.{side}", center, 0.602, 0.004, weights, height=0.012)
+    for side, s, weights in (("R", -1, leg_r), ("L", 1, leg_l)):
+        y = s * HIP[0]
+        center = lambda z, y=y: Vector((0.0, y, z))  # noqa: E731
+        front = [math.radians(a) for a in range(-66, 67, 11)]
+        hug_patch(m, f"leg.{side}", center, front, [0.252, 0.274, 0.298, 0.322, 0.346], 0.005, 0.014, "Pad", weights)
+        strap(m, f"leg.{side}", center, 0.356, 0.005, weights, height=0.013)
+        strap(m, f"leg.{side}", center, 0.242, 0.005, weights, height=0.013)
+
+
+def goggles(m, weights):
+    """Tactical goggles: a rubber frame round one wide dark lens, held by a strap that
+    runs over the ears under the helmet."""
+    center = lambda z: Vector((0.0, 0.0, z))  # noqa: E731
+    ang = [math.radians(a) for a in range(-64, 65, 8)]
+    hug_patch(m, "mask", center, ang, [1.038, 1.06, 1.082, 1.1], 0.013, 0.017, "GoggleFrame", weights)
+    ang = [math.radians(a) for a in range(-54, 55, 9)]
+    hug_patch(m, "mask", center, ang, [1.046, 1.066, 1.088], 0.022, 0.004, "GoggleGlass", weights)
+    strap(m, "mask", center, 1.066, 0.009, weights, height=0.017)
 
 
 def helmet(m):
-    """A steel-pot helmet from parts: a fitted dome, a brim band and a chinstrap."""
-    center = lambda z: Vector((-0.012, 0, z))  # noqa: E731
-    fit = [m.fit(("head",), center(1.13), 2 * math.pi * j / 48) + 0.006 for j in range(48)]
+    """An ACH-style helmet: a domed shell fitted to the head, a cover band with a small
+    brow lip at the rim, side rails, an NVG shroud and a chinstrap."""
+    sides = 64
+    center = lambda z: Vector((-0.012, 0.0, z))  # noqa: E731
+    fit = [m.fit(("mask",), center(1.13), 2 * math.pi * j / sides) for j in range(sides)]
 
-    def dome_r(a, z):
-        t = (z - 1.13) / 0.13
-        return fit[round(a / (2 * math.pi) * 48) % 48] * (1 - 0.18 * t) + 0.004
+    def fitted(a, pad=0.0):
+        return fit[round(a / (2 * math.pi) * sides) % sides] + pad
 
-    m.part(ring_band(m.bm, center, dome_r, 1.11, 1.25, rows=7, sides=48), "head", "Helmet")
-    top = uv_ellipsoid(m.bm, (0, 0, 0), (1, 1, 1), segments=(48, 16))
-    for v in top:
-        x, y, z = v.co
-        a = math.atan2(y, x)
-        r = dome_r(a, 1.25) * 1.04
-        v.co = center(1.25) + Vector((x * r, y * r, z * (0.045 if z > 0 else 0.028)))
-    m.part(top, "head", "Helmet")
-    # The brim: a fitted band flaring out a touch.
-    rim = ring_band(m.bm, center, lambda a, z: fit[round(a / (2 * math.pi) * 48) % 48] + 0.016, 1.09, 1.13, rows=2, sides=48)
-    m.part(rim, "head", "HelmetBand")
-    # Chinstrap: a band under the jaw, hugging the face.
-    strap = [m.hit("head", (0.5, s * 0.05, 1.01), (-1, 0, 0))[0] for s in (1, -1)]
-    strap = [strap[0] + Vector((0, 0, 0.004)), Vector((-0.005, 0, 0.94)), strap[1] + Vector((0, 0, 0.004))]
-    m.part(tube(m.bm, strap, [0.006, 0.007, 0.006], sides=8), "head", "Web")
+    rim, top = 1.096, 1.208
 
+    def dome(a, z):
+        t = max(0.0, min(1.0, (z - rim) / (top - rim)))
+        return fitted(a, 0.016) * math.sqrt(max(0.0, 1.0 - t * t))
 
-def webbing(m, on_fatigues):
-    """A simple chest webbing: a band across the chest with two pouches."""
-    center = lambda z: Vector((0.005, 0, z))  # noqa: E731
-    fit = [m.fit(("fatigues",), center(0.775), 2 * math.pi * j / 48) + 0.008 for j in range(48)]
-    band = ring_band(m.bm, center, lambda a, z: fit[round(a / (2 * math.pi) * 48) % 48], 0.71, 0.79, rows=2, sides=48)
-    m.weigh(band, on_fatigues)
-    m.paint(band, "Web")
+    # The shell: a band up from the rim, closed with a fan at the crown.
+    rows = 16
+    grid = []
+    for i in range(rows + 1):
+        z = rim + (top - rim) * i / rows
+        grid.append([m.bm.verts.new(center(z) + Vector((math.cos(a), math.sin(a), 0.0)) * dome(a, z))
+                     for a in (2 * math.pi * j / sides for j in range(sides))])
+    for r0, r1 in zip(grid, grid[1:]):
+        for j in range(sides):
+            m.bm.faces.new((r0[j], r0[(j + 1) % sides], r1[(j + 1) % sides], r1[j]))
+    crown = m.bm.verts.new(center(top) + Vector((0, 0, 0.008)))
+    for j in range(sides):
+        m.bm.faces.new((grid[-1][j], grid[-1][(j + 1) % sides], crown))
+    shell = [v for row in grid for v in row] + [crown]
+    m.weigh(shell, "head")
+    m.paint(shell, "Helmet")
+    register(m, "helmet", shell)
+
+    # Cover band at the rim, standing a little proud at the brow.
+    band = ring_band(m.bm, center, lambda a, z: fitted(a, 0.013 + 0.012 * max(0.0, math.cos(a)) ** 2),
+                     rim - 0.015, rim + 0.008, rows=3, sides=sides)
+    m.part(band, "head", "HelmetBand")
+    # Side rails, laid on the shell, and the NVG shroud on the front.
     for s in (1, -1):
-        loc, normal = m.hit("fatigues", (0.5, s * 0.08, 0.75), (-1, 0, 0))
-        pouch = uv_ellipsoid(m.bm, loc + normal * 0.02, (0.03, 0.045, 0.05), segments=(12, 8))
-        m.weigh(pouch, on_fatigues)
-        m.paint(pouch, "Web")
+        hug_patch(m, "helmet", center, [math.radians(s * a) for a in range(34, 148, 12)],
+                  [1.118, 1.136, 1.152], 0.003, 0.007, "HelmetBand")
+        loc, normal = m.hit("helmet", center(1.166), Vector((0.3, s, 0)))
+        if loc is not None:
+            m.part(box(m.bm, loc + normal * 0.004, (0.026, 0.011, 0.014)), "head", "Pad", smooth=False)
+    loc, normal = m.hit("helmet", center(1.148), Vector((1, 0, 0)))
+    if loc is not None:
+        m.part(box(m.bm, loc + normal * 0.002, (0.014, 0.032, 0.024)), "head", "Pad", smooth=False)
+        m.part(box(m.bm, loc + normal * 0.004 - Vector((0, 0, 0.022)), (0.012, 0.018, 0.016)), "head", "HelmetBand", smooth=False)
+    # Chinstrap: from the rim, down the cheek, to a buckle under the ear.
+    for s in (1, -1):
+        top_pt, _ = m.hit("mask", center(1.08), Vector((0.35, s, 0)))
+        low, _ = m.hit("mask", Vector((0.02, 0, 1.0)), Vector((0.75, s, 0.2)))
+        if top_pt is None or low is None:
+            continue
+        path = [top_pt + Vector((0.004, s * 0.008, 0.006)),
+                (top_pt * 0.45 + low * 0.55) + Vector((0.01, s * 0.006, 0)),
+                low + Vector((0.008, s * 0.006, -0.006))]
+        m.part(tube(m.bm, path, [0.0055, 0.0065, 0.0055], sides=8), "head", "Strap")
+    buckle, _ = m.hit("mask", Vector((0.02, 0, 1.0)), Vector((0.75, -0.6, 0.2)))
+    if buckle is not None:
+        m.part(box(m.bm, buckle + Vector((0.006, 0, 0)), (0.012, 0.024, 0.018)), "head", "Buckle", smooth=False)
+
+def vest_details(m, on_pouches, on_fatigues):
+    """The flaps and buckles on the pouches, the MOLLE rows on the plates, and a radio
+    with its antenna in the left utility pouch."""
+    for y in (-0.062, 0.0, 0.062):
+        verts = box(m.bm, (0.152, y, 0.742), (0.05, 0.052, 0.013))
+        m.weigh(verts, on_pouches)
+        m.paint(verts, "VestPouch", smooth=False)
+        verts = box(m.bm, (0.168, y, 0.726), (0.012, 0.016, 0.019))
+        m.weigh(verts, on_pouches)
+        m.paint(verts, "Buckle", smooth=False)
+    for z in (0.66, 0.755):
+        hug_patch(m, "fatigues", lambda zz: Vector((0.0, 0.0, zz)),
+                  [math.radians(a) for a in range(-70, 71, 10)], [z - 0.005, z + 0.005],
+                  0.024, 0.008, "Strap", on_fatigues)
+    m.part(tube(m.bm, [(0.01, 0.162, 0.742), (-0.005, 0.176, 0.87)], [0.004, 0.003], sides=6), "spine", "Strap")
+    m.part(box(m.bm, (0.01, 0.162, 0.752), (0.03, 0.024, 0.02)), "spine", "Buckle", smooth=False)
 
 
-def armband(m, on_sleeve):
-    """The `Body` armband on the near (right) sleeve, so the player color shows."""
-    y = -SHOULDER[0]  # the near side
-    ring = []
-    for i in range(24):
-        a = 2 * math.pi * i / 24
-        ring.append(Vector((0.0, y + 0.055 * math.sin(a), 0.80 + 0.055 * math.cos(a))))
-    band = tube(m.bm, ring, [0.006] * len(ring), sides=8)
-    m.weigh(band, on_sleeve)
-    m.paint(band, "Body")
+def belt(m, on_fatigues):
+    """A trouser belt with a buckle, under the carrier."""
+    strap(m, "fatigues", lambda z: Vector((0.0, 0.0, z)), 0.585, 0.008, on_fatigues, height=0.032)
+    loc, normal = m.hit("fatigues", (0.3, 0, 0.585), (-1, 0, 0))
+    if loc is not None:
+        m.part(box(m.bm, loc + normal * 0.012, (0.016, 0.05, 0.036)), "hips", "Buckle", smooth=False)
 
 
-def seams(m, on_sleeve, on_leg, side):
-    """A couple of stitching seams along one sleeve and one leg (the cloth is sewn)."""
-    y = side * SHOULDER[0]
-    line = [Vector((0.004, y, z)) for z in (0.80, 0.70, 0.58, 0.46)]
-    m.weigh(tube(m.bm, line, [0.0022] * len(line), sides=6), on_sleeve)
-    m.paint(tube(m.bm, line, [0.0022] * len(line), sides=6), "Seam")
-    y = side * HIP[0]
-    line = [Vector((0.004, y, z)) for z in (0.48, 0.40, 0.30, 0.20)]
+def leg_gear(m, leg_r, leg_l):
+    """A drop-leg holster on the near (right) thigh, a knife on the far one."""
+    y = -HIP[0]
+    verts = box(m.bm, (0.012, y - 0.082, 0.40), (0.062, 0.04, 0.1))
+    m.weigh(verts, leg_r)
+    m.paint(verts, "Strap", smooth=False)
+    verts = box(m.bm, (0.014, y - 0.088, 0.436), (0.05, 0.026, 0.03))
+    m.weigh(verts, leg_r)
+    m.paint(verts, "Polymer", smooth=False)
+    grip = tube(m.bm, [(0.0, y - 0.09, 0.452), (0.01, y - 0.106, 0.492)], [0.014, 0.012], sides=8)
+    m.weigh(grip, leg_r)
+    m.paint(grip, "Polymer")
+    center = lambda z, yy=y: Vector((0.0, yy, z))  # noqa: E731
+    strap(m, "leg.R", center, 0.465, 0.007, leg_r, height=0.016)
+    strap(m, "leg.R", center, 0.352, 0.007, leg_r, height=0.016)
+    # Knife on the far thigh.
+    y = HIP[0]
+    verts = box(m.bm, (0.0, y + 0.082, 0.40), (0.048, 0.032, 0.115))
+    m.weigh(verts, leg_l)
+    m.paint(verts, "Strap", smooth=False)
+    verts = slab(m.bm, (0.004, y + 0.086, 0.452), (0.024, y + 0.09, 0.515), 0.026, 0.03, 0.03, 0.026)
+    m.weigh(verts, leg_l)
+    m.paint(verts, "Polymer", smooth=False)
+    verts = box(m.bm, (0.028, y + 0.09, 0.518), (0.02, 0.036, 0.014))
+    m.weigh(verts, leg_l)
+    m.paint(verts, "Buckle", smooth=False)
+    strap(m, "leg.L", lambda z: Vector((0.0, HIP[0], z)), 0.455, 0.007, leg_l, height=0.016)
+
+
+def boot_details(m, boot_r, boot_l):
+    """Soles, a heel block and laces on the boots."""
+    for s, weights in ((-1, boot_r), (1, boot_l)):
+        y = s * HIP[0]
+        sole = slab(m.bm, (-0.062, y, 0.012), (0.152, y, 0.011), 0.1, 0.024, 0.086, 0.018)
+        m.weigh(sole, weights)
+        m.paint(sole, "Sole", smooth=False)
+        heel = slab(m.bm, (-0.066, y, 0.031), (-0.008, y, 0.029), 0.096, 0.038, 0.1, 0.034)
+        m.weigh(heel, weights)
+        m.paint(heel, "Sole", smooth=False)
+        for i in range(4):
+            z = 0.085 + i * 0.021
+            lace = tube(m.bm, [(0.075, y - 0.03, z), (0.083, y, z + 0.004), (0.075, y + 0.03, z)],
+                        [0.0035, 0.0035, 0.0035], sides=6)
+            m.weigh(lace, weights)
+            m.paint(lace, "Lace")
+
+
+def patches(m, on_sleeve):
+    """The player-colored markings on the near sleeve (the `Body` material)."""
+    y = -SHOULDER[0]
+    center = lambda z, yy=y: Vector((0.0, yy, z))  # noqa: E731
+    strap(m, "sleeve.R", center, 0.706, 0.006, on_sleeve, height=0.024, mat="Body")
+    hug_patch(m, "sleeve.R", center, [math.radians(a) for a in range(-116, -63, 9)], [0.762, 0.791],
+              0.005, 0.004, "Body", on_sleeve)
+
+
+def seams(m, on_sleeve, on_leg):
+    """Stitching seams down the near sleeve and leg, so the cloth looks sewn."""
+    y = -SHOULDER[0]
+    line = [Vector((0.006, y - 0.045, z)) for z in (0.79, 0.70, 0.60, 0.5)]
+    verts = tube(m.bm, line, [0.0022] * len(line), sides=6)
+    m.weigh(verts, on_sleeve)
+    m.paint(verts, "Strap")
+    y = -HIP[0]
+    line = [Vector((0.006, y - 0.05, z)) for z in (0.47, 0.40, 0.30, 0.20)]
     verts = tube(m.bm, line, [0.0022] * len(line), sides=6)
     m.weigh(verts, on_leg)
-    m.paint(verts, "Seam")
-
+    m.paint(verts, "Strap")
 
 def rifle(m):
-    """The rifle as a multi-part prop along +X from the grip: wooden stock, metal
-    receiver, dark barrel, polymer fore-end and grip, a curved magazine, sights and
-    a steel bayonet at the muzzle."""
+    """The rifle as a multi-part prop along +X from the grip: a polymer stock, a railed
+    receiver, a pistol grip and trigger, a curved magazine, a vented handguard, a front
+    sight, a muzzle device and a steel bayonet under the barrel, plus a sling."""
     bm = m.bm
 
     def at(x, y=0.0, z=0.0):
-        return GRIP + Vector((x, y, z))
+        return AXIS + Vector((x, y, z))
 
     def rod(x0, x1, r, mat, sides=12):
         m.part(tube(bm, [at(x0), at(x1)], [r, r], sides=sides), "rifle", mat)
 
-    # Wooden stock, sloping down behind the grip.
-    stock = [at(-0.04), at(-0.16, 0, -0.03), at(-0.26, 0, -0.08)]
-    m.part(tube(bm, stock, [0.026, 0.032, 0.03], sides=10), "rifle", "Wood")
-    # Receiver: the metal body around the trigger.
-    rod(0.0, 0.16, 0.022, "Gunmetal")
-    # Barrel, forward from the receiver.
-    rod(0.16, 0.48, 0.011, "Barrel")
-    # Polymer fore-end around the barrel.
-    rod(0.15, 0.32, 0.018, "Polymer")
-    # Curved magazine below the receiver.
-    mag = [at(0.05, 0, -0.02), at(0.07, 0, -0.08), at(0.04, 0, -0.13)]
-    m.part(tube(bm, mag, [0.015, 0.017, 0.012], sides=10), "rifle", "Gunmetal")
-    # Pistol grip behind the trigger.
-    grip = [at(0.0, 0, 0.0), at(-0.02, 0, -0.06), at(-0.01, 0, -0.09)]
-    m.part(tube(bm, grip, [0.014, 0.013, 0.012], sides=8), "rifle", "Polymer")
-    # Front sight post.
-    rod(0.46, 0.5, 0.006, "Gunmetal")
+    def bar(x0, x1, y0, y1, z0, z1, mat, taper=1.0):
+        """A rectangular part from x0 to x1, `taper` shrinking the far end."""
+        zc = (z0 + z1) / 2
+        w, h = y1 - y0, z1 - z0
+        m.part(slab(bm, at(x0, 0, zc), at(x1, 0, zc), w, h, w * taper, h * taper), "rifle", mat, smooth=False)
+
+    # Stock: butt pad, the body of the stock, and a raised cheek rest.
+    bar(-0.306, -0.292, -0.022, 0.022, -0.058, 0.03, "Polymer")
+    bar(-0.292, -0.15, -0.02, 0.02, -0.05, 0.026, "Polymer")
+    bar(-0.15, -0.028, -0.019, 0.019, -0.038, 0.03, "Polymer")
+    bar(-0.27, -0.16, -0.017, 0.017, 0.026, 0.044, "Polymer")
+    bar(-0.24, -0.175, -0.024, 0.024, -0.056, -0.046, "Strap")  # sling swivel band
+    # Receiver, rail, teeth and the rear sight.
+    bar(-0.028, 0.135, -0.024, 0.024, -0.032, 0.03, "Gunmetal")
+    bar(-0.02, 0.128, -0.013, 0.013, 0.03, 0.044, "Gunmetal")
+    for i in range(6):
+        x = -0.004 + i * 0.023
+        bar(x, x + 0.012, -0.014, 0.014, 0.044, 0.05, "Gunmetal")
+    bar(-0.026, 0.004, -0.012, 0.012, 0.044, 0.062, "Gunmetal")
+    bar(-0.028, -0.004, -0.026, 0.026, 0.002, 0.022, "Gunmetal")  # charging handle
+    # Pistol grip, trigger and its guard.
+    m.part(slab(bm, at(-0.004, 0, -0.026), at(-0.05, 0, -0.112), 0.03, 0.04, 0.028, 0.038, up=Vector((1, 0, 0))),
+           "rifle", "Polymer", smooth=False)
+    bar(0.006, 0.052, -0.005, 0.005, -0.05, -0.042, "Gunmetal")
+    bar(0.006, 0.014, -0.005, 0.005, -0.048, -0.03, "Gunmetal")
+    bar(0.044, 0.052, -0.005, 0.005, -0.048, -0.03, "Gunmetal")
+    # Curved magazine.
+    for x0, z0, x1, z1, w0, w1 in ((0.028, -0.032, 0.05, -0.102, 0.038, 0.036),
+                                   (0.05, -0.102, 0.076, -0.168, 0.036, 0.032)):
+        m.part(slab(bm, at(x0, 0, z0), at(x1, 0, z1), w0, 0.032, w1, 0.03, up=Vector((1, 0, 0))),
+               "rifle", "Gunmetal", smooth=False)
+    # Handguard with vents, the gas block, the front sight and the muzzle device.
+    bar(0.132, 0.302, -0.027, 0.027, -0.028, 0.03, "Polymer")
+    for i in range(5):
+        x = 0.155 + i * 0.03
+        for s in (1, -1):
+            m.part(box(bm, at(x, s * 0.0275, 0.002), (0.018, 0.006, 0.014)), "rifle", "Gunmetal", smooth=False)
+    bar(0.286, 0.316, -0.018, 0.018, -0.02, 0.026, "Gunmetal")
+    bar(0.29, 0.306, -0.007, 0.007, 0.026, 0.052, "Gunmetal")
+    rod(0.302, 0.5, 0.0125, "Barrel", sides=14)
+    rod(0.5, 0.552, 0.017, "Gunmetal", sides=14)
     # Bayonet: a socket at the muzzle, then a flattened steel blade.
-    rod(0.47, 0.52, 0.013, "Gunmetal")
-    base, length, width, thick, steps = 0.52, 0.20, 0.024, 0.007, 12
+    rod(0.552, 0.578, 0.015, "Gunmetal")
+    base, length, width, thick, steps = 0.578, 0.185, 0.026, 0.008, 12
     rings = []
     for i in range(steps + 1):
         t = i / steps
         x = base + length * t
         w, th = width * (1 - t), thick * (1 - t)
         if i == steps:
-            rings.append([bm.verts.new(at(x + 0.012))])
+            rings.append([bm.verts.new(at(x + 0.014))])
         else:
             rings.append([bm.verts.new(at(x, w * a, th * b)) for a, b in ((0, 0.5), (-0.5, 0.15), (0, -0.5), (0.5, 0.15))])
     faces = []
@@ -344,30 +606,40 @@ def rifle(m):
             faces.append((bm.faces.new(quad), j))
     faces.append((bm.faces.new(list(reversed(rings[0]))), 0))
     m.weigh([v for r in rings for v in r], "rifle")
-    for f, j in faces:
+    for f, _ in faces:
         f.material_index = MAT["Steel"]
         f.smooth = False
+    # Sling, hanging on the near side.
+    sling = [at(-0.278, -0.012, -0.048), at(-0.17, -0.02, -0.118), at(0.0, -0.022, -0.15),
+             at(0.19, -0.02, -0.118), at(0.27, -0.012, -0.04)]
+    m.part(tube(bm, sling, [0.006, 0.007, 0.008, 0.007, 0.006], sides=6), "rifle", "Strap")
 
 
 def soldier_mesh():
     m = Model()
-    m.blob("head", head_blob(), 0.5, "Skin", by_distance("head", "spine", sharpness=6))
-    m.blob("hair", hair_blob(), 0.3, "Hair", "head")
-    fatigues = m.blob("fatigues", fatigues_blob(), 0.25, "Camo", by_distance("hips", "spine"))
-    sleeves = {}
-    legs = {}
+    mask = m.blob("mask", balaclava_blob(), 0.3, "Balaclava", "head")
+    fatigues = m.blob("fatigues", fatigues_blob(), 0.22, "Camo", by_distance("hips", "spine"))
+    pouches = m.blob("pouches", pouches_blob(), 0.3, "VestPouch", by_distance("hips", "spine", sharpness=6))
+    sleeves, legs, boots = {}, {}, {}
     for side, s in (("L", 1), ("R", -1)):
-        sleeve = m.blob(f"sleeve.{side}", sleeve_blob(s), 0.25, "Camo", by_distance("spine", f"upper_arm.{side}", f"forearm.{side}", sharpness=6))
-        m.blob(f"hand.{side}", hand_blob(s), 0.3, "Glove", f"forearm.{side}")
-        leg = m.blob(f"leg.{side}", leg_blob(s), 0.25, "Camo", by_distance("hips", f"thigh.{side}", f"shin.{side}", sharpness=6))
-        m.blob(f"boot.{side}", boot_blob(s), 0.3, "Boot", f"foot.{side}")
-        sleeves[side] = sleeve
-        legs[side] = leg
-    face(m)
+        sleeves[side] = m.blob(f"sleeve.{side}", sleeve_blob(s), 0.25, "Camo",
+                               by_distance("spine", f"upper_arm.{side}", f"forearm.{side}", sharpness=6))
+        m.blob(f"hand.{side}", hand_blob(s), 0.35, "Glove", f"forearm.{side}")
+        legs[side] = m.blob(f"leg.{side}", leg_blob(s), 0.22, "Camo",
+                            by_distance("hips", f"thigh.{side}", f"shin.{side}", sharpness=6))
+        boots[side] = m.blob(f"boot.{side}", boot_blob(s), 0.35, "Boot",
+                             by_distance(f"foot.{side}", f"shin.{side}", sharpness=9))
+    goggles(m, "head")
     helmet(m)
-    webbing(m, m.weights_near(fatigues))
-    armband(m, m.weights_near(sleeves["R"]))
-    seams(m, m.weights_near(sleeves["R"]), m.weights_near(legs["R"]), -1)
+    carrier(m, m.weights_near(fatigues))
+    belt(m, m.weights_near(fatigues))
+    vest_details(m, m.weights_near(pouches), m.weights_near(fatigues))
+    pads(m, m.weights_near(sleeves["R"]), m.weights_near(sleeves["L"]),
+         m.weights_near(legs["R"]), m.weights_near(legs["L"]))
+    leg_gear(m, m.weights_near(legs["R"]), m.weights_near(legs["L"]))
+    boot_details(m, m.weights_near(boots["R"]), m.weights_near(boots["L"]))
+    patches(m, m.weights_near(sleeves["R"]))
+    seams(m, m.weights_near(sleeves["R"]), m.weights_near(legs["R"]))
     rifle(m)
 
     mesh = bpy.data.meshes.new("SoldierMesh")
@@ -377,7 +649,6 @@ def soldier_mesh():
     for mat in materials():
         mesh.materials.append(mat)
     return mesh
-
 
 def materials():
     mats = []
