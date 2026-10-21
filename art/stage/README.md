@@ -26,10 +26,12 @@ sim's `Stage` (one per `StageId`) decides where the platforms are and how they c
 ## Rules the game relies on
 
 - The walkable top of each model is at its origin (y = 0), centered on x = 0.
-- Each is built at the width of its platform in `Stage::battlefield()` (`STAGE_WIDTH`
-  13.6 and `RAFT_WIDTH` 3.7 meters); other stages' platforms stretch it wider or narrower. `build_stage` in `gdext/src/lib.rs` stretches it in
-  x to the platform's actual width (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`), so keep
-  those constants equal to the script's if either changes. It also turns every other
+- Each is built at the width of its platform in `Stage::battlefield()` before the
+  sim's `STAGE_SCALE` (5/7) is applied (`STAGE_WIDTH` 13.6 and `RAFT_WIDTH` 3.7 meters).
+  `build_stage` in `gdext/src/lib.rs` scales it by `STAGE_SCALE` in height and depth
+  and stretches it in x to the platform's actual width (`STAGE_MODEL_WIDTH`,
+  `RAFT_MODEL_WIDTH`), so the Boardwalk's are scaled evenly and other stages' wider or
+  narrower platforms stretch it. Keep those constants equal to the script's if either changes. It also turns every other
   raft around, so the copies don't look identical.
 
 ## Textures

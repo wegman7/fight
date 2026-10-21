@@ -151,9 +151,10 @@ fn rifle_shot_fires_on_frame_10_and_hits_straight() {
 #[test]
 fn grenade_arcs_and_explodes_where_it_lands() {
     let mut w = world();
-    // Far from P2, so the grenade lands on the floor well short of them.
-    w.fighters[0].x = Fx::int(-50);
-    w.fighters[1].x = Fx::int(50);
+    // From near the left ledge it lobs ~87 units, nearly the whole (scaled-down) stage,
+    // so P2 waits behind him, well out of the blast.
+    w.fighters[0].x = Fx::int(-45);
+    w.fighters[1].x = Fx::int(-48);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::SoldierGrenade));
     run(&mut w, 12, NONE, NONE);
@@ -177,7 +178,8 @@ fn grenade_arcs_and_explodes_where_it_lands() {
     assert!(heights[apex] > Fx::int(8), "arcs upward: {heights:?}");
     let (_, x, y) = exploded.expect("the grenade never exploded");
     assert_eq!(y, Fx::ZERO, "explodes on the main stage");
-    assert!(x > Fx::int(-53) && x < Fx::int(50), "lands on the stage short of P2, at {x:?}");
+    let main = &w.stage.platforms[0];
+    assert!(x > Fx::int(30) && x < main.right, "lands far ahead, still on the stage, at {x:?}");
     assert!(w.projectiles.is_empty());
     assert_eq!(w.fighters[1].percent, 0, "P2 was out of the blast");
 }
@@ -185,6 +187,7 @@ fn grenade_arcs_and_explodes_where_it_lands() {
 #[test]
 fn grenade_explodes_on_contact() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-28);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     run(&mut w, 12, NONE, NONE);
@@ -200,6 +203,7 @@ fn grenade_explodes_on_contact() {
 fn grenade_blast_catches_its_owner_too_if_they_stand_close() {
     // The grenade doesn't hit whoever threw it, even if the blast reaches them.
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-44); // behind the thrower, but inside a blast there
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     run(&mut w, 13, NONE, NONE);
@@ -251,6 +255,7 @@ fn blast_jump_spikes_opponents_below() {
 #[test]
 fn riot_shield_counters_and_bashes_back() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Soldier], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::SoldierRiotShield));
@@ -271,6 +276,7 @@ fn riot_shield_counters_and_bashes_back() {
 #[test]
 fn riot_shield_outside_its_window_just_gets_hit() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Soldier], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 27, NONE, NONE);
@@ -284,6 +290,7 @@ fn riot_shield_outside_its_window_just_gets_hit() {
 /// The soldier grabs P2 (standing at x = -32).
 fn grabbed() -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[press(Input::GRAB), NONE]);
     run(&mut w, 7, NONE, NONE);

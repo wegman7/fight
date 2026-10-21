@@ -122,6 +122,7 @@ fn running_attack_is_the_stumble() {
 #[test]
 fn slaps_chain_into_a_shove() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-31);
     let mut seen = Vec::new();
     for f in 0..60 {
@@ -172,6 +173,7 @@ fn bottle_arcs_then_shatters_and_catches_a_nearby_fighter() {
 #[test]
 fn cart_charge_is_fast_strong_and_wobbly() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-26);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::HoboCartCharge));
@@ -232,6 +234,7 @@ fn passed_out_counters_a_hit_and_jolts_awake() {
 #[test]
 fn passed_out_outside_its_window_just_gets_hit() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Hobo], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 27, NONE, NONE);
@@ -245,6 +248,7 @@ fn passed_out_outside_its_window_just_gets_hit() {
 /// The hobo grabs P2 (standing at x = -32).
 fn grabbed() -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[press(Input::GRAB), NONE]);
     run(&mut w, 7, NONE, NONE);

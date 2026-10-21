@@ -103,6 +103,7 @@ fn samurai_inputs_start_samurai_moves() {
 #[test]
 fn slashes_chain_into_a_thrust() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-31);
     let mut seen = Vec::new();
     for f in 0..60 {
@@ -147,6 +148,7 @@ fn forward_cut_outreaches_the_chefs_kick() {
 /// frame until it hits. Returns the world and the frame it hit on.
 fn focus_cut(held: Input) -> (World, u16) {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-27);
     w.step(&[press(Input::SPECIAL), NONE]);
     for frame in 2..200 {
@@ -200,6 +202,7 @@ fn vault_hops_over_the_target_and_lands_behind_it_turned_around() {
 #[test]
 fn attack_mid_vault_strikes_down_on_the_target() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-28);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     run(&mut w, 10, NONE, NONE);
@@ -266,6 +269,7 @@ fn cyclone_climbs_steers_and_ends_helpless() {
 fn cyclone_cuts_both_sides() {
     for side in [-9, 9] {
         let mut w = world();
+        w.fighters[0].x = Fx::int(-40);
         w.fighters[1].x = Fx::int(-40 + side);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
         run(&mut w, 6, NONE, NONE);
@@ -277,6 +281,7 @@ fn cyclone_cuts_both_sides() {
 #[test]
 fn parry_turns_a_hit_aside_and_ripostes() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Samurai], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::SamuraiParry));
@@ -297,6 +302,7 @@ fn parry_turns_a_hit_aside_and_ripostes() {
 #[test]
 fn parry_too_late_just_gets_hit() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Samurai], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 25, NONE, NONE);
@@ -310,6 +316,7 @@ fn parry_too_late_just_gets_hit() {
 /// The samurai grabs P2 (standing at x = -32).
 fn grabbed() -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[press(Input::GRAB), NONE]);
     run(&mut w, 7, NONE, NONE);

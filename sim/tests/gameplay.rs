@@ -50,11 +50,26 @@ fn idle_fighters_stay_on_their_spawns() {
 
 #[test]
 fn stages_are_scaled_down_so_fighters_read_bigger() {
-    // The main stage was 136 units wide; at 5/6 it reads ~113 (68 -> 56 2/3), so
-    // characters are ~20% larger relative to it.
+    // The main stage was 136 units wide; at 5/7 it reads ~97 (68 -> 48 4/7), so
+    // characters are 40% larger relative to it. Its platforms shrink with it.
     let stage = Stage::battlefield();
-    assert_eq!(stage.platforms[0].right.floor_to_int(), 56);
-    assert_eq!(stage.platforms[0].left.floor_to_int(), -57);
+    assert_eq!(stage.platforms[0].right.floor_to_int(), 48);
+    assert_eq!(stage.platforms[0].left.floor_to_int(), -49);
+    assert_eq!(stage.platforms[3].y.floor_to_int(), 38, "top platform: 54 -> 38 4/7");
+    assert_eq!(stage.spawns[0].0.floor_to_int(), -29, "outer spawn: -40 -> -28 4/7");
+}
+
+#[test]
+fn blast_zones_stay_in_fighter_units_when_the_stage_shrinks() {
+    // KO distances belong to the fighters' knockback, so blast zones don't scale
+    // with the layout: same lines as before the 6/7 shrink, every stage.
+    for (id, side) in [(StageId::Boardwalk, 187), (StageId::Sandbar, 200), (StageId::Driftwood, 180)] {
+        let stage = id.stage();
+        assert_eq!((stage.blast_left, stage.blast_right), (Fx::int(-side), Fx::int(side)), "{}", id.name());
+        assert_eq!((stage.blast_top, stage.blast_bottom), (Fx::int(167), Fx::int(-90)), "{}", id.name());
+        let main = stage.platforms.iter().find(|p| !p.soft).unwrap();
+        assert!(stage.blast_right - main.right > Fx::int(130), "{}: room to send someone off the side", id.name());
+    }
 }
 
 #[test]
@@ -247,6 +262,7 @@ fn double_jumps_drift_back_without_turning() {
 #[test]
 fn jab_connects_on_frame_2_and_only_once() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
 
     w.step(&[press(Input::ATTACK), NONE]);
@@ -425,6 +441,7 @@ fn attacking_out_of_a_run_is_a_dash_attack() {
 fn smash_attacks_charge_while_held_for_up_to_1_4x_damage() {
     let damage_after = |hold_frames: usize| {
         let mut w = world();
+        w.fighters[0].x = Fx::int(-40);
         w.fighters[1].x = Fx::int(-30);
         w.step(&[input(100, 0, Input::ATTACK), NONE]);
         for f in 0..hold_frames {
@@ -444,6 +461,7 @@ fn smash_attacks_charge_while_held_for_up_to_1_4x_damage() {
 #[test]
 fn pressing_attack_during_jab_chains_jab2_then_jab3() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     let mut seen = Vec::new();
     for f in 0..80 {
@@ -671,6 +689,7 @@ fn a_reversed_up_special_hits_behind() {
 #[test]
 fn down_special_plunges_and_makes_a_shockwave_on_landing() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-34);
     w.step(&[input(0, -100, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::DownSpecial));
@@ -688,6 +707,7 @@ fn down_special_plunges_and_makes_a_shockwave_on_landing() {
 #[test]
 fn shield_blocks_damage_but_takes_shield_damage_and_shieldstun() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     let shield = press(Input::SHIELD);
     w.step(&[input(60, 0, Input::ATTACK), shield]);
@@ -756,6 +776,7 @@ fn rolls_move_and_are_invincible_in_the_middle() {
 fn spot_dodge_makes_a_jab_whiff() {
     let percent_after_jab = |dodge: bool| {
         let mut w = world();
+        w.fighters[0].x = Fx::int(-40);
         w.fighters[1].x = Fx::int(-32);
         let p1 = if dodge { input(0, -100, Input::SHIELD) } else { NONE };
         w.step(&[p1, NONE]);
@@ -789,6 +810,7 @@ fn directional_air_dodge_travels_without_gravity_once_per_airtime() {
 /// P1 grabs P2 (standing at x = -32, optionally shielding).
 fn grabbed(shielding: bool) -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     let p2 = if shielding { press(Input::SHIELD) } else { NONE };
     w.step(&[press(Input::GRAB), p2]);

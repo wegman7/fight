@@ -59,15 +59,23 @@ impl StageId {
     }
 }
 
-/// Stages are laid out at 5/6 scale, so characters read ~20% larger relative to
-/// them. Every coordinate below goes through [`s`], keeping the whole stage
-/// proportionally smaller instead of rescaling each fighter's tuning.
-const STAGE_SCALE: Fx = Fx::ratio(5, 6);
+/// Stages are laid out at 5/7 of their original size, so characters read 40% larger
+/// relative to them (first 5/6, then a further 6/7). Platforms, spawns and the respawn
+/// point go through [`s`], keeping the whole layout proportionally smaller instead of
+/// rescaling each fighter's tuning. gdext draws the stage models at this scale too.
+pub const STAGE_SCALE: Fx = Fx::ratio(5, 7);
 
 /// `x` in stage units, scaled down by [`STAGE_SCALE`].
 fn s(x: i32) -> Fx {
     Fx::int(x) * STAGE_SCALE
 }
+
+/// Blast zones are in fighter units, not scaled with the layout: how far a hit has to
+/// send someone to KO them (and how far below the stage they can still recover from)
+/// is set by the fighters' knockback and movement, which the stage scale leaves alone.
+/// Top and bottom lines are shared by every stage.
+const BLAST_TOP: Fx = Fx::int(167);
+const BLAST_BOTTOM: Fx = Fx::int(-90);
 
 fn plat(left: i32, right: i32, y: i32, soft: bool) -> Platform {
     Platform { left: s(left), right: s(right), y: s(y), soft }
@@ -88,10 +96,10 @@ impl Stage {
                 plat(20, 57, 27, true),
                 plat(-18, 18, 54, true),
             ],
-            blast_left: s(-224),
-            blast_right: s(224),
-            blast_top: s(200),
-            blast_bottom: s(-108),
+            blast_left: Fx::int(-187),
+            blast_right: Fx::int(187),
+            blast_top: BLAST_TOP,
+            blast_bottom: BLAST_BOTTOM,
             spawns: spawns(40, 15),
             respawn: (Fx::ZERO, s(80)),
         }
@@ -101,10 +109,10 @@ impl Stage {
     pub fn flat() -> Stage {
         Stage {
             platforms: vec![plat(-85, 85, 0, false)],
-            blast_left: s(-240),
-            blast_right: s(240),
-            blast_top: s(200),
-            blast_bottom: s(-108),
+            blast_left: Fx::int(-200),
+            blast_right: Fx::int(200),
+            blast_top: BLAST_TOP,
+            blast_bottom: BLAST_BOTTOM,
             spawns: spawns(50, 17),
             respawn: (Fx::ZERO, s(80)),
         }
@@ -114,10 +122,10 @@ impl Stage {
     pub fn single_platform() -> Stage {
         Stage {
             platforms: vec![plat(-60, 60, 0, false), plat(-24, 24, 32, true)],
-            blast_left: s(-216),
-            blast_right: s(216),
-            blast_top: s(200),
-            blast_bottom: s(-108),
+            blast_left: Fx::int(-180),
+            blast_right: Fx::int(180),
+            blast_top: BLAST_TOP,
+            blast_bottom: BLAST_BOTTOM,
             spawns: spawns(35, 12),
             respawn: (Fx::ZERO, s(80)),
         }
