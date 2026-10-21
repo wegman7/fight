@@ -107,7 +107,7 @@ dark gi with a face wrap, headband and shuriken pouch), the **soldier** (the
 heavyweight: slow and falls fast, but hits hard — a masked operator in a combat helmet,
 goggles, ear-pro and a plate carrier hung with pouches, with a scoped carbine, grenades, a blast jump and a riot shield) and
 the **hobo** (a drunken-fist brawler: floaty and wobbly,
-attacking from odd angles).
+attacking from odd angles — a bearded drifter in a beanie and a tattered, patched overcoat).
 
 How each input works, with the chef's moves:
 

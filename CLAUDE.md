@@ -26,8 +26,10 @@
   are swapped in by `soldier.glb.import` and read a baked rest position (UVs) and
   ambient occlusion (vertex color). See `art/soldier/README.md`.
 - `art/hobo/`: the drunk hobo model (`godot/models/hobo.glb`), script-generated on the
-  chef's skeleton plus a bottle and a shopping-cart bone, with procedural grime/roughness
-  textures for his coat. See `art/hobo/README.md`.
+  chef's skeleton plus a bottle and a shopping-cart bone. A bearded drifter in a knit
+  beanie, a tattered, patched overcoat, fingerless gloves and worn-out shoes, his cloth,
+  skin and hair textured by seeded, script-baked albedo/roughness/normal PNGs. See
+  `art/hobo/README.md`.
 - `art/beach/`: script-generated backdrop props (palms, rock, sailboat). See `art/beach/README.md`.
 - `art/stage/`: the stage's platform models (`stage.glb`, `raft.glb`), script-generated,
   textured by `wood.gdshader` and `stone.gdshader` swapped in on import. See `art/stage/README.md`.
