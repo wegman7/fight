@@ -690,6 +690,28 @@ fn falling_past_an_edge_grabs_the_ledge() {
 }
 
 #[test]
+fn only_solid_platform_edges_are_grabbable() {
+    let mut w = world();
+    let (soft_right, soft_y) = (w.stage.platforms[2].right, w.stage.platforms[2].y);
+    let (solid_right, solid_y) = (w.stage.platforms[0].right, w.stage.platforms[0].y);
+    let h = w.fighters[0].params.height;
+
+    // Falling just outside a soft platform's edge: it must NOT grab.
+    let f = &mut w.fighters[0];
+    (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy) = (soft_right + Fx::int(2), soft_y - h, None, State::Air, Fx::ZERO, -Fx::ONE);
+    w.step(&[NONE, NONE]);
+    assert_ne!(w.fighters[0].state, State::LedgeHang, "a soft platform edge must not be grabbable");
+    assert_eq!(w.fighters[0].ledge_on, None);
+
+    // Falling just outside the solid main stage's edge: it must grab.
+    let f = &mut w.fighters[0];
+    (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy) = (solid_right + Fx::int(2), solid_y - h, None, State::Air, Fx::ZERO, -Fx::ONE);
+    w.step(&[NONE, NONE]);
+    assert_eq!(w.fighters[0].state, State::LedgeHang, "the solid main stage edge is grabbable");
+    assert_eq!(w.fighters[0].ledge_on, Some(0));
+}
+
+#[test]
 fn the_left_edge_grabs_too() {
     let mut w = world();
     let left = w.stage.platforms[0].left;

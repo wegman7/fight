@@ -495,10 +495,10 @@ impl Fighter {
             State::Holding { .. } => "grab_hold",
             State::Held { .. } => "grabbed",
             State::Hitstun { .. } => "hitstun",
-            // Ledge poses reuse existing clips until dedicated art is added:
-            // hang/climb/attack pose like the air animation, the roll like a dodge roll.
-            State::LedgeHang | State::LedgeClimb { .. } | State::LedgeAttack { .. } => "air",
-            State::LedgeRoll { .. } => "roll_f",
+            State::LedgeHang => "ledge_hang",
+            State::LedgeClimb { .. } => "ledge_climb",
+            State::LedgeRoll { .. } => "ledge_roll",
+            State::LedgeAttack { .. } => "ledge_attack",
             State::Respawning { .. } => "respawning",
             State::Eliminated => "eliminated",
         }
@@ -1045,6 +1045,10 @@ impl Fighter {
         }
         let top = self.y + self.params.height;
         for (i, plat) in stage.platforms.iter().enumerate() {
+            // Only solid ledges can be grabbed; soft platforms are pass-through.
+            if plat.soft {
+                continue;
+            }
             for (edge_x, side) in [(plat.left, 1), (plat.right, -1)] {
                 let outside = (edge_x - self.x) * side;
                 if outside <= Fx::ZERO || outside > LEDGE_REACH {
@@ -1275,8 +1279,9 @@ impl Fighter {
 
 /// The names `Fighter::anim` gives states other than moves and dodges. Every model
 /// needs an animation for each.
-pub const STATE_ANIMS: [&str; 13] =
-    ["idle", "walk", "run", "crouch", "jumpsquat", "air", "specialfall", "land", "shield", "dizzy", "grab_hold", "grabbed", "hitstun"];
+pub const STATE_ANIMS: [&str; 17] =
+    ["idle", "walk", "run", "crouch", "jumpsquat", "air", "specialfall", "land", "shield", "dizzy", "grab_hold", "grabbed", "hitstun",
+     "ledge_hang", "ledge_climb", "ledge_roll", "ledge_attack"];
 
 /// Uses up a buffered press, if there is one.
 fn take(buffer: &mut u8) -> bool {
