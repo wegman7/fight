@@ -19,8 +19,10 @@ import sys
 
 import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Quaternion, Vector
 from mathutils.bvhtree import BVHTree
+from mathutils.kdtree import KDTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -83,8 +85,8 @@ MATERIALS = {
     "Fur": ((0.022, 0.019, 0.018, 1), 0.7, 0.0),
     "Body": ((0.8, 0.15, 0.15, 1), 0.45, 0.0),
     "Accent": ((1.0, 0.72, 0.28, 1), 0.25, 1.0),
-    "Nose": ((0.012, 0.010, 0.010, 1), 0.45, 0.0),
-    "Skin": ((0.016, 0.013, 0.013, 1), 0.45, 0.0),  # eyelid rims
+    "Nose": ((0.01, 0.008, 0.008, 1), 0.5, 0.0),  # moist nose leather
+    "Skin": ((0.016, 0.013, 0.013, 1), 0.3, 0.0),  # eyelid rims, wet
     "Nail": ((0.035, 0.03, 0.028, 1), 0.3, 0.0),
     "Sclera": ((0.6, 0.5, 0.44, 1), 0.08, 0.0),
     "Iris": ((0.024, 0.011, 0.006, 1), 0.04, 0.0),
@@ -92,6 +94,8 @@ MATERIALS = {
     "Catchlight": ((1, 1, 1, 1), 0.3, 0.0),
     "Tongue": ((0.6, 0.22, 0.26, 1), 0.3, 0.0),
     "Mouth": ((0.16, 0.025, 0.035, 1), 0.5, 0.0),
+    "Pad": ((0.03, 0.027, 0.027, 1), 0.8, 0.0),  # paw pads: rough, leathery
+    "Tooth": ((0.82, 0.78, 0.68, 1), 0.3, 0.0),
 }
 
 
@@ -111,18 +115,23 @@ def quat_x_to(direction):
 
 
 class Blob:
+    """Metaballs, built `SCALE` times too big: Blender won't polygonize them finer
+    than 5 mm, so `blob_mesh` shrinks the mesh back afterwards."""
+
+    SCALE = 2.0
+
     def __init__(self, resolution):
         self.mb = bpy.data.metaballs.new("PugBlob")
-        self.mb.resolution = resolution
-        self.mb.render_resolution = resolution
+        self.mb.resolution = resolution * self.SCALE
+        self.mb.render_resolution = resolution * self.SCALE
         self.mb.threshold = 0.6
 
     def ell(self, center, semi, stiffness=2.5, rot=None, negative=False):
         """Ellipsoid with visible semi-axes `semi` (when alone)."""
         k = stiff_k(stiffness)
-        r = max(semi) / k
+        r = max(semi) / k * self.SCALE
         e = self.mb.elements.new(type="ELLIPSOID")
-        e.co, e.radius, e.stiffness, e.use_negative = center, r, stiffness, negative
+        e.co, e.radius, e.stiffness, e.use_negative = Vector(center) * self.SCALE, r, stiffness, negative
         e.size_x, e.size_y, e.size_z = (a / max(semi) for a in semi)
         if rot is not None:
             e.rotation = rot
@@ -135,82 +144,207 @@ class Blob:
         """Capsule from a to b."""
         a, b = Vector(a), Vector(b)
         e = self.mb.elements.new(type="CAPSULE")
-        e.co = (a + b) / 2
-        e.radius = radius / stiff_k(stiffness)
-        e.size_x = (b - a).length / 2
+        e.co = (a + b) / 2 * self.SCALE
+        e.radius = radius / stiff_k(stiffness) * self.SCALE
+        e.size_x = (b - a).length / 2 * self.SCALE
         e.rotation = quat_x_to(b - a)
         e.stiffness, e.use_negative = stiffness, negative
         return e
 
 
 # Toes as (sideways offset, x): the middle two reach a little further forward.
-FRONT_TOES = [(dy, WRIST[0] + 0.065 + (0.007 if abs(dy) < 0.01 else 0)) for dy in (-0.025, -0.009, 0.009, 0.025)]
-HIND_TOES = [(dy, ANKLE[0] + 0.07 + (0.006 if abs(dy) < 0.01 else 0)) for dy in (-0.022, -0.008, 0.008, 0.022)]
-
+FRONT_TOES = [(dy, WRIST[0] + 0.062 + (0.009 if abs(dy) < 0.01 else 0)) for dy in (-0.027, -0.0095, 0.0095, 0.027)]
+HIND_TOES = [(dy, ANKLE[0] + 0.068 + (0.008 if abs(dy) < 0.01 else 0)) for dy in (-0.024, -0.0085, 0.0085, 0.024)]
+FRONT_TOE_Z, HIND_TOE_Z = 0.023, 0.021
 
 NOSE = (0.549, 0, 0.624)
 # The nose roll's arch as (y, x, z) points: highest over the middle of the nose.
-NOSE_ROLL = [(y, 0.552 - abs(y) * 0.45, 0.666 - 9 * y * y) for y in (-0.064 + 0.016 * i for i in range(9))]
+NOSE_ROLL = [(y, 0.558 - abs(y) * 0.45, 0.67 - 10 * y * y) for y in (-0.07 + 0.0175 * i for i in range(9))]
+RESOLUTION = 0.003  # metaball grid (m); decimated afterwards, keeping the detail
 
 
 def fur_blob():
-    b = Blob(resolution=0.005)
-    # Torso: broad barrel chest, round rump.
+    b = Blob(resolution=RESOLUTION)
+    # Torso: a deep, broad barrel of a ribcage, a short loin and a round rump, the
+    # forechest jutting between the front legs and the shoulder blades and buttocks
+    # showing under the skin. Square: as long as it is tall.
     b.ell((0.12, 0, 0.405), (0.165, 0.172, 0.165))
-    b.ell((-0.02, 0, 0.415), (0.16, 0.16, 0.15))
-    b.ell((-0.155, 0, 0.425), (0.12, 0.15, 0.14))
-    # Neck, thick and short, and a dewlap fold under it.
-    b.cap((0.19, 0, 0.47), (0.31, 0, 0.585), 0.11)
-    b.ell((0.27, 0, 0.455), (0.07, 0.085, 0.05), stiffness=3)
+    b.ell((0.215, 0, 0.37), (0.075, 0.105, 0.11), stiffness=3)  # forechest
+    b.ell((-0.02, 0, 0.415), (0.16, 0.158, 0.15))
+    b.ell((-0.155, 0, 0.425), (0.12, 0.152, 0.14))
+    b.ell((-0.205, 0, 0.395), (0.075, 0.125, 0.115), stiffness=3)  # buttocks
+    # Neck, thick and short, the loose skin of the throat hanging under it.
+    b.cap((0.19, 0, 0.47), (0.31, 0, 0.585), 0.112)
+    b.ell((0.275, 0, 0.452), (0.075, 0.09, 0.055), stiffness=3)
     # Head: a big round skull, broader than it is tall, on a flat face with full
     # cheeks and a muzzle so short the nose sits between the eyes.
     b.ell((0.37, 0, 0.668), (0.145, 0.162, 0.125))
-    b.ell((0.452, 0, 0.632), (0.092, 0.148, 0.108))
+    b.ell((0.452, 0, 0.632), (0.092, 0.15, 0.108))
     for s in (1, -1):
-        # Flews: the loose upper lips hanging past the lower jaw at each side.
-        b.ell((0.488, s * 0.072, 0.566), (0.062, 0.062, 0.05), stiffness=2.5)
-        b.ell((0.415, s * 0.128, 0.625), (0.07, 0.042, 0.075), stiffness=3)  # cheeks
-        # Brows: soft, the inner ends raised (the worried pug look).
-        b.ell((0.48, s * 0.075, 0.738), (0.026, 0.04, 0.012), stiffness=3, rot=Quaternion((1, 0, 0), math.radians(-18 * s)))
+        # Flews: the heavy upper lips hanging past the lower jaw at each side,
+        # squaring off the muzzle.
+        b.ell((0.49, s * 0.07, 0.566), (0.062, 0.066, 0.052), stiffness=2.5)
+        b.ell((0.452, s * 0.105, 0.556), (0.05, 0.05, 0.04), stiffness=3)  # lip corners
+        b.ell((0.415, s * 0.13, 0.625), (0.07, 0.044, 0.078), stiffness=3)  # cheeks
+        # Brows: heavy, the inner ends raised (the worried pug look).
+        b.ell((0.482, s * 0.074, 0.737), (0.028, 0.044, 0.014), stiffness=3, rot=Quaternion((1, 0, 0), math.radians(-18 * s)))
         # Eye sockets, so the eyes sit in the face rather than on it.
         b.ball((0.5, s * 0.085, 0.672), 0.028, stiffness=4, negative=True)
-        # Muzzle pads either side of the lip, under the nose.
-        b.ell((0.534, s * 0.036, 0.584), (0.036, 0.042, 0.034), stiffness=3)
-    b.ell((0.515, 0, 0.568), (0.04, 0.066, 0.03), stiffness=3)  # upper lip
-    # The nose roll: a thick fold of skin draped over the top of the nose, its ends
-    # running down beside it, with deep creases above and below.
+        # Muzzle pads either side of the philtrum, under the nose.
+        b.ell((0.536, s * 0.036, 0.584), (0.037, 0.043, 0.035), stiffness=3)
+    b.ell((0.517, 0, 0.568), (0.04, 0.066, 0.03), stiffness=3)  # upper lip
+    # The over-nose wrinkle: a thick roll of skin draped across the face over the
+    # nose, its ends running down beside it (the creases come from `sculpt`).
     for y, x, z in NOSE_ROLL:
-        b.ball((x, y, z), 0.023, stiffness=5)
-    for (y0, x0, z0), (y1, x1, z1) in zip(NOSE_ROLL, NOSE_ROLL[1:]):
-        b.cap((x0 + 0.004, y0, z0 - 0.027), (x1 + 0.004, y1, z1 - 0.027), 0.008, stiffness=6, negative=True)
-        b.cap((x0 - 0.012, y0, z0 + 0.026), (x1 - 0.012, y1, z1 + 0.026), 0.006, stiffness=6, negative=True)
-    # Forehead wrinkles: a V of grooves between the brows and two lines across.
-    b.cap((0.497, -0.03, 0.79), (0.524, -0.004, 0.742), 0.008, stiffness=6, negative=True)
-    b.cap((0.497, 0.03, 0.79), (0.524, 0.004, 0.742), 0.008, stiffness=6, negative=True)
-    for x, z, w in ((0.475, 0.795, 0.06), (0.455, 0.812, 0.07)):
-        b.cap((x - 0.012, -w, z - 0.012), (x, 0, z), 0.007, stiffness=6, negative=True)
-        b.cap((x, 0, z), (x - 0.012, w, z - 0.012), 0.007, stiffness=6, negative=True)
+        b.ball((x, y, z), 0.027, stiffness=4.5)
     for side, s in (("L", 1), ("R", -1)):
         m = lambda p: (p[0], s * p[1], p[2])  # noqa: E731
-        # Front leg: shoulder muscle, upper arm, forearm, paw with toes.
-        b.ell(m((0.15, 0.1, 0.37)), (0.085, 0.065, 0.1), stiffness=3)
-        b.cap(m(SHOULDER), m(ELBOW), 0.055)
-        b.cap(m(ELBOW), m(WRIST), 0.045, stiffness=3)
-        b.ell(m((WRIST[0] + 0.03, WRIST[1], 0.034)), (0.05, 0.042, 0.032), stiffness=3)
+        fore = tuple(a + (c - a) * 0.45 for a, c in zip(ELBOW, WRIST))
+        # Front leg: shoulder blade, the big triceps behind the upper arm, the point of
+        # the elbow, a forearm tapering to the wrist, a short pastern, a tight paw.
+        b.ell(m((0.145, 0.104, 0.45)), (0.075, 0.034, 0.088), stiffness=3, rot=Quaternion((0, 1, 0), math.radians(25)))
+        b.ell(m((0.15, 0.1, 0.37)), (0.085, 0.066, 0.1), stiffness=3)
+        b.ell(m((0.112, 0.112, 0.305)), (0.058, 0.052, 0.07), stiffness=3)  # triceps
+        b.cap(m(SHOULDER), m(ELBOW), 0.054)
+        b.ball(m((0.112, 0.118, 0.232)), 0.034, stiffness=3.5)  # elbow
+        b.cap(m(ELBOW), m(fore), 0.046, stiffness=3)
+        b.cap(m(fore), m(WRIST), 0.038, stiffness=3)
+        b.ball(m((WRIST[0] - 0.004, WRIST[1], WRIST[2] + 0.006)), 0.036, stiffness=3.5)  # carpus
+        b.ell(m((WRIST[0] + 0.03, WRIST[1], 0.033)), (0.05, 0.044, 0.031), stiffness=3)
         for dy, x in FRONT_TOES:
-            b.ball(m((x, WRIST[1] + dy, 0.022)), 0.014, stiffness=5)
-        # Hind leg: big thigh, shin, hock, paw with toes.
-        b.ell(m((-0.14, 0.095, 0.36)), (0.1, 0.07, 0.115), stiffness=3)
-        b.cap(m(HIP), m(STIFLE), 0.065)
+            b.ell(m((x, WRIST[1] + dy, FRONT_TOE_Z)), (0.0175, 0.0135, 0.0155), stiffness=4.5)
+        # Hind leg: a broad muscular thigh, the hamstrings behind it, the stifle, a
+        # gaskin narrowing to the point of the hock, a short upright hock, the paw.
+        b.ell(m((-0.135, 0.098, 0.355)), (0.105, 0.07, 0.125), stiffness=3, rot=Quaternion((0, 1, 0), math.radians(-12)))
+        b.ell(m((-0.2, 0.086, 0.33)), (0.062, 0.056, 0.09), stiffness=3)  # hamstrings
+        b.cap(m(HIP), m(STIFLE), 0.064)
         b.ell(m((-0.1, 0.085, 0.3)), (0.075, 0.06, 0.075), stiffness=3)  # flank, joining the stifle to the belly
-        gaskin = tuple(a + (b - a) * 0.4 for a, b in zip(STIFLE, HOCK))
-        b.cap(m(STIFLE), m(gaskin), 0.05, stiffness=3)
-        b.cap(m(gaskin), m(HOCK), 0.037, stiffness=3)
-        b.cap(m(HOCK), m(ANKLE), 0.03, stiffness=3)
-        b.ell(m((ANKLE[0] + 0.035, ANKLE[1], 0.032)), (0.048, 0.038, 0.03), stiffness=3)
+        b.ball(m(STIFLE), 0.044, stiffness=3)
+        gaskin = tuple(a + (c - a) * 0.4 for a, c in zip(STIFLE, HOCK))
+        b.cap(m(STIFLE), m(gaskin), 0.051, stiffness=3)
+        b.cap(m(gaskin), m(HOCK), 0.035, stiffness=3)
+        b.ball(m((HOCK[0] - 0.017, HOCK[1], HOCK[2] + 0.006)), 0.024, stiffness=4)  # point of the hock
+        b.cap(m(HOCK), m(ANKLE), 0.029, stiffness=3)
+        b.ell(m((ANKLE[0] + 0.034, ANKLE[1], 0.031)), (0.048, 0.04, 0.03), stiffness=3)
         for dy, x in HIND_TOES:
-            b.ball(m((x, ANKLE[1] + dy, 0.02)), 0.013, stiffness=5)
+            b.ell(m((x, ANKLE[1] + dy, HIND_TOE_Z)), (0.0165, 0.0125, 0.0145), stiffness=4.5)
     return b.mb
+
+
+def catmull(points, samples):
+    """`samples` points along a Catmull-Rom curve through `points`."""
+    pts = [Vector(p) for p in points]
+    pts = [2 * pts[0] - pts[1]] + pts + [2 * pts[-1] - pts[-2]]
+    out = []
+    for i in range(samples):
+        u = i / (samples - 1) * (len(pts) - 3)
+        k = min(int(u), len(pts) - 4)
+        t = u - k
+        p0, p1, p2, p3 = pts[k:k + 4]
+        out.append(0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (3 * p1 - p0 - 3 * p2 + p3) * t ** 3))
+    return out
+
+
+class Sculpt:
+    """Wrinkles, folds and muscle lines cut into the dense fur surface before it is
+    decimated: each is a curve laid on the surface, pushing the vertices near it in
+    (a crease) or out (a ridge) along their normals."""
+
+    def __init__(self, mesh):
+        self.mesh = mesh
+        n = len(mesh.vertices)
+        self.co = np.empty(n * 3)
+        self.no = np.empty(n * 3)
+        mesh.vertices.foreach_get("co", self.co)
+        mesh.vertices.foreach_get("normal", self.no)
+        self.co.shape = self.no.shape = (n, 3)
+        self.disp = np.zeros(n)
+        self.surface = Surface(mesh)
+
+    def line(self, points, width, depth, samples=40, taper=0.6):
+        """depth > 0 cuts a crease `width` wide, < 0 raises a ridge. Fades out at the ends."""
+        path = np.array([tuple(self.surface.nearest(p)[0]) for p in catmull(points, samples)])
+        lo, hi = path.min(0) - 3 * width, path.max(0) + 3 * width
+        idx = np.nonzero(np.all((self.co > lo) & (self.co < hi), axis=1))[0]
+        q = self.co[idx]
+        lengths = np.linalg.norm(np.diff(path, axis=0), axis=1)
+        start = np.concatenate([[0], np.cumsum(lengths)])
+        best, along = np.full(len(idx), np.inf), np.zeros(len(idx))
+        for i in range(len(path) - 1):
+            a, ab = path[i], path[i + 1] - path[i]
+            t = np.clip((q - a) @ ab / max(ab @ ab, 1e-12), 0, 1)
+            d = np.linalg.norm(q - (a + t[:, None] * ab), axis=1)
+            closer = d < best
+            best[closer], along[closer] = d[closer], (start[i] + t[closer] * lengths[i]) / start[-1]
+        fade = np.sin(np.pi * np.clip(along, 0, 1)) ** taper
+        self.disp[idx] -= depth * np.exp(-(best / width) ** 2) * fade
+
+    def fold(self, points, width, depth, side, samples=40):
+        """A skin fold: a crease with the skin rolled up beside it, toward `side`."""
+        self.line(points, width, depth, samples)
+        off = Vector(side) * width * 1.5
+        self.line([Vector(p) + off for p in points], width * 1.6, -depth * 0.45, samples)
+
+    def apply(self, smooth=4):
+        """Moves the vertices, after blurring the displacement over `smooth` rings of
+        neighbors so the creases come out soft-edged rather than stepped."""
+        edges = np.empty(len(self.mesh.edges) * 2, dtype=np.int64)
+        self.mesh.edges.foreach_get("vertices", edges)
+        a, b = edges[0::2], edges[1::2]
+        count = np.bincount(a, minlength=len(self.disp)) + np.bincount(b, minlength=len(self.disp))
+        for _ in range(smooth):
+            total = np.bincount(a, self.disp[b], len(self.disp)) + np.bincount(b, self.disp[a], len(self.disp))
+            self.disp = 0.5 * self.disp + 0.5 * total / np.maximum(count, 1)
+        self.mesh.vertices.foreach_set("co", (self.co + self.no * self.disp[:, None]).ravel())
+        self.mesh.update()
+
+
+def sculpt(mesh):
+    """The pug's wrinkles. Returns how deep each vertex sits in a crease (0-1)."""
+    sc = Sculpt(mesh)
+    # The over-nose wrinkle: deep creases under the roll (against the nose) and above
+    # it (under the eyes), running down beside the nose at the ends.
+    under = [(x + 0.006, y, z - 0.03) for y, x, z in NOSE_ROLL]
+    over = [(x - 0.012, y, z + 0.029) for y, x, z in NOSE_ROLL]
+    sc.line(under, 0.006, 0.013, taper=0.3)
+    sc.line(over, 0.0065, 0.011, taper=0.4)
+    # Forehead: the "thumbprint", a diamond of furrows between the brows, and the
+    # wavy folds across the forehead above it, running out over the eyes.
+    sc.line([(0.53, 0, 0.73), (0.52, -0.02, 0.765), (0.49, -0.034, 0.8)], 0.0055, 0.006)
+    sc.line([(0.53, 0, 0.73), (0.52, 0.02, 0.765), (0.49, 0.034, 0.8)], 0.0055, 0.006)
+    sc.line([(0.53, 0, 0.71), (0.52, 0, 0.765), (0.49, 0, 0.81)], 0.005, 0.005)
+    for k, (z, w) in enumerate(((0.772, 0.085), (0.795, 0.09), (0.815, 0.085))):
+        wave = 0.006 * (-1) ** k
+        pts = [(0.5 - 0.06 * abs(y) / w - 0.02 * k, y, z + wave * math.cos(math.pi * y / w) - 0.035 * (y / w) ** 2)
+               for y in np.linspace(-w, w, 7)]
+        sc.fold(pts, 0.005, 0.0055, (0, 0, -1))
+    for s in (1, -1):
+        # A fold from the brow curving down behind the eye onto the cheek.
+        sc.fold([(0.47, s * 0.115, 0.735), (0.455, s * 0.135, 0.69), (0.46, s * 0.135, 0.635), (0.48, s * 0.12, 0.6)], 0.005, 0.006, (0.6, -s * 0.4, 0))
+        # The mouth corner, and the crease where the flews meet the cheek.
+        sc.line([(0.43, s * 0.122, 0.585), (0.445, s * 0.118, 0.56), (0.462, s * 0.108, 0.54)], 0.005, 0.006)
+        sc.line([(0.5, s * 0.104, 0.605), (0.49, s * 0.118, 0.575), (0.475, s * 0.12, 0.55)], 0.0045, 0.004)
+        # Neck rolls behind the jaw, and a fold of loose skin at the throat.
+        neck0, neck1 = Vector((0.19, 0, 0.47)), Vector((0.31, 0, 0.585))
+        throat = Vector((0, 1, 0)).cross(neck1 - neck0).normalized()
+        for t, d in ((0.62, 0.008), (0.8, 0.007)):
+            c = neck0.lerp(neck1, t)
+            ring_pts = [c + 0.115 * (math.cos(a) * throat + s * math.sin(a) * Vector((0, 1, 0))) for a in np.linspace(0.1, 2.4, 8)]
+            sc.fold(ring_pts, 0.006, d, -(neck1 - neck0).normalized())
+        # Muscle lines: behind the shoulder blade, between triceps and forearm,
+        # down the hamstrings.
+        sc.line([(0.1, s * 0.13, 0.46), (0.085, s * 0.14, 0.39), (0.08, s * 0.135, 0.33)], 0.012, 0.003)
+        sc.line([(-0.175, s * 0.13, 0.43), (-0.2, s * 0.125, 0.35), (-0.205, s * 0.11, 0.27)], 0.012, 0.003)
+        # Grooves between the toes.
+        for toes, (wx, wy, _), z in ((FRONT_TOES, WRIST, FRONT_TOE_Z), (HIND_TOES, ANKLE, HIND_TOE_Z)):
+            for (dy0, x0), (dy1, x1) in zip(toes, toes[1:]):
+                y = s * (wy + (dy0 + dy1) / 2)
+                x = (x0 + x1) / 2
+                sc.line([(x - 0.03, y, z + 0.02), (x - 0.012, y, z + 0.016), (x + 0.008, y, z + 0.004)], 0.0035, 0.004)
+    # The philtrum: a groove down the middle of the upper lip from the nose.
+    sc.line([(0.565, 0, 0.603), (0.562, 0, 0.59), (0.556, 0, 0.574)], 0.0045, 0.006, taper=0.3)
+    sc.apply()
+    return np.clip(np.maximum(sc.disp, -0.012) / -0.008, 0, 1)
 
 
 def chin_blob():
@@ -222,17 +356,27 @@ def chin_blob():
     return b.mb
 
 
-def blob_mesh(mb, ratio):
+def blob_mesh(mb, ratio, shape=None):
+    """Metaballs -> mesh, then `shape(mesh)` (a sculpt pass returning a value per
+    vertex), then decimated by `ratio`. With `shape`, returns (mesh, that value
+    carried over to the decimated vertices)."""
     blob = bpy.data.objects.new("Blob", mb)
     bpy.context.scene.collection.objects.link(blob)
     dg = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(blob.evaluated_get(dg))
     bpy.data.objects.remove(blob)
+    mesh.transform(Matrix.Scale(1 / Blob.SCALE, 4))
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bmesh.ops.dissolve_degenerate(bm, dist=1e-6, edges=bm.edges[:])
     bm.to_mesh(mesh)
     bm.free()
+    values = shape(mesh) if shape else None
+    if values is not None:
+        dense = KDTree(len(mesh.vertices))
+        for v in mesh.vertices:
+            dense.insert(v.co, v.index)
+        dense.balance()
     if ratio < 1:
         obj = bpy.data.objects.new("Blob", mesh)
         bpy.context.scene.collection.objects.link(obj)
@@ -245,7 +389,9 @@ def blob_mesh(mb, ratio):
         mesh = out
     for p in mesh.polygons:
         p.use_smooth = True
-    return mesh
+    if values is None:
+        return mesh
+    return mesh, np.array([values[dense.find(v.co)[1]] for v in mesh.vertices])
 
 
 def uv_ellipsoid(bm, center, semi, rot=Quaternion(), segments=(24, 14)):
@@ -448,7 +594,12 @@ def eye(parts, s):
         upper lid a little lower over the eye."""
         return 1 / math.hypot(c / 57, n / (42 if n > 0 else 48))
 
-    verts = uv_ellipsoid(parts.bm, center, (radius,) * 3, gaze.to_track_quat("Z", "Y"), segments=(32, 20))
+    verts = uv_ellipsoid(parts.bm, center, (radius,) * 3, gaze.to_track_quat("Z", "Y"), segments=(40, 26))
+    for v in verts:  # the cornea: a clear dome bulging over the iris, so the eye catches light like a wet lens
+        d = (v.co - center).normalized()
+        angle = math.degrees(d.angle(gaze))
+        if angle < 46:
+            v.co = center + d * (radius + 0.0045 * math.cos(math.radians(angle / 46 * 90)) ** 2)
     parts.assign(verts, "head", "Sclera")
     for f in {f for v in verts for f in v.link_faces}:
         d = (f.calc_center_median() - center).normalized()
@@ -471,22 +622,40 @@ def face_parts(parts):
     eye(parts, 1)
     eye(parts, -1)
     # Nose: broad and flat-fronted, a little wider at the top, with comma-shaped nostrils.
-    nose = uv_ellipsoid(parts.bm, NOSE, (0.016, 0.042, 0.024), segments=(32, 16))
+    nose = uv_ellipsoid(parts.bm, NOSE, (0.018, 0.047, 0.026), segments=(48, 24))
     for v in nose:
         x, y, z = v.co - Vector(NOSE)
-        v.co.y = y * (1 + 0.25 * z / 0.025)
+        v.co.y = y * (1 + 0.25 * z / 0.026)
         if x > 0.006:  # a flat front face
             v.co.x = NOSE[0] + 0.006 + (x - 0.006) * 0.3
+        # Comma-shaped nostrils, slanting up and out, and a groove down the middle.
         for s in (1, -1):
-            d = ((y - s * 0.022) / 0.012) ** 2 + ((z + 0.003) / 0.0065) ** 2
+            u, w = (y - s * 0.024) / 0.013, (z + 0.004 + 0.25 * (abs(y) - 0.024)) / 0.0075
+            d = u * u + w * w
             if x > 0 and d < 1:
-                v.co.x -= 0.011 * (1 - d)
+                v.co.x -= 0.014 * (1 - d) ** 0.7
+        if x > 0:
+            v.co.x -= 0.003 * math.exp(-(y / 0.004) ** 2) * (1 if z < 0 else 0.5)
     parts.assign(nose, "head", "Nose")
     # Inside of the mouth, seen when the jaw drops.
     parts.assign(uv_ellipsoid(parts.bm, (0.475, 0, 0.553), (0.065, 0.058, 0.016)), "head", "Mouth")
     parts.assign(uv_ellipsoid(parts.bm, (0.47, 0, 0.545), (0.06, 0.055, 0.012)), "jaw", "Mouth")
     tongue = uv_ellipsoid(parts.bm, (0.515, 0.004, 0.547), (0.05, 0.034, 0.01), Quaternion((0, 1, 0), math.radians(12)))
     parts.assign(tongue, "jaw", "Tongue")
+    # Teeth: six small lower incisors set in front of the upper ones (the pug's
+    # underbite) between the lower canines, and the upper canines.
+    for y in (-0.027, -0.017, -0.006, 0.006, 0.017, 0.027):
+        tilt = Quaternion((0, 1, 0), math.radians(-15)) @ Quaternion((1, 0, 0), math.radians(-y * 400))
+        tooth = uv_ellipsoid(parts.bm, (0.541 - 9 * y * y, y, 0.557), (0.0032, 0.0046, 0.0075), tilt, segments=(10, 6))
+        parts.assign(tooth, "jaw", "Tooth")
+    for s in (1, -1):
+        for bone, x, y, z, up in (("jaw", 0.527, 0.037, 0.56, 1), ("head", 0.516, 0.04, 0.567, -1)):
+            tip_dir = Vector((0.15, s * 0.1, up)).normalized()
+            fang = bmesh.ops.create_cone(
+                parts.bm, cap_ends=True, segments=10, radius1=0.0048, radius2=0.0008, depth=0.015,
+                matrix=Matrix.Translation(Vector((x, s * y, z)) + tip_dir * 0.006) @ tip_dir.to_track_quat("Z", "Y").to_matrix().to_4x4(),
+            )["verts"]
+            parts.assign(fang, bone, "Tooth")
     # The lower jaw.
     chin = blob_mesh(chin_blob(), 0.3)
     verts = [parts.bm.verts.new(v.co) for v in chin.vertices]
@@ -497,10 +666,23 @@ def face_parts(parts):
 
 
 def nails(parts):
-    """A short black claw at the tip of every toe."""
+    """A short black claw at the tip of every toe, and the pads under the paws: one
+    under each toe, the big heart-shaped pad behind them, and the carpal pad high on
+    the back of each front wrist."""
     for side, s in (("L", 1), ("R", -1)):
-        for toes, y0, radius, bone in ((FRONT_TOES, WRIST[1], 0.014, "hand"), (HIND_TOES, ANKLE[1], 0.013, "foot")):
-            z = 0.022 if bone == "hand" else 0.02
+        for toes, (px, y0, _), bone in ((FRONT_TOES, WRIST, "hand"), (HIND_TOES, ANKLE, "foot")):
+            for dy, x in toes:
+                pad = uv_ellipsoid(parts.bm, (x - 0.003, s * (y0 + dy), 0.0068), (0.0115, 0.0095, 0.0068), segments=(14, 8))
+                parts.assign(pad, f"{bone}.{side}", "Pad")
+            for dy in (-0.011, 0.011):  # the two lobes of the heart
+                pad = uv_ellipsoid(parts.bm, (px + 0.027, s * (y0 + dy), 0.0082), (0.019, 0.0145, 0.008),
+                                   Quaternion((0, 0, 1), math.radians(-s * dy * 1400)), segments=(16, 8))
+                parts.assign(pad, f"{bone}.{side}", "Pad")
+        carpal = uv_ellipsoid(parts.bm, (WRIST[0] - 0.033, s * WRIST[1], 0.078), (0.007, 0.011, 0.0095), segments=(12, 8))
+        parts.assign(carpal, f"forearm.{side}", "Pad")
+    for side, s in (("L", 1), ("R", -1)):
+        for toes, y0, radius, bone in ((FRONT_TOES, WRIST[1], 0.015, "hand"), (HIND_TOES, ANKLE[1], 0.014, "foot")):
+            z = FRONT_TOE_Z if bone == "hand" else HIND_TOE_Z
             for dy, x in toes:
                 tip_dir = Vector((1, s * dy * 4, -0.9)).normalized()
                 base = Vector((x + radius * 0.6, s * (y0 + dy), z - radius * 0.15))
@@ -531,7 +713,7 @@ def build_meshes(rig):
         mats.append(mat)
 
     # Fur: metaballs -> mesh -> automatic weights.
-    fur_mesh = blob_mesh(fur_blob(), 0.15)
+    fur_mesh, crease = blob_mesh(fur_blob(), 0.13, sculpt)
     fur = bpy.data.objects.new("Pug", fur_mesh)
     bpy.context.scene.collection.objects.link(fur)
     for m in mats:
@@ -587,7 +769,52 @@ def build_meshes(rig):
     for name in BONE_NAMES:
         obj.vertex_groups.new(name=name)
     obj.modifiers.new("Armature", "ARMATURE").object = rig
+    # For the fur shader: every vertex's rest position, and how sheltered it is.
+    ao = occlusion([fur_mesh, parts_mesh])
+    rest_uvs(fur_mesh, ao[:len(fur_mesh.vertices)] * (1 - 0.65 * crease))
+    rest_uvs(parts_mesh, ao[len(fur_mesh.vertices):])
     return fur, obj
+
+
+def occlusion(meshes, reach=0.06, rays=20):
+    """Per vertex, 1 minus the share of the sky above it that nearby surfaces hide
+    (ambient occlusion at rest, rays out to `reach`), for every vertex of `meshes`."""
+    verts, polys = [], []
+    for mesh in meshes:
+        base = len(verts)
+        verts += [v.co.copy() for v in mesh.vertices]
+        polys += [[base + i for i in p.vertices] for p in mesh.polygons]
+    tree = BVHTree.FromPolygons(verts, polys)
+    golden = math.pi * (3 - math.sqrt(5))
+    dirs = []  # cosine-weighted hemisphere around +Z
+    for i in range(rays):
+        r = math.sqrt((i + 0.5) / rays)
+        dirs.append(Vector((r * math.cos(golden * i), r * math.sin(golden * i), math.sqrt(1 - r * r))))
+    out = []
+    for mesh in meshes:
+        for v in mesh.vertices:
+            rot = v.normal.to_track_quat("Z", "Y")
+            start = v.co + v.normal * 0.0015
+            hidden = 0.0
+            for d in dirs:
+                hit = tree.ray_cast(start, rot @ d, reach)[0]
+                if hit is not None:
+                    hidden += 1 - (hit - start).length / reach
+            out.append(1 - hidden / rays)
+    return np.array(out)
+
+
+def rest_uvs(mesh, shade):
+    """UV = rest (x, z), UV2 = (rest y, shade), for godot/shaders/fur.gdshader: the
+    hair is laid out in rest space, so it stays put on the skin however the bones
+    move, and `shade` darkens the creases."""
+    vi = np.empty(len(mesh.loops), dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", vi)
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)[vi]
+    mesh.uv_layers.new(name="RestXZ").data.foreach_set("uv", co[:, [0, 2]].ravel())
+    mesh.uv_layers.new(name="RestYShade").data.foreach_set("uv", np.stack([co[:, 1], np.asarray(shade)[vi]], 1).ravel())
 
 
 # --- Rig --------------------------------------------------------------------
@@ -685,7 +912,9 @@ def plant(pose, leg, dx=0.0, lift=0.0, paw=0.0, hock=0.0):
     side = leg[1]
     if leg[0] == "F":
         target = (FRONT_PAW[0] + dx, FRONT_PAW[1] + lift)
-        turn = two_bone(pose, f"upper_arm.{side}", f"forearm.{side}", target, -1)
+        # The elbow points back; reaching up over a ledge, it points back and down.
+        shoulder = fk(pose)[f"upper_arm.{side}"][0]
+        turn = two_bone(pose, f"upper_arm.{side}", f"forearm.{side}", target, 1 if target[1] > shoulder[1] + 0.12 else -1)
         pose[f"hand.{side}"] = paw - turn
     else:
         hock_w = REST[f"hock.{side}"][1] + hock
@@ -942,6 +1171,161 @@ def ear_copter():
     return keys + [(56, HELPLESS)]
 
 
+# --- Ledge getups -------------------------------------------------------------
+# The sim hangs the pug with its origin 0.1 m outside the edge and the top of its
+# 0.9 m hurtbox level with the platform, then slides the origin in a straight line
+# to standing `reach` m along on getups (sim/src/fighter.rs: ledge_getup_pos). Keys
+# here are poses plus where their origin sits relative to the ledge corner ("corner
+# space": x onto the stage, z up, the stage top at z = 0, the wall at x = 0), so paws
+# stay planted on the ledge while the clip's origin moves under them.
+H = 0.9
+HANG_AT = (-0.1, -H)  # the hanging origin, corner space
+
+
+def origin(frame, length, reach):
+    """Corner-space position of the model's origin on `frame` of a getup."""
+    t = frame / length if length else 0.0
+    return HANG_AT[0] + reach * t, HANG_AT[1] + H * t
+
+
+def flatten(pose):
+    """Solved pose -> {bone: (a, b, c)} plus "loc"."""
+    out = {name: (value if isinstance(value, tuple) else (value, 0, 0)) for name, value in pose.items() if name not in ("loc", "feet")}
+    out["loc"] = pose.get("loc", (0, 0))
+    return out
+
+
+def spline(times, values, t):
+    """Catmull-Rom through (times, values) at t; values are tuples or None (gaps
+    end a curve). Returns None where the bracketing values are missing."""
+    k = max(i for i in range(len(times)) if times[i] <= t)
+    if k == len(times) - 1:
+        return values[k]
+    p1, p2 = values[k], values[k + 1]
+    if p1 is None or p2 is None:
+        return None
+    t1, t2 = times[k], times[k + 1]
+    p0, t0 = (values[k - 1], times[k - 1]) if k > 0 and values[k - 1] is not None else (p1, t1)
+    p3, t3 = (values[k + 2], times[k + 2]) if k + 2 < len(times) and values[k + 2] is not None else (p2, t2)
+    u, d = (t - t1) / (t2 - t1), t2 - t1
+    h00, h10, h01, h11 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+    out = []
+    for a0, a1, a2, a3 in zip(p0, p1, p2, p3):
+        m1 = (a2 - a0) / (t2 - t0) * d if t2 > t0 else 0.0
+        m2 = (a3 - a1) / (t3 - t1) * d if t3 > t1 else 0.0
+        out.append(h00 * a1 + h10 * m1 + h01 * a2 + h11 * m2)
+    return tuple(out)
+
+
+def ledge_clip(keys, length=0, reach=0.0, first=None, last=None):
+    """One key per frame from (frame, pose, at) keys: `pose` drawn with its origin at
+    corner-space `at` (None: standing on the stage right under the clip's origin).
+    Between keys every value follows a Catmull-Rom curve; a paw planted at both ends
+    of a stretch keeps its corner-space spot (also curved), re-planted by IK."""
+    frames, solved = [], []
+    for frame, pose, at in keys:
+        ox, oz = origin(frame, length, reach)
+        ax, az = at if at is not None else (ox, 0.0)
+        dx, dz = ax - ox, az - oz
+        pose = dict(pose)
+        fwd, up = pose.get("loc", (0, 0))
+        pose["loc"] = (fwd + dx, up + dz)
+        feet = {}
+        for leg, spec in pose.get("feet", {}).items():
+            spec = tuple(spec) + (0.0,) * (4 - len(spec))
+            pose_feet = (spec[0] + dx, spec[1] + dz) + spec[2:]
+            feet[leg] = pose_feet
+        pose["feet"] = feet
+        targets = {}
+        for leg, spec in feet.items():
+            if not any(b in pose for b in LEG_BONES[leg]):
+                base = FRONT_PAW if leg[0] == "F" else HIND_PAW
+                targets[leg] = (base[0] + spec[0] + ox, base[1] + spec[1] + oz, spec[2], spec[3])
+        frames.append(frame)
+        solved.append((flatten(solve(pose)), targets))
+    names = sorted({n for flat, _ in solved for n in flat})
+    out = []
+    for f in range(first or frames[0], (last or frames[-1]) + 1):
+        pose = {}
+        for name in names:
+            value = spline(frames, [flat.get(name, (0, 0, 0) if name != "loc" else (0, 0)) for flat, _ in solved], f)
+            pose[name] = tuple(value) if name == "loc" else (value if any(abs(v) > 1e-9 for v in value[1:]) else value[0])
+        ox, oz = origin(f, length, reach)
+        for leg in ("FR", "FL", "HR", "HL"):
+            target = spline(frames, [tg.get(leg) for _, tg in solved], f)
+            if target is not None:
+                base = FRONT_PAW if leg[0] == "F" else HIND_PAW
+                for b in LEG_BONES[leg]:
+                    pose.pop(b, None)
+                plant(pose, leg, target[0] - ox - base[0], target[1] - oz - base[1], target[2], target[3])
+        out.append((f, pose))
+    return out
+
+
+def hang_feet(fr=(0.03, 0.0), fl=(0.05, 0.0), hr=(0.04, 0.12, 70, 40), hl=(0.0, 0.05, 60, 30)):
+    """Hang-frame paw targets: the front wrists just over the corner (x, z offsets
+    from it), the hind ankles at model-space (x, z, paw, hock) against the wall."""
+    feet = {}
+    for leg, (x, z) in (("FR", fr), ("FL", fl)):
+        feet[leg] = (0.1 + x - FRONT_PAW[0], H + z, -5)
+    for leg, (x, z, paw, hock) in (("HR", hr), ("HL", hl)):
+        feet[leg] = (x - HIND_PAW[0], z - HIND_PAW[1], paw, hock)
+    return feet
+
+
+# Hanging: front paws hooked over the corner, chest against the wall, head peeking
+# over the edge, hind legs dangling and scrabbling at the wall.
+HANG = P(loc=(-0.1, 0.13), body=72, chest=-4, neck=-30, head=-36, jaw=-8, ears=(20, 0, 0), tail=(-25, 0, 0), feet=hang_feet())
+HANG_B = P(HANG, loc=(-0.104, 0.118), body=75, neck=-28, head=-40, jaw=-14, ears=(30, 0, 0), tail=(-25, 20, 0),
+           feet=hang_feet(hr=(0.05, 0.3, 80, 45), hl=(-0.04, 0.0, 40, 20)))
+HANG_C = P(HANG, loc=(-0.096, 0.124), body=70, neck=-32, head=-32, jaw=-6, ears=(15, 0, 0), tail=(-25, -20, 0),
+           feet=hang_feet(hr=(-0.02, 0.03, 40, 20), hl=(0.05, 0.28, 80, 45)))
+# Hauling up: elbows bend, chest rises over the corner, a hind paw pushes off the wall.
+HOIST = P(loc=(-0.02, 0.33), body=50, chest=-6, neck=-14, head=-26, jaw=-14, ears=(35, 0, 0), tail=(-20, 0, 0),
+          feet=hang_feet(hr=(0.07, 0.45, 85, 50), hl=(-0.04, 0.2, 40, 20)))
+OVER = P(loc=(0.14, 0.68), body=14, chest=-4, neck=-8, head=-4, jaw=-10, ears=(25, 0, 0), tail=(0, 20, 0),
+         feet={**hang_feet(fr=(0.17, 0.0), fl=(0.02, 0.0)), "HR": (0.22, H, 10, 0), "HL": (0.22, 0.42, 70, 30)})
+STEP_UP = stand(drop=0.03, chest=-3, neck=2, head=-2, jaw=-4, feet={"HL": (0.04, 0.07, 25)}, tail=(0, -20, 0))
+# Getup attack: a low lunging bite at the ankles.
+LEDGE_HOP = flying(0.6, body=8, neck=6, head=4, jaw=-20, ears=(50, 0, 0))
+LEDGE_CROUCH = stand(fwd=-0.04, drop=0.1, front=0.04, hind=-0.04, chest=-4, pelvis=10, neck=-6, head=-2, jaw=-24, ears=(-20, 0, 0), tail=(0, 40, 0))
+LEDGE_BITE = stand(fwd=0.15, drop=0.08, front=0.16, hind=-0.06, chest=-12, neck=-16, head=-4, jaw=-34, ears=(45, 0, 0), tail=(0, -20, 0))
+LEDGE_CHOMP = P(LEDGE_BITE, jaw=0, head=-8)
+
+
+# Rolling: curled up tight, paws folded against the chest and belly, chin tucked.
+TUCK = P(BALL, loc=(0, -0.1), neck=-35, head=-35, jaw=-4, upper_arm_R=115, forearm_R=-150, hand_R=-30, upper_arm_L=110, forearm_L=-145,
+         hand_L=-30, thigh_R=75, shin_R=-115, hock_R=70, foot_R=20, thigh_L=70, shin_L=-110, hock_L=70, foot_L=20, ears=(-20, 0, 0), tail=(-30, 0, 0))
+
+
+def ledge_hang():
+    """Loops on the world clock: a slow sway, the hind legs pedaling in turn."""
+    keys = [(1, HANG), (21, HANG_B), (41, HANG), (61, HANG_C), (81, HANG)]
+    keys = [(-19, HANG_C, HANG_AT)] + [(f, k, HANG_AT) for f, k in keys] + [(101, HANG_B, HANG_AT)]
+    return ledge_clip(keys, first=1, last=81)
+
+
+def ledge_climb():
+    """20 frames; the origin slides 0.9 m in and 0.9 m up."""
+    return ledge_clip([(1, HANG, HANG_AT), (6, HOIST, HANG_AT), (11, OVER, HANG_AT), (15, STEP_UP, (0.62, 0.0)), (20, G, None)], 20, 0.9)
+
+
+def ledge_roll():
+    """25 frames, 1.6 m in: hoist, then a tucked forward roll that pops up into idle."""
+    keys = [(1, HANG, HANG_AT), (5, HOIST, HANG_AT), (8, P(TUCK, body=10), (0.12, 0.06))]
+    for i, f in enumerate((10, 13, 16, 19)):
+        keys.append((f, P(TUCK, body=-50 - 90 * i), (0.3 + 0.26 * i, 0.0)))
+    return ledge_clip(keys + [(22, P(CROUCH, body=-360), (1.38, 0.0)), (25, P(G, body=-360), None)], 25, 1.6)
+
+
+def ledge_attack():
+    """30 frames, 1.1 m in: hops up and lunges, biting low on 15-18 around (0.6, 0.6)
+    from the origin (the sim's LEDGE_ATTACK_HITBOX, radius 0.6)."""
+    return ledge_clip([(1, HANG, HANG_AT), (5, HOIST, HANG_AT), (9, LEDGE_HOP, (0.2, 0.1)), (12, LEDGE_CROUCH, (0.45, 0.0)),
+                       (15, LEDGE_BITE, (0.45, 0.0)), (17, LEDGE_CHOMP, (0.47, 0.0)), (19, LEDGE_CHOMP, (0.47, 0.0)),
+                       (23, P(LEDGE_CROUCH, jaw=-4), (0.5, 0.0)), (26, P(LEDGE_HOP, loc=(0.0, 0.06)), (0.78, 0.0)), (30, G, None)], 30, 1.1)
+
+
 ANIMATIONS = {
     "idle": cycle(60, [IDLE, IDLE_B, IDLE_C, IDLE_B]),
     # Quick little legs: the pug scurries. Lateral walk; rotary gallop for the run.
@@ -1017,6 +1401,11 @@ ANIMATIONS = {
     "roll_f": roll(1),
     "roll_b": roll(-1),
     "airdodge": [(1, AIR), (4, AIRDODGE), (25, AIRDODGE), (34, AIR), (40, AIR)],
+    # Ledge: the hang loops; getups are keyed on their sim frames (see ledge_clip).
+    "ledge_hang": ledge_hang(),
+    "ledge_climb": ledge_climb(),
+    "ledge_roll": ledge_roll(),
+    "ledge_attack": ledge_attack(),
 }
 
 
