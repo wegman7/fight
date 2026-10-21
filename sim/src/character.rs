@@ -61,7 +61,14 @@ pub struct Moveset {
 }
 
 impl Moveset {
-    fn slots(&self) -> [MoveId; 24] {
+    /// Short names for [`Moveset::slots`], in the same order (reports, the balance harness).
+    pub const SLOT_NAMES: [&'static str; 24] = [
+        "jab", "ftilt", "utilt", "dtilt", "dash", "fsmash", "usmash", "dsmash", "nair", "fair", "bair", "uair", "dair", "nspec", "sspec",
+        "uspec", "dspec", "grab", "dgrab", "pummel", "fthrow", "bthrow", "uthrow", "dthrow",
+    ];
+
+    /// Every slot's move, in a fixed order (see [`Moveset::SLOT_NAMES`]).
+    pub fn slots(&self) -> [MoveId; 24] {
         [
             self.jab,
             self.ftilt,
@@ -88,6 +95,11 @@ impl Moveset {
             self.uthrow,
             self.dthrow,
         ]
+    }
+
+    /// The first slot that starts `mv`, if any (follow-ups like jab 2 have none).
+    pub fn slot_of(&self, mv: MoveId) -> Option<usize> {
+        self.slots().iter().position(|&m| m == mv)
     }
 }
 

@@ -302,6 +302,6 @@ joypad's name to the console at startup and whenever one connects.
 
 Tap jump (up to jump), DI, teching, tilting the shield, perfect
 shield, pivots, aerial grabs, hit flashes on the pug's fur (only its `Body` collar tints), animation blending, move data in hot-reloadable
-files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that punish or
-edge-guard (higher levels only react faster and attack more), stages that look different from each other
+files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that dodge,
+DI or follow hand-made combos, stages that look different from each other
 (all three use the same boardwalk and rafts), rollback netcode.

@@ -321,11 +321,11 @@ const GRAB_RELEASE_HOLDER_LAG: u8 = 15;
 const GRAB_RELEASE_VICTIM_LAG: u8 = 10;
 
 /// Knockback units -> launch speed, and per-frame decay of that speed (Melee).
-const LAUNCH_SPEED: Fx = Fx::ratio(3, 100);
-const KB_DECAY: Fx = Fx::ratio(51, 1000);
-const HITSTUN_PER_KB: Fx = Fx::ratio(4, 10);
+pub(crate) const LAUNCH_SPEED: Fx = Fx::ratio(3, 100);
+pub(crate) const KB_DECAY: Fx = Fx::ratio(51, 1000);
+pub(crate) const HITSTUN_PER_KB: Fx = Fx::ratio(4, 10);
 /// Grounded targets hit with less knockback than this slide instead of lifting off.
-const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
+pub(crate) const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Fighter {
