@@ -42,6 +42,7 @@ pub struct MenuView {
     stock_value: Gd<Label>,
     stock_dots: Gd<Label>,
     rules: Gd<Label>,
+    rules_style: Gd<StyleBoxFlat>,
     portraits: Vec<(Gd<StyleBoxFlat>, Render)>,
     slots: Vec<SlotView>,
     tokens: Vec<(Gd<Panel>, Gd<Label>)>,
@@ -121,9 +122,11 @@ impl MenuView {
         // Character select.
         let characters = &mut screens[1];
         characters.add_child(&text("CHOOSE YOUR CHARACTER", 46, Color::WHITE, rect(0.0, 30.0, menu::SCREEN.x, 70.0)));
-        let rules = text("", 26, HIGHLIGHT, rect(1180.0, 46.0, 380.0, 40.0));
-        rules.clone().set_horizontal_alignment(HorizontalAlignment::RIGHT);
-        characters.add_child(&rules);
+        let stocks_rect = menu::stocks_rect();
+        let (mut rules_button, rules_style) = panel(stocks_rect, PANEL_BG, PANEL_BORDER, 2, 8);
+        let rules = text("", 26, HIGHLIGHT, Rect2::new(Vector2::ZERO, stocks_rect.size));
+        rules_button.add_child(&rules);
+        characters.add_child(&rules_button);
         let mut portraits = Vec::new();
         for (i, &character) in Character::ALL.iter().enumerate() {
             let r = menu::portrait_rect(i);
@@ -158,7 +161,7 @@ impl MenuView {
             })
             .collect();
         characters.add_child(&hint(
-            "Move your hand · J  ,  pad A: pick up / drop your coin, click HMN/CPU, set CPU level · L  /  pad B: take your coin back · Enter / Start: fight · Esc: back",
+            "Move your hand · J  ,  pad A: pick up / drop your coin, click HMN/CPU, a CPU level or the stock count · L  /  pad B: take your coin back · Enter / Start: fight · Esc: back",
         ));
 
         // Stage select.
@@ -188,6 +191,7 @@ impl MenuView {
             stock_value,
             stock_dots,
             rules,
+            rules_style,
             portraits,
             slots,
             tokens,
@@ -224,6 +228,8 @@ impl MenuView {
         let plural = if menu.stocks == 1 { "" } else { "S" };
         self.rules.set_text(&format!("{} STOCK{plural}", menu.stocks));
         let present_hands: Vec<Vector2> = menu.hands.iter().filter(|h| h.present).map(|h| h.pos).collect();
+        let hovered = present_hands.iter().any(|&p| menu::stocks_rect().contains_point(p));
+        set_border(&mut self.rules_style, if hovered { HIGHLIGHT } else { PANEL_BORDER }, if hovered { 4 } else { 2 });
         for (i, (style, render)) in self.portraits.iter_mut().enumerate() {
             let hovered = present_hands.iter().any(|&p| menu::portrait_rect(i).contains_point(p));
             set_border(style, if hovered { HIGHLIGHT } else { PANEL_BORDER }, if hovered { 6 } else { 4 });

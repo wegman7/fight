@@ -77,7 +77,8 @@ Like Melee, a match is set up in three screens:
    **HMN / CPU / N/A** button that any hand can click (ports with no controller skip HMN),
    and CPU panels have a **level 1-9** slider: click a cell. CPU coins can be picked up
    and moved to another character by any hand. Once two or more players have picked,
-   **READY TO FIGHT!** shows: press Start.
+   **READY TO FIGHT!** shows: press Start. Click the **N STOCKS** button at the top right
+   (or press Esc / View) to go back and change the stock count.
 3. **Stage select**: any stick moves the cursor; pick **Boardwalk** (three rafts),
    **Sandbar** (flat, no platforms), **Driftwood** (one raft) or **Random**.
 

@@ -37,7 +37,7 @@ FIGHT_MUSIC_VOLUME=50 godot --path godot   # music volume 0-100 (default 70)
 
 | File | Contents |
 |---|---|
-| `menu.rs` | `Menu`: the screen (`Screen::Stocks` → `Characters` → `Stages`), stock count, the four player `Slot`s (`SlotKind` HMN / CPU / N/A, character, CPU level, where its coin sits), the four `Hand`s (position, which coin it carries), the stage cursor. `update` takes one `PortInput` per port (held buttons; it finds the presses itself) and returns `MenuEvent::StartMatch(MatchSetup)` or `Quit`. Also the layout: `portrait_rect`, `slot_rect`, `toggle_rect`, `level_rect`, `card_rect`, used for both hit tests and drawing. No Godot nodes, so its tests run under `cargo test`. |
+| `menu.rs` | `Menu`: the screen (`Screen::Stocks` → `Characters` → `Stages`), stock count, the four player `Slot`s (`SlotKind` HMN / CPU / N/A, character, CPU level, where its coin sits), the four `Hand`s (position, which coin it carries), the stage cursor. `update` takes one `PortInput` per port (held buttons; it finds the presses itself) and returns `MenuEvent::StartMatch(MatchSetup)` or `Quit`. Also the layout: `portrait_rect`, `slot_rect`, `toggle_rect`, `level_rect`, `stocks_rect`, `card_rect`, used for both hit tests and drawing. No Godot nodes, so its tests run under `cargo test`. |
 | `menu_view.rs` | `MenuView`: builds the Control nodes once (on a `CanvasLayer` over the beach) and each frame moves, recolors and shows them from `Menu`. Characters are drawn by `Render`, a `SubViewport` with its own 3D world holding the model, posed on the menu's frame counter (never free-running). Stage cards show a schematic drawn from the sim's `Stage` platforms. |
 
 A `MatchSetup` lists the players by port. Fighter `i` of the `World` is

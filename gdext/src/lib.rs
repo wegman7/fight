@@ -634,17 +634,6 @@ impl FightWorld {
         banner.set_position(Vector2::new(560.0, 360.0));
         layer.add_child(&banner);
         self.banner = Some(banner);
-
-        let mut help = styled_label(16, Color::from_rgba(1.0, 1.0, 1.0, 0.7));
-        help.set_text(
-            "P1: WASD move · J attack · K jump · L special · ; shield · U grab · I smash\n\
-             P2: arrows · , attack · . jump · / special · M shield · N grab · B smash\n\
-             Pads: stick · A attack · B special · X/Y jump · LT/RT shield · LB/RB grab · right stick smash\n\
-             Pad Start pause (then View: menu) · R rematch · Esc menu\n\
-             H hitboxes · P pause · F frame-advance · -/= music volume",
-        );
-        help.set_position(Vector2::new(16.0, 12.0));
-        layer.add_child(&help);
         self.arena.add_child(&layer);
     }
 

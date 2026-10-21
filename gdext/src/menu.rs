@@ -142,6 +142,11 @@ pub fn level_rect(slot: usize, level: u8) -> Rect2 {
     Rect2::new(slot_rect(slot).position + Vector2::new(x, 62.0), Vector2::new(22.0, 26.0))
 }
 
+/// Character select's "N STOCKS" button, top right: clicking it goes back to the stock screen.
+pub fn stocks_rect() -> Rect2 {
+    Rect2::new(Vector2::new(1340.0, 34.0), Vector2::new(220.0, 56.0))
+}
+
 /// Stage cards: one per `StageId::ALL`, then Random.
 pub const CARDS: usize = StageId::ALL.len() + 1;
 
@@ -371,6 +376,10 @@ impl Menu {
         }
         if let Some(s) = (0..PORTS).find(|&s| toggle_rect(s).contains_point(pos)) {
             self.toggle(s);
+            return;
+        }
+        if stocks_rect().contains_point(pos) {
+            self.enter(Screen::Stocks);
             return;
         }
         for s in (0..PORTS).filter(|&s| self.slots[s].kind == SlotKind::Cpu) {
@@ -648,6 +657,15 @@ mod tests {
     }
 
     #[test]
+    fn clicking_the_stock_count_goes_back_to_the_stock_screen() {
+        let mut m = menu();
+        tap(&mut m, 0, start);
+        click_at(&mut m, 1, stocks_rect().center());
+        assert_eq!(m.screen, Screen::Stocks);
+        assert_eq!(m.hands[1].holding, Some(1), "P2 still has its coin for when it comes back");
+    }
+
+    #[test]
     fn unplugging_drops_the_coin_on_a_default_character() {
         let mut m = menu();
         tap(&mut m, 0, start);
@@ -659,7 +677,11 @@ mod tests {
     #[test]
     fn layout_fits_on_screen_without_overlaps() {
         let screen = Rect2::new(Vector2::ZERO, SCREEN);
-        let mut rects: Vec<Rect2> = (0..Character::ALL.len()).map(portrait_rect).chain((0..PORTS).map(slot_rect)).collect();
+        let mut rects: Vec<Rect2> = (0..Character::ALL.len())
+            .map(portrait_rect)
+            .chain((0..PORTS).map(slot_rect))
+            .chain([stocks_rect()])
+            .collect();
         for r in &rects {
             assert!(screen.encloses(*r), "{r:?} off screen");
         }
