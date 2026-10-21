@@ -4,7 +4,7 @@
 use fight_sim::{Character, StageId};
 
 use crate::probe::{Recovery, recovery};
-use crate::runner::SLOTS;
+use crate::runner::{Defense, SLOTS};
 use crate::tournament::{Game, TournamentConfig};
 use crate::tuning::Tuning;
 
@@ -60,6 +60,8 @@ pub struct PlayStats {
     pub timeouts: u32,
     /// Moves started, by moveset slot (`Moveset::SLOT_NAMES`).
     pub moves: [u64; SLOTS],
+    /// Dodges, shields and DI, summed over its games.
+    pub defense: Defense,
 }
 
 /// A slot counts as part of a character's game once it's this share of its moves.
@@ -107,6 +109,21 @@ impl PlayStats {
 
     pub fn timeout_rate(&self) -> f64 {
         self.timeouts as f64 / self.games.max(1) as f64
+    }
+
+    /// `count` per minute of play.
+    pub fn per_minute(&self, count: u32) -> f64 {
+        count as f64 * 3600.0 / self.frames.max(1) as f64
+    }
+
+    /// Share of its shields it acted out of (grab, jump, up special, up smash).
+    pub fn out_of_shield_rate(&self) -> f64 {
+        self.defense.out_of_shield as f64 / self.defense.shields.max(1) as f64
+    }
+
+    /// Share of its DI-able launches it DI'd.
+    pub fn di_rate(&self) -> f64 {
+        self.defense.di as f64 / self.defense.launches.max(1) as f64
     }
 }
 
@@ -243,6 +260,7 @@ impl Summary {
                 p.attacks += r.attacks[port] as u64;
                 p.hits += r.hits[port] as u64;
                 p.timeouts += r.timed_out as u32;
+                p.defense.add(&r.defense[port]);
             }
         }
         s

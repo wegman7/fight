@@ -56,6 +56,11 @@ Always use `--release`: a debug build is roughly 10x slower.
   the ledge: edge-guards), `reach` (how far past the ledge, in units, the CPU recovers
   from at stage height), `hit%` (hits per move started), damage per minute, timeouts,
   `moves` (moveset slots used for at least 0.5% of its moves, of 24), and flags.
+- **Defense**: how each character's CPU defends. `spot`, `roll`, `airdg` (dodges started),
+  `shield` (times it put its shield up) and `blocked` (hits on its shield) are per minute
+  of play; `breaks` is shield breaks per game; `OoS%` is the share of its shields it acted
+  straight out of (grab, jump, up special, up smash); `DI%` is the share of its airborne
+  launches it DI'd (stick out of the deadzone on the first hitstun frame).
 - **Move use %**: each character's moves by moveset slot (`Moveset::SLOT_NAMES`), so you
   can see which parts of a kit the numbers measure.
 - **Suggestion**: the round that played closest to even (root mean square distance from
@@ -114,7 +119,7 @@ change.
 
 | File | |
 |---|---|
-| `src/runner.rs` | `run_match(MatchConfig, Tuning) -> MatchResult`: one CPU-vs-CPU match to elimination or the frame cap |
+| `src/runner.rs` | `run_match(MatchConfig, Tuning) -> MatchResult`: one CPU-vs-CPU match to elimination or the frame cap, with each port's `Defense` (dodges, shields, DI) |
 | `src/tournament.rs` | `TournamentConfig::schedule`, `run_tournament` (threads, results in a fixed order) |
 | `src/summary.rs` | `Score` (rate, standard error), `PlayStats`, `Summary` (matrix, overall, by stage, port bias), `AiFlag`s |
 | `src/probe.rs` | `recovery`: the CPU's recovery reach and gaps, probed unit by unit |
