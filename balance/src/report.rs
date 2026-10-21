@@ -2,23 +2,23 @@
 
 use std::fmt::Write;
 
-use fight_sim::{Character, Fx};
+use fight_sim::{Character, Fx, Moveset};
 
-use crate::summary::{Score, TIMEOUT_FLAG};
+use crate::runner::SLOTS;
+use crate::summary::{MOVE_USE_THRESHOLD, Score, TIMEOUT_FLAG};
 use crate::tuner::{Round, Verdict};
 use crate::tuning::Tuning;
 
 /// The moves the CPU actually uses, so readers know what the numbers measure.
 pub const AI_CAVEAT: &str = "\
 CPU-vs-CPU results measure each character *as the CPU plays it*, not the character's
-ceiling. The CPU (sim/src/cpu.rs) walks, jabs, forward/up tilts, short-hops into an
-aerial, grabs and forward-throws, shields, and recovers with double jump then up
-special. It never uses smash attacks, neutral/side/down specials, other aerials or
-throws, dodges or edge-guards, and it spaces every character with the same attack
-range. Characters whose strength is in moves the CPU ignores will look weaker than
-they are. Nobody edge-guards, so most KOs are failed recoveries (bottom%): recovery
-reach weighs more here than in human play. Flagged characters' rates say more about
-the AI (or a ledge/recovery bug) than the character: fix those before tuning.";
+ceiling. The CPU (sim/src/cpu.rs) picks moves from the move data (hitboxes, motion,
+projectiles and the knockback formula: smash attacks to KO, projectiles at range,
+throws toward the ledge), anti-airs, edge-guards and recovers. It never dodges, DIs,
+charges smash attacks or runs hand-made combos, and its recovery is plain, so
+evasive, combo-heavy characters are likely undersold and hard hitters oversold; see
+the Move use table for what each rate measures. Flagged characters' rates say more
+about the AI (or a ledge/recovery bug) than the character: fix those before tuning.";
 
 fn pct(x: f64) -> String {
     if x.is_nan() { "-".into() } else { format!("{:.1}", x * 100.0) }
@@ -104,29 +104,58 @@ pub fn round_tables(round: &Round) -> String {
 
     let _ = writeln!(
         out,
-        "{:<10}{:>8}{:>10}{:>7}{:>7}{:>9}{:>10}  AI flags",
-        "AI check", "SD/KO%", "bottom%", "reach", "hit%", "dmg/min", "timeout%"
+        "{:<10}{:>8}{:>10}{:>8}{:>8}{:>7}{:>7}{:>9}{:>10}{:>7}  AI flags",
+        "AI check", "SD/KO%", "bottom%", "recov%", "edge%", "reach", "hit%", "dmg/min", "timeout%", "moves"
     );
     for (i, n) in names.iter().enumerate() {
         let p = &s.play[i];
         let flags: Vec<String> = s.flags(i).iter().map(ToString::to_string).collect();
         let _ = writeln!(
             out,
-            "{n:<10}{:>8}{:>10}{:>7}{:>7}{:>9.1}{:>10}  {}",
+            "{n:<10}{:>8}{:>10}{:>8}{:>8}{:>7}{:>7}{:>9.1}{:>10}{:>7}  {}",
             pct(p.self_destruct_rate()),
             pct(p.bottom_ko_rate()),
+            pct(p.failed_recovery_rate()),
+            pct(p.offstage_ko_rate()),
             s.recovery[i].reach,
             pct(p.accuracy()),
             p.damage_per_minute(),
             pct(p.timeout_rate()),
+            p.moves_used(),
             if flags.is_empty() { "-".into() } else { flags.join("; ") }
         );
     }
     let _ = writeln!(
         out,
         "SD/KO%: stocks lost with no hit in the last 5 s. bottom%: stocks lost off the bottom \
-         (failed recoveries). reach: how far past the ledge the CPU recovers from, in units."
+         (failed recoveries, spikes). recov%: of those, the ones with no hit taken offstage \
+         (failed recoveries). edge%: stocks lost to a hit taken offstage or on the ledge \
+         (edge-guards). reach: how far past the ledge the CPU recovers from, in units. moves: \
+         moveset slots used for at least {:.1}% of its moves (of {SLOTS}).\n",
+        MOVE_USE_THRESHOLD * 100.0
     );
+    out.push_str(&move_table(round));
+    out
+}
+
+/// Each character's share of its moves by moveset slot, in percent.
+fn move_table(round: &Round) -> String {
+    let s = &round.summary;
+    let mut out = String::new();
+    let _ = write!(out, "{:<10}", "Move use %");
+    for name in Moveset::SLOT_NAMES {
+        let _ = write!(out, "{name:>7}");
+    }
+    out.push('\n');
+    for (i, c) in s.characters.iter().enumerate() {
+        let _ = write!(out, "{:<10}", c.name());
+        for slot in 0..SLOTS {
+            let share = s.play[i].move_share(slot);
+            let text = if s.play[i].moves[slot] == 0 { "-".to_string() } else { format!("{:.1}", share * 100.0) };
+            let _ = write!(out, "{text:>7}");
+        }
+        out.push('\n');
+    }
     out
 }
 
@@ -281,7 +310,7 @@ pub fn to_json(rounds: &[Round]) -> String {
                     s.stages.iter().zip(&s.by_stage[i]).map(|(st, sc)| format!("{}:{}", json_str(st.name()), score_json(sc))).collect();
                 format!(
                     "{{\"name\":{},\"knobs\":{{\"damage\":{},\"knockback\":{},\"weight\":{},\"speed\":{}}},\"overall\":{},\"by_stage\":{{{}}},\
-                     \"play\":{{\"games\":{},\"self_destruct_rate\":{},\"bottom_ko_rate\":{},\"recovery_reach\":{},\"accuracy\":{},\"damage_per_minute\":{},\"timeout_rate\":{}}},\
+                     \"play\":{{\"games\":{},\"self_destruct_rate\":{},\"bottom_ko_rate\":{},\"failed_recovery_rate\":{},\"offstage_ko_rate\":{},\"recovery_reach\":{},\"accuracy\":{},\"damage_per_minute\":{},\"timeout_rate\":{},\"moves_used\":{},\"move_use\":{{{}}}}},\
                      \"ai_flags\":[{}],\"verdict\":{}}}",
                     json_str(c.name()),
                     k.damage,
@@ -291,10 +320,12 @@ pub fn to_json(rounds: &[Round]) -> String {
                     score_json(&s.overall[i]),
                     by_stage.join(","),
                     p.games,
-                    json_num(p.self_destruct_rate()), json_num(p.bottom_ko_rate()), s.recovery[i].reach,
+                    json_num(p.self_destruct_rate()), json_num(p.bottom_ko_rate()), json_num(p.failed_recovery_rate()), json_num(p.offstage_ko_rate()), s.recovery[i].reach,
                     json_num(p.accuracy()),
                     json_num(p.damage_per_minute()),
                     json_num(p.timeout_rate()),
+                    p.moves_used(),
+                    Moveset::SLOT_NAMES.iter().enumerate().map(|(slot, n)| format!("{}:{}", json_str(n), json_num(p.move_share(slot)))).collect::<Vec<_>>().join(","),
                     flags.join(","),
                     json_str(&verdict_text(&round.verdicts[i]))
                 )

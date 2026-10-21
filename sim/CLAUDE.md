@@ -40,6 +40,15 @@
 - CPU players (`cpu.rs`) read `&World` and return an `Input`, nothing else. Their
   randomness comes from the `rng` field (xorshift), never from time or the OS, so CPU
   matches replay identically. Behaviour changes need a test in `tests/cpu.rs`.
+- The CPU picks moves by input slot from the move data (`evaluate` / `simulate` /
+  `score`), never by `MoveId` or character: don't special-case a character there. A new
+  move in a moveset is used automatically; if the CPU misjudges it, fix the generic
+  model (prediction, motion, scoring), not that move. Keep `CpuLevel` scaling: levels
+  1-3 never edge-guard, and only level 7+ goes offstage after an opponent.
+- Solid platforms have solid sides (`Fighter::stop_at_stage_side`): an airborne fighter
+  can't enter one's x range below its top. A ledge or recovery change keeps
+  `drifting_in_below_the_top_grabs_the_ledge_instead_of_slipping_under` passing, and
+  the balance harness's probe should report no `recovery gaps`.
 - Changing gravity → retune that character's `full_hop` / `short_hop` / `double_jump`
   so heights hold (h ≈ v²/2g; scale speeds by √ of the gravity ratio), keep
   `jump_h_speed` within 60-80% of `air_speed`, and check vertical KO percents against

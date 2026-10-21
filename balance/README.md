@@ -51,9 +51,13 @@ Always use `--release`: a debug build is roughly 10x slower.
   `later` (out of line, but the loop only changes the `--max-changes` furthest out per
   round), `held: AI issue`, `at tuning limit`.
 - **AI check**: `SD/KO%` (stocks lost with no hit in the last 5 s), `bottom%` (stocks lost
-  off the bottom: failed recoveries), `reach` (how far past the ledge, in units, the
-  CPU recovers from at stage height), `hit%` (hits per move started), damage per minute,
-  timeouts, and flags.
+  off the bottom: failed recoveries and spikes), `recov%` (of those, the ones with no hit
+  taken offstage: failed recoveries), `edge%` (stocks lost to a hit taken offstage or on
+  the ledge: edge-guards), `reach` (how far past the ledge, in units, the CPU recovers
+  from at stage height), `hit%` (hits per move started), damage per minute, timeouts,
+  `moves` (moveset slots used for at least 0.5% of its moves, of 24), and flags.
+- **Move use %**: each character's moves by moveset slot (`Moveset::SLOT_NAMES`), so you
+  can see which parts of a kit the numbers measure.
 - **Suggestion**: the round that played closest to even (root mean square distance from
   50%), as knobs and as a diff of `sim/src/fighter.rs`.
 
@@ -79,21 +83,27 @@ shipped game exactly.
 ## The caveat: this measures the CPU, too
 
 CPU-vs-CPU results measure each character **as the CPU plays it**. The CPU
-(`sim/src/cpu.rs`) walks, jabs (into jab combos), forward/up tilts, short-hops into an
-aerial, grabs and forward-throws, shields, and recovers with double jump then up special.
-It never uses smash attacks, neutral/side/down specials, most aerials and throws, dodges
-or edge-guards, and it spaces every character with the same attack range. So:
+(`sim/src/cpu.rs`) walks or runs in to its own reach, picks moves from the move data (every hitbox, grab box, scripted motion and projectile is played forward against where it predicts the opponent will be, and scored on damage, speed, end lag and whether the knockback formula says the launch KOs or leaves the opponent offstage), anti-airs or waits under an airborne opponent rather than chasing its jumps, edge-guards from level 4 (ground moves and projectiles from the ledge; from level 7 it also jumps off after the recovering opponent, keeping a jump to come back with), picks throws the same way, shields attacks and projectiles (counters at high levels), mixes up ledge getups, and recovers with double jump then up special. It is generic: the same scoring runs on every character's move data, with no
+per-character script. What it still doesn't do, so read the numbers with it in mind:
 
-- Characters whose strengths are in moves the CPU ignores (the ninja's speed, combos and
-  specials; the soldier's rifle and grenade) look weaker than they are.
-- Nobody edge-guards, so most KOs are **failed recoveries** (`bottom%`): recovery reach
-  decides survival more than weight or percent does. Long-reach recoverers (pug, hobo)
-  rarely die off the bottom.
+- No dodges, rolls or air dodges, no DI, no charged smash attacks, no dash grabs, and
+  only jab combos (no hand-made combo routes). Its up and down throws rarely score best.
+  Characters whose strength is speed, combos or evasion (the ninja, the pug) are likely
+  undersold; heavy, hard-hitting ones (soldier, samurai) gain most from a CPU that
+  scores moves on damage and kill power.
+- Its recovery is plain (drift, double jump, up special; no side-special or air-dodge
+  recoveries, no mix-ups against an edge-guarder), so short-reach recoverers (the
+  soldier) still lose stocks to failed recoveries (`recov%`).
+- It can't see an opponent's counter window coming, and it shields projectiles only
+  within a few frames.
 - Flagged characters' rates say more about the AI than the character. Flags:
   `self-destructs` (over 10% of stocks lost unforced) and `timeouts` (well above the
   cast's rate) hold a character out of the loop; `whiffs` (hit rate far below the cast)
   and `recovery gaps` (it falls from distances *closer* than ones it makes it back from:
-  a ledge-grab or recovery bug) are warnings.
+  a ledge-grab or recovery bug) are warnings. (The gaps the first runs found, 4-6-unit
+  bands where a full-drift recovery dropped below the top just outside the corner and
+  fell through the stage, were a sim bug: solid platforms now have solid sides.)
+  `narrow moveset` (fewer than 12 of its 24 slots used) is a warning too.
 - A cast-wide timeout rate is reported once, above the tables, instead of holding
   everyone back.
 

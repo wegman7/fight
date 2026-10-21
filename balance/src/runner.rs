@@ -1,6 +1,6 @@
 //! One CPU-vs-CPU match, start to finish, on the headless sim.
 
-use fight_sim::{Character, Cpu, Event, Fx, State, StageId, World};
+use fight_sim::{Character, Cpu, Event, Fighter, Fx, Moveset, Platform, State, StageId, World};
 
 use crate::tuning::Tuning;
 
@@ -13,6 +13,9 @@ pub const SELF_DESTRUCT_WINDOW: u32 = 5 * 60;
 
 /// A fighter this close above the bottom blast zone the frame before a KO went out the bottom.
 const BOTTOM_MARGIN: Fx = Fx::int(10);
+
+/// Moveset slots ([`Moveset::SLOT_NAMES`]).
+pub const SLOTS: usize = Moveset::SLOT_NAMES.len();
 
 /// What to play: like the game's `MatchSetup`, with both ports CPUs and a seed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,9 +46,16 @@ pub struct MatchResult {
     pub damage_dealt: [i32; 2],
     /// Stocks each port lost to self-destructs (no hit within [`SELF_DESTRUCT_WINDOW`]).
     pub self_destructs: [u8; 2],
-    /// Stocks each port lost off the bottom blast zone: failed recoveries, since the
-    /// CPU never spikes or edge-guards.
+    /// Stocks each port lost off the bottom blast zone: mostly failed recoveries
+    /// (spikes count too).
     pub bottom_kos: [u8; 2],
+    /// Stocks each port lost to a hit taken offstage or on the ledge: edge-guards.
+    pub offstage_kos: [u8; 2],
+    /// Stocks each port lost off the bottom without being hit offstage: failed recoveries.
+    pub failed_recoveries: [u8; 2],
+    /// Moves each port started, by moveset slot ([`Moveset::SLOT_NAMES`]). Follow-ups
+    /// (jab 2, a counter's answer) belong to no slot and aren't counted.
+    pub moves: [[u32; SLOTS]; 2],
     /// Moves each port started from a non-attacking state (swings, grabs, specials).
     pub attacks: [u32; 2],
     /// Hits each port landed (shielded ones excluded).
@@ -81,8 +91,11 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
 
     let mut result = MatchResult::default();
     let mut last_hit: [Option<u32>; 2] = [None, None];
+    let mut hit_offstage = [false; 2];
+    let main = world.stage.platforms.iter().find(|p| !p.soft).cloned().expect("a stage without a solid platform");
     while world.frame < config.frame_cap {
         let was_attacking: Vec<bool> = world.fighters.iter().map(|f| matches!(f.state, State::Attack { .. })).collect();
+        let was_move: Vec<_> = world.fighters.iter().map(|f| if let State::Attack { mv, .. } = f.state { Some(mv) } else { None }).collect();
         let was_low: Vec<bool> = world.fighters.iter().map(|f| f.y < world.stage.blast_bottom + BOTTOM_MARGIN).collect();
         let inputs = [cpus[0].think(&world), cpus[1].think(&world)];
         world.step(&inputs);
@@ -90,6 +103,12 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
         for (i, f) in world.fighters.iter().enumerate() {
             if !was_attacking[i] && matches!(f.state, State::Attack { .. }) {
                 result.attacks[i] += 1;
+            }
+            if let State::Attack { mv, .. } = f.state
+                && was_move[i] != Some(mv)
+                && let Some(slot) = f.character.moveset().slot_of(mv)
+            {
+                result.moves[i][slot] += 1;
             }
             if matches!(f.state, State::Held { .. }) {
                 last_hit[i] = Some(world.frame);
@@ -101,15 +120,22 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
                     result.hits[attacker] += 1;
                     result.damage_dealt[attacker] += damage;
                     last_hit[defender] = Some(world.frame);
+                    hit_offstage[defender] = offstage(&world.fighters[defender], &main);
                 }
                 Event::Ko { fighter } => {
                     if last_hit[fighter].is_none_or(|t| world.frame - t > SELF_DESTRUCT_WINDOW) {
                         result.self_destructs[fighter] += 1;
+                    } else if hit_offstage[fighter] {
+                        result.offstage_kos[fighter] += 1;
                     }
                     if was_low[fighter] {
                         result.bottom_kos[fighter] += 1;
+                        if !hit_offstage[fighter] {
+                            result.failed_recoveries[fighter] += 1;
+                        }
                     }
                     last_hit[fighter] = None;
+                    hit_offstage[fighter] = false;
                 }
                 _ => {}
             }
@@ -132,4 +158,9 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
         _ => None,
     };
     result
+}
+
+/// Offstage or hanging from the ledge (where a hit is an edge-guard).
+fn offstage(f: &Fighter, main: &Platform) -> bool {
+    f.state == State::LedgeHang || (!f.grounded() && (!main.contains_x(f.x) || f.y < main.y))
 }

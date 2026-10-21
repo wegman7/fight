@@ -4,6 +4,7 @@
 use fight_sim::{Character, StageId};
 
 use crate::probe::{Recovery, recovery};
+use crate::runner::SLOTS;
 use crate::tournament::{Game, TournamentConfig};
 use crate::tuning::Tuning;
 
@@ -51,11 +52,18 @@ pub struct PlayStats {
     pub stocks_lost: u32,
     pub self_destructs: u32,
     pub bottom_kos: u32,
+    pub offstage_kos: u32,
+    pub failed_recoveries: u32,
     pub damage_dealt: i64,
     pub attacks: u64,
     pub hits: u64,
     pub timeouts: u32,
+    /// Moves started, by moveset slot (`Moveset::SLOT_NAMES`).
+    pub moves: [u64; SLOTS],
 }
+
+/// A slot counts as part of a character's game once it's this share of its moves.
+pub const MOVE_USE_THRESHOLD: f64 = 0.005;
 
 impl PlayStats {
     /// Share of its stocks lost without being hit in the last few seconds.
@@ -66,6 +74,26 @@ impl PlayStats {
     /// Share of its stocks lost off the bottom: failed recoveries.
     pub fn bottom_ko_rate(&self) -> f64 {
         self.bottom_kos as f64 / self.stocks_lost.max(1) as f64
+    }
+
+    /// Share of its stocks lost off the bottom without a hit offstage: failed recoveries.
+    pub fn failed_recovery_rate(&self) -> f64 {
+        self.failed_recoveries as f64 / self.stocks_lost.max(1) as f64
+    }
+
+    /// Share of its stocks lost to a hit taken offstage or on the ledge (edge-guards).
+    pub fn offstage_ko_rate(&self) -> f64 {
+        self.offstage_kos as f64 / self.stocks_lost.max(1) as f64
+    }
+
+    /// Share of its moves started from `slot`.
+    pub fn move_share(&self, slot: usize) -> f64 {
+        self.moves[slot] as f64 / self.moves.iter().sum::<u64>().max(1) as f64
+    }
+
+    /// Moveset slots it uses (at least `MOVE_USE_THRESHOLD` of its moves each).
+    pub fn moves_used(&self) -> usize {
+        (0..SLOTS).filter(|&i| self.move_share(i) >= MOVE_USE_THRESHOLD).count()
     }
 
     /// Hits landed per move started.
@@ -96,6 +124,8 @@ pub enum AiFlag {
     /// Fails to recover from some distances closer than ones it makes it back from
     /// (`Recovery::gaps`, as ranges of units past the ledge).
     RecoveryGaps { ranges: String },
+    /// Uses few of its moveset's slots: its rate measures part of the character.
+    NarrowMoveset { used: usize },
 }
 
 impl AiFlag {
@@ -114,6 +144,7 @@ impl std::fmt::Display for AiFlag {
                 write!(f, "whiffs: lands {:.0}% of its swings vs a cast median of {:.0}%", accuracy * 100.0, cast_median * 100.0)
             }
             AiFlag::RecoveryGaps { ranges } => write!(f, "recovery gaps: falls from {ranges} units past the ledge, inside its reach"),
+            AiFlag::NarrowMoveset { used } => write!(f, "narrow moveset: uses {used} of its {SLOTS} move slots"),
         }
     }
 }
@@ -127,6 +158,8 @@ pub const TIMEOUT_FLAG: f64 = 0.05;
 pub const TIMEOUT_FLAG_VS_CAST: f64 = 2.0;
 /// Flag accuracy below this share of the cast's median.
 pub const WHIFF_FLAG: f64 = 0.6;
+/// Flag a character that uses fewer of its moveset's slots than this.
+pub const NARROW_MOVESET_FLAG: usize = 12;
 
 #[derive(Clone, Debug)]
 pub struct Summary {
@@ -201,6 +234,11 @@ impl Summary {
                 p.stocks_lost += lost[port] as u32;
                 p.self_destructs += r.self_destructs[port] as u32;
                 p.bottom_kos += r.bottom_kos[port] as u32;
+                p.offstage_kos += r.offstage_kos[port] as u32;
+                p.failed_recoveries += r.failed_recoveries[port] as u32;
+                for (total, &n) in p.moves.iter_mut().zip(&r.moves[port]) {
+                    *total += n as u64;
+                }
                 p.damage_dealt += r.damage_dealt[port] as i64;
                 p.attacks += r.attacks[port] as u64;
                 p.hits += r.hits[port] as u64;
@@ -231,6 +269,9 @@ impl Summary {
         }
         if !self.recovery[i].gaps.is_empty() {
             flags.push(AiFlag::RecoveryGaps { ranges: self.recovery[i].gap_ranges() });
+        }
+        if p.moves.iter().any(|&n| n > 0) && p.moves_used() < NARROW_MOVESET_FLAG {
+            flags.push(AiFlag::NarrowMoveset { used: p.moves_used() });
         }
         flags
     }

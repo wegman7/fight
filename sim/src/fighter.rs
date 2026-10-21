@@ -282,6 +282,9 @@ const LEDGE_ATTACK_FRAMES: u8 = 30;
 const LEDGE_CLIMB_IN: Fx = Fx::int(8);
 const LEDGE_ROLL_IN: Fx = Fx::int(15);
 const LEDGE_ATTACK_IN: Fx = Fx::int(10);
+/// A fighter stopped by a solid platform's side sits this far outside its edge
+/// (strictly outside, so it's inside the ledge grab box, never in the stage).
+const STAGE_SIDE_GAP: Fx = Fx::ratio(1, 100);
 /// Outward pop when another fighter steals the ledge.
 const LEDGE_STEAL_POP: Fx = Fx::int(2);
 const RESPAWN_FRAMES: u16 = 60;
@@ -318,11 +321,11 @@ const GRAB_RELEASE_HOLDER_LAG: u8 = 15;
 const GRAB_RELEASE_VICTIM_LAG: u8 = 10;
 
 /// Knockback units -> launch speed, and per-frame decay of that speed (Melee).
-const LAUNCH_SPEED: Fx = Fx::ratio(3, 100);
-const KB_DECAY: Fx = Fx::ratio(51, 1000);
-const HITSTUN_PER_KB: Fx = Fx::ratio(4, 10);
+pub(crate) const LAUNCH_SPEED: Fx = Fx::ratio(3, 100);
+pub(crate) const KB_DECAY: Fx = Fx::ratio(51, 1000);
+pub(crate) const HITSTUN_PER_KB: Fx = Fx::ratio(4, 10);
 /// Grounded targets hit with less knockback than this slide instead of lifting off.
-const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
+pub(crate) const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Fighter {
@@ -1064,7 +1067,7 @@ impl Fighter {
         self.drop_through = self.drop_through.saturating_sub(1);
         self.no_regrab = self.no_regrab.saturating_sub(1);
 
-        let prev_y = self.y;
+        let (prev_x, prev_y) = (self.x, self.y);
         self.x += self.vx + self.kb_x;
         self.y += self.vy + self.kb_y;
 
@@ -1085,17 +1088,39 @@ impl Fighter {
                     }
                 }
             }
-            None if self.vy + self.kb_y <= Fx::ZERO => {
+            None => {
+                let falling = self.vy + self.kb_y <= Fx::ZERO;
                 let landed_on = stage.platforms.iter().position(|plat| {
-                    !(plat.soft && self.drop_through > 0) && prev_y >= plat.y && self.y <= plat.y && plat.contains_x(self.x)
+                    falling && !(plat.soft && self.drop_through > 0) && prev_y >= plat.y && self.y <= plat.y && plat.contains_x(self.x)
                 });
                 if let Some(i) = landed_on {
                     self.land(i, stage.platforms[i].y);
                 } else {
-                    self.try_grab_ledge(stage);
+                    self.stop_at_stage_side(stage, prev_x);
+                    if falling {
+                        self.try_grab_ledge(stage);
+                    }
                 }
             }
-            None => {}
+        }
+    }
+
+    /// Solid platforms have solid sides: an airborne fighter whose feet are below a
+    /// solid platform's top can't move into its x range from outside. It stops just
+    /// outside the edge, where the ledge grab box is, and slides down the side until
+    /// its hands reach the ledge. Without this the stage is only a line: a recovery
+    /// drifting in whose feet dropped below the top a few units out (too low to land,
+    /// head still too high to grab) passed into the stage and fell through it.
+    fn stop_at_stage_side(&mut self, stage: &Stage, prev_x: Fx) {
+        for plat in stage.platforms.iter().filter(|p| !p.soft) {
+            if self.y >= plat.y || !plat.contains_x(self.x) || plat.contains_x(prev_x) {
+                continue;
+            }
+            let side = if prev_x < plat.left { 1 } else { -1 };
+            let edge_x = if side > 0 { plat.left } else { plat.right };
+            self.x = edge_x - STAGE_SIDE_GAP * side;
+            self.vx = Fx::ZERO;
+            self.kb_x = Fx::ZERO;
         }
     }
 

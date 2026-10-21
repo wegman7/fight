@@ -149,8 +149,10 @@ How each input works, with the chef's moves:
 | Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
 
 Falling past a solid platform's ledge grabs it (soft, pass-through platforms have no
-grabbable edges), whichever way you face: you turn to face the stage and hang there
-briefly invincible, and your double jump is restored.
+grabbable edges), whichever way you face. A solid platform's sides are solid below its
+top, so drifting in under the top stops you at the edge and you slide down into the
+grab. You turn to face the stage and hang there briefly invincible, and your double jump
+is restored.
 From a hang, up or toward the stage climbs up, jump ledge-jumps, shield rolls up, attack
 does a getup attack, and down or away drops off. Only one fighter can hold a ledge —
 grabbing an occupied one knocks its holder off.
@@ -300,6 +302,6 @@ joypad's name to the console at startup and whenever one connects.
 
 Tap jump (up to jump), DI, teching, tilting the shield, perfect
 shield, pivots, aerial grabs, hit flashes on the pug's fur (only its `Body` collar tints), animation blending, move data in hot-reloadable
-files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that punish or
-edge-guard (higher levels only react faster and attack more), stages that look different from each other
+files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that dodge,
+DI or follow hand-made combos, stages that look different from each other
 (all three use the same boardwalk and rafts), rollback netcode.

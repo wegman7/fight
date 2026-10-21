@@ -1,4 +1,4 @@
-use fight_sim::{Character, Cpu, CpuLevel, Event, Fx, Input, MoveId, Stage, StageId, State, World};
+use fight_sim::{Character, Cpu, CpuLevel, Event, Fighter, Fx, Input, MoveId, Stage, StageId, State, World};
 
 fn world() -> World {
     World::new(Stage::battlefield(), &[Character::Chef; 2], 3)
@@ -119,14 +119,12 @@ fn easy_cpu_mashes_out_of_grabs() {
     assert!(held < 40, "held for {held} frames");
 }
 
-/// 25 units past each main-stage ledge, 15 below it: deep enough that only the up
-/// special gets back. Kept clear of the band (about 34-39 units out for the chef)
-/// where a full-drift up special sails past the ledge-grab box just above the corner
-/// and slips under the stage; floatier tuning shifts that band, a fixed spot didn't track it.
+/// x = ±85, 15 below the stage (about 36 units past each main-stage ledge): deep
+/// enough that only the up special gets back. This sits in the band where a
+/// full-drift up special used to drop below the top just outside the corner and slip
+/// under the stage; the stage's solid sides now stop it at the ledge.
 fn up_special_starts() -> [(Fx, i32); 2] {
-    let stage = Stage::battlefield();
-    let main = &stage.platforms[0];
-    [(main.left - Fx::int(25), 1), (main.right + Fx::int(25), -1)]
+    [(Fx::int(-85), 1), (Fx::int(85), -1)]
 }
 
 #[test]
@@ -135,15 +133,17 @@ fn easy_cpu_up_specials_back_without_a_double_jump() {
         let (mut w, mut cpu) = (world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
         (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (x, Fx::int(-15), None, State::Air, 0);
-        let mut used_up_special = false;
+        let (mut used_up_special, mut landed) = (false, false);
         for _ in 0..240 {
             let input = cpu.think(&w);
             w.step(&[Input::default(), input]);
             used_up_special |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::UpSpecial, .. });
+            // Once back, it may be mid-hop at the end, so look for any landing.
+            landed |= w.fighters[1].grounded();
         }
         assert!(used_up_special, "from x={x:?}");
         assert_eq!(w.fighters[1].stocks, 3, "fell from x={x:?}");
-        assert!(w.fighters[1].grounded(), "not back on stage from x={x:?}");
+        assert!(landed, "not back on stage from x={x:?}");
     }
 }
 
@@ -153,29 +153,31 @@ fn cpu_facing_away_from_the_stage_reverses_its_up_special_toward_it() {
         let (mut w, mut cpu) = (world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
         (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left, f.facing) = (x, Fx::int(-15), None, State::Air, 0, -toward);
-        let mut up_special_facing = None;
+        let (mut up_special_facing, mut landed) = (None, false);
         for _ in 0..240 {
             let input = cpu.think(&w);
             w.step(&[Input::default(), input]);
             if let State::Attack { mv: MoveId::UpSpecial, frame: 4, .. } = w.fighters[1].state {
                 up_special_facing.get_or_insert(w.fighters[1].facing);
             }
+            landed |= w.fighters[1].grounded();
         }
         assert_eq!(up_special_facing, Some(toward), "from x={x:?}");
         assert_eq!(w.fighters[1].stocks, 3, "fell from x={x:?}");
-        assert!(w.fighters[1].grounded(), "not back on stage from x={x:?}");
+        assert!(landed, "not back on stage from x={x:?}");
     }
 }
 
 #[test]
 fn easy_cpu_grabs_and_throws_sometimes() {
-    let (mut w, mut cpu) = (world(), Cpu::easy(1));
+    // Plenty of stocks: the CPU takes three off an idle dummy well inside two minutes.
+    let (mut w, mut cpu) = (World::new(Stage::battlefield(), &[Character::Chef; 2], 99), Cpu::easy(1));
     let (mut grabs, mut throws) = (0, 0);
     for _ in 0..60 * 120 {
         let input = cpu.think(&w);
         w.step(&[idle(&w), input]);
         grabs += w.events.iter().filter(|e| matches!(e, Event::Grab { attacker: 1, .. })).count();
-        throws += matches!(w.fighters[1].state, State::Attack { mv: MoveId::FThrow, frame: 1, .. }) as usize;
+        throws += matches!(w.fighters[1].state, State::Attack { mv: MoveId::FThrow | MoveId::BThrow | MoveId::UThrow | MoveId::DThrow, frame: 1, .. }) as usize;
     }
     assert!(grabs > 0 && throws > 0, "{grabs} grabs, {throws} throws in 2 minutes");
 }
@@ -309,5 +311,238 @@ fn cpu_lands_hits_on_every_stage() {
         let mut cpu = Cpu::with_level(1, 5);
         let (_, hits) = vs_idle(&mut w, &mut cpu, 60 * 20);
         assert!(hits > 0, "never hit an idle opponent on {}", id.name());
+    }
+}
+
+/// Plays two CPUs against each other for `frames`. Returns, per port, how many times
+/// it started each moveset slot (`Moveset::slots` order) and the damage it dealt.
+fn cpu_vs_cpu(w: &mut World, cpus: &mut [Cpu; 2], frames: usize) -> ([[u32; 24]; 2], [i32; 2]) {
+    let (mut slots, mut damage) = ([[0; 24]; 2], [0; 2]);
+    for _ in 0..frames {
+        let before: Vec<Option<MoveId>> = w.fighters.iter().map(current_move).collect();
+        let inputs = [cpus[0].think(w), cpus[1].think(w)];
+        w.step(&inputs);
+        for (i, f) in w.fighters.iter().enumerate() {
+            if let Some(mv) = current_move(f)
+                && before[i] != Some(mv)
+                && let Some(slot) = f.character.moveset().slot_of(mv)
+            {
+                slots[i][slot] += 1;
+            }
+        }
+        for e in &w.events {
+            if let Event::Hit { attacker, damage: d, .. } = *e {
+                damage[attacker] += d;
+            }
+        }
+    }
+    (slots, damage)
+}
+
+fn current_move(f: &Fighter) -> Option<MoveId> {
+    if let State::Attack { mv, .. } = f.state { Some(mv) } else { None }
+}
+
+/// Puts fighter `i` standing on the Boardwalk's right side platform at `x`.
+fn on_side_platform(w: &mut World, i: usize, x: Fx) {
+    let plat = w.stage.platforms[2].clone();
+    let f = &mut w.fighters[i];
+    (f.x, f.y, f.grounded_on, f.state) = (x, plat.y, Some(2), State::Ground);
+}
+
+#[test]
+fn two_top_cpus_on_a_side_platform_keep_fighting() {
+    // The stalemate the balance harness found: both on one side platform, each
+    // jumping after the other whenever it was airborne above, almost never attacking.
+    for seed in 0..4 {
+        let mut w = World::new(StageId::Boardwalk.stage(), &[Character::Chef; 2], 3);
+        let plat = w.stage.platforms[2].clone();
+        on_side_platform(&mut w, 0, plat.left + Fx::int(6));
+        on_side_platform(&mut w, 1, plat.right - Fx::int(6));
+        let mut cpus = [Cpu::with_level(0, 9).with_seed(seed), Cpu::with_level(1, 9).with_seed(seed)];
+        let (slots, damage) = cpu_vs_cpu(&mut w, &mut cpus, 60 * 60);
+        // (The traced stalemate: about 10 attacks in 8 minutes.)
+        let moves: u32 = slots.iter().flatten().sum();
+        assert!(moves >= 40, "seed {seed}: {moves} moves started in a minute");
+        assert!(damage[0] + damage[1] >= 150, "seed {seed}: {damage:?}% dealt in a minute");
+        assert!(w.fighters.iter().any(|f| f.stocks < 3), "seed {seed}: no KO in a minute");
+    }
+}
+
+#[test]
+fn cpu_does_not_climb_after_an_opponent_who_is_only_jumping() {
+    // P1 jumps over and over (full hop, then double jump at the top) on a flat stage.
+    // The CPU shouldn't chase every jump with a full hop and double jump of its own:
+    // it waits under P1, anti-airs it, or jumps once with an aerial.
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 99);
+    (w.fighters[0].x, w.fighters[1].x) = (Fx::int(0), Fx::int(20));
+    let mut cpu = Cpu::with_level(1, 9);
+    let (mut double_jumps, mut hits, mut prev_jumps) = (0, 0, w.fighters[1].air_jumps_left);
+    for frame in 0..60 * 30 {
+        let p1 = &w.fighters[0];
+        let jump = match p1.state {
+            State::Ground => frame % 2 == 0,
+            State::Air => p1.vy <= Fx::ZERO && p1.air_jumps_left > 0 && frame % 2 == 0,
+            _ => false,
+        };
+        let p1_input = Input { buttons: if jump { Input::JUMP } else { 0 }, ..Input::default() };
+        let input = cpu.think(&w);
+        w.step(&[p1_input, input]);
+        let me = &w.fighters[1];
+        double_jumps += (me.state == State::Air && me.air_jumps_left < prev_jumps) as usize;
+        prev_jumps = me.air_jumps_left;
+        hits += w.events.iter().filter(|e| matches!(e, Event::Hit { attacker: 1, .. })).count();
+    }
+    assert!(hits >= 3, "{hits} hits on a jumping opponent in 30 s");
+    assert!(double_jumps <= 2, "double-jumped after it {double_jumps} times in 30 s");
+}
+
+/// P1 starts offstage past the right ledge and recovers like a level-1 CPU (which
+/// never edge-guards); P2, at `level`, waits on stage. Returns P2's hits on P1 while P1
+/// is offstage or on the ledge, and P2's stocks once P1 is back (or 6 s have passed).
+fn edge_guard_trial(level: u8, character: Character, seed: u32) -> (usize, u8) {
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef, character], 3);
+    let main = w.stage.platforms[0].clone();
+    let f = &mut w.fighters[0];
+    (f.x, f.y, f.grounded_on, f.state, f.vx) = (main.right + Fx::int(30), Fx::int(10), None, State::Air, Fx::int(1));
+    f.percent = 60;
+    w.fighters[1].x = main.right - Fx::int(30);
+    let mut cpus = [Cpu::with_level(0, 1).with_seed(seed), Cpu::with_level(1, level).with_seed(seed)];
+    let mut offstage_hits = 0;
+    for _ in 0..60 * 6 {
+        let inputs = [cpus[0].think(&w), cpus[1].think(&w)];
+        w.step(&inputs);
+        let p1 = &w.fighters[0];
+        let off = p1.state == State::LedgeHang || (!p1.grounded() && (!main.contains_x(p1.x) || p1.y < main.y));
+        offstage_hits += w.events.iter().filter(|e| off && matches!(e, Event::Hit { attacker: 1, .. })).count();
+        if p1.grounded() && main.contains_x(p1.x) {
+            break;
+        }
+    }
+    // Let P2 finish whatever it started out there.
+    for _ in 0..60 * 4 {
+        let inputs = [cpus[0].think(&w), cpus[1].think(&w)];
+        w.step(&inputs);
+    }
+    (offstage_hits, w.fighters[1].stocks)
+}
+
+#[test]
+fn top_cpus_edge_guard_and_low_cpus_do_not() {
+    for character in Character::ALL {
+        let (mut top, mut low) = (0, 0);
+        for seed in 0..10 {
+            let (hits, stocks) = edge_guard_trial(9, character, seed);
+            assert_eq!(stocks, 3, "{character:?} lost a stock edge-guarding (seed {seed})");
+            top += (hits > 0) as usize;
+            low += (edge_guard_trial(1, character, seed).0 > 0) as usize;
+        }
+        assert!(top >= 4, "{character:?}: a level-9 CPU hit the recovering opponent in {top} of 10 tries");
+        assert_eq!(low, 0, "{character:?}: a level-1 CPU edge-guarded");
+    }
+}
+
+#[test]
+fn cpu_reaches_for_a_smash_attack_at_kill_percent() {
+    // An idle opponent just in front: at 0% the CPU mostly pokes; at 150% it goes for
+    // what its launch estimate says KOs, which is its smash attacks.
+    let first_move = |percent: i32, seed: u32| {
+        let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+        (w.fighters[0].x, w.fighters[1].x, w.fighters[1].facing) = (Fx::int(0), Fx::int(9), -1);
+        w.fighters[0].percent = percent;
+        let mut cpu = Cpu::with_level(1, 9).with_seed(seed);
+        for _ in 0..120 {
+            let input = cpu.think(&w);
+            w.step(&[Input::default(), input]);
+            if let Some(mv) = current_move(&w.fighters[1]) {
+                return Some(mv);
+            }
+        }
+        None
+    };
+    let smash = |mv: Option<MoveId>| matches!(mv, Some(MoveId::FSmash | MoveId::USmash | MoveId::DSmash));
+    let (mut low, mut high) = (0, 0);
+    for seed in 0..20 {
+        low += smash(first_move(0, seed)) as usize;
+        high += smash(first_move(150, seed)) as usize;
+    }
+    assert!(high >= 16, "smash attacks on an opponent at 150%: {high} of 20");
+    assert!(low <= 12, "smash attacks on an opponent at 0%: {low} of 20");
+
+    // And the KO lands.
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+    (w.fighters[0].x, w.fighters[1].x, w.fighters[1].facing, w.fighters[0].percent) = (Fx::int(0), Fx::int(9), -1, 150);
+    let mut cpu = Cpu::with_level(1, 9);
+    for _ in 0..240 {
+        let input = cpu.think(&w);
+        w.step(&[Input::default(), input]);
+    }
+    assert!(w.fighters[0].stocks < 3, "no KO at 150% in 4 s");
+}
+
+#[test]
+fn cpus_use_their_projectiles_at_range() {
+    // An idle opponent across the stage: anyone with a projectile special that
+    // reaches that far (not the pug's short sneeze cloud) uses it.
+    for character in Character::ALL {
+        let moves = character.moveset();
+        let reaches = |mv: &MoveId| mv.data().projectile.as_ref().is_some_and(|p| p.gravity > Fx::ZERO || p.speed * Fx::int(p.lifetime as i32) > Fx::int(60));
+        let shots: Vec<MoveId> = [moves.neutral_special, moves.side_special].into_iter().filter(reaches).collect();
+        if shots.is_empty() {
+            continue;
+        }
+        let mut fired = false;
+        for seed in 0..10 {
+            let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef, character], 3);
+            (w.fighters[0].x, w.fighters[1].x, w.fighters[1].facing) = (Fx::int(-28), Fx::int(27), -1);
+            let mut cpu = Cpu::with_level(1, 9).with_seed(seed);
+            for _ in 0..120 {
+                let input = cpu.think(&w);
+                w.step(&[Input::default(), input]);
+                fired |= current_move(&w.fighters[1]).is_some_and(|mv| shots.contains(&mv));
+            }
+        }
+        assert!(fired, "{character:?} never used {shots:?} from range");
+    }
+}
+
+#[test]
+fn cpu_throws_toward_the_nearest_ledge() {
+    // Grabbing an opponent at 100% near the right ledge: facing the ledge it throws
+    // forward, with its back to the ledge it throws back.
+    for (facing, expected) in [(1, MoveId::FThrow), (-1, MoveId::BThrow)] {
+        let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+        let right = w.stage.platforms[0].right;
+        let me_x = right - Fx::int(14);
+        (w.fighters[1].x, w.fighters[1].facing) = (me_x, facing);
+        (w.fighters[0].x, w.fighters[0].percent) = (me_x + Fx::int(6 * facing), 100);
+        let mut cpu = Cpu::with_level(1, 9);
+        let mut throw = None;
+        for f in 0..90 {
+            let input = if f == 0 { Input { buttons: Input::GRAB, ..Input::default() } } else { cpu.think(&w) };
+            w.step(&[Input::default(), input]);
+            let thrown = current_move(&w.fighters[1]).filter(|mv| matches!(mv, MoveId::FThrow | MoveId::BThrow | MoveId::UThrow | MoveId::DThrow));
+            if let Some(mv) = thrown {
+                throw.get_or_insert(mv);
+            }
+        }
+        assert_eq!(throw, Some(expected), "facing {facing}");
+    }
+}
+
+#[test]
+fn every_characters_cpu_uses_a_wide_part_of_its_moveset() {
+    for character in Character::ALL {
+        let mut used = [0u32; 24];
+        for (i, opponent) in [Character::Chef, Character::Samurai, Character::Hobo].into_iter().enumerate() {
+            let mut w = World::new(StageId::ALL[i].stage(), &[character, opponent], 3);
+            let mut cpus = [Cpu::with_level(0, 9).with_seed(i as u32), Cpu::with_level(1, 9).with_seed(i as u32)];
+            let (slots, _) = cpu_vs_cpu(&mut w, &mut cpus, 60 * 120);
+            for (u, n) in used.iter_mut().zip(slots[0]) {
+                *u += n;
+            }
+        }
+        let distinct = used.iter().filter(|&&n| n > 0).count();
+        assert!(distinct >= 14, "{character:?} used {distinct} of its 24 move slots: {used:?}");
     }
 }
