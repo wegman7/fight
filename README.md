@@ -103,7 +103,7 @@ with their own movesets and tuning: the **chef** (an all-rounder in chef's white
 and apron), the **pug** (small, light and quick, with two air jumps), the **samurai**
 (a katana with the longest reach, a little heavier and slower to start), the **ninja**
 (the lightest and fastest: low damage per hit, but quick combo-heavy knife-hands, in a
-dark gi with a face wrap, headband and shuriken pouch), the **soldier** (the
+dark shinobi shozoku with a draped face mask, forearm and shin wraps, split-toe tabi, a headband and a shuriken pouch), the **soldier** (the
 heavyweight: slow and falls fast, but hits hard — a masked operator in a combat helmet,
 goggles and a plate carrier, with a rifle, grenades, a blast jump and a riot shield) and
 the **hobo** (a drunken-fist brawler: floaty and wobbly,
@@ -252,7 +252,7 @@ joypad's name to the console at startup and whenever one connects.
 - Chef model, animations and the pie: `art/fighter/build_fighter.py` → `godot/models/fighter.glb` and `pie.glb`
 - Pug model and animations: `art/pug/build_pug.py` → `godot/models/pug.glb`
 - Samurai model and animations: `art/samurai/build_samurai.py` → `godot/models/samurai.glb`
-- Ninja model and animations: `art/ninja/build_ninja.py` → `godot/models/ninja.glb`
+- Ninja model and animations: `art/ninja/build_ninja.py` → `godot/models/ninja.glb`, with its generated tiling textures in `art/ninja/textures/`
 - Soldier model, animations and the grenade: `art/soldier/build_soldier.py` → `godot/models/soldier.glb` and `grenade.glb`, its fatigues textured by `godot/shaders/camo.gdshader` and its gear by `godot/shaders/gear.gdshader`
 - Hobo model and animations: `art/hobo/build_hobo.py` → `godot/models/hobo.glb`
 - Which model draws each character: `look()` in `gdext/src/lib.rs`

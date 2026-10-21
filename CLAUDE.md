@@ -17,6 +17,9 @@
   four-legged rig. Its fur shader is swapped in by `pug.glb.import`. See `art/pug/README.md`.
 - `art/samurai/`: the samurai model (`godot/models/samurai.glb`), script-generated on the
   chef's skeleton plus a katana bone, reusing the chef script's helpers. See `art/samurai/README.md`.
+- `art/ninja/`: the ninja model (`godot/models/ninja.glb`), script-generated on the chef's
+  skeleton, with generated tiling normal/albedo textures (cloth, skin, hair, steel,
+  leather) embedded in the .glb. See `art/ninja/README.md`.
 - `art/soldier/`: the soldier model (`godot/models/soldier.glb`) and his grenade
   (`godot/models/grenade.glb`), script-generated on the chef's skeleton plus a rifle
   bone. A masked operator: helmet, goggles, plate carrier, pads, holster and knife. His
@@ -49,6 +52,7 @@ godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   #
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb
 blender --background --factory-startup --python art/samurai/build_samurai.py   # rebuild samurai .blend + .glb
+blender --background --factory-startup --python art/ninja/build_ninja.py       # rebuild ninja .blend + .glb, and its textures
 blender --background --factory-startup --python art/soldier/build_soldier.py   # rebuild soldier .blend + .glb, and grenade.glb
 blender --background --factory-startup --python art/hobo/build_hobo.py         # rebuild hobo .blend + .glb
 blender --background --factory-startup --python art/beach/build_beach.py       # rebuild backdrop props
