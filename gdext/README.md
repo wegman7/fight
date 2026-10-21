@@ -96,7 +96,7 @@ screen doesn't also act on the next one.
   while a dodge is invincible, flashing while charging a smash attack (the model also
   shakes), yellow flicker when dizzy. On the pug, `Body` is only the collar; on the
   samurai, his headband and sash; on the ninja, his headband and belt; on the soldier,
-  his armband; on the hobo, the shirt under his coat.
+  his armband; on the hobo, the sweater under his coat.
 - The shield is a translucent sphere per fighter that shrinks with `Fighter::shield`.
   Projectiles come from `World::projectiles` and are drawn from a pool, each as its
   owner's `shot_for(character, move)` (a character with one projectile just falls back
