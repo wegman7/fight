@@ -42,10 +42,10 @@ FIGHT_MUSIC_VOLUME=50 godot --path godot   # music volume 0-100 (default 70)
 
 A `MatchSetup` lists the players by port. Fighter `i` of the `World` is
 `setup.players[i]`, so with P1 off, fighter 0 is P2: it keeps P2's color, name and
-controls. `FightWorld::start_match` builds a match from a setup, `new_match` restarts
-it (**R**), and `leave_match` frees it and returns to character select. `Menu::enter`
-makes the next screen ignore buttons still held from before, so the press that left a
-screen doesn't also act on the next one.
+controls. `FightWorld::start_match` builds a match from a setup and `leave_match`
+frees it and returns to character select. `Menu::enter` makes the next screen ignore
+buttons still held from before, so the press that left a screen doesn't also act on
+the next one.
 
 ## Things to know
 
@@ -70,7 +70,7 @@ screen doesn't also act on the next one.
   frame it is pushed, it sends `SMASH` with the left-stick direction replaced by the
   right stick's, so it gives a smash attack on the ground and an aerial in the air.
   It needs releasing before it fires again (`FightWorld::cstick_out`). In-match keys
-  (debug keys, R, Esc) and the pad Start (pause, or menu once someone has won) / Back
+  (debug keys, Esc) and the pad Start (pause, or menu once someone has won) / Back
   (menu while paused) buttons are in `unhandled_input`; the menus poll instead.
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.

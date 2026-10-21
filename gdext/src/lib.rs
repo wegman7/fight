@@ -481,7 +481,6 @@ impl INode3D for FightWorld {
                 self.paused = true;
                 self.advance_one_frame = true;
             }
-            Key::R => self.new_match(),
             Key::ENTER | Key::KP_ENTER if self.winner().is_some() => self.leave_match(),
             Key::ESCAPE => self.leave_match(),
             _ => {}
@@ -499,8 +498,12 @@ impl FightWorld {
             .map(|p| format!("P{} {}{}", p.port + 1, p.character.name(), p.cpu.map_or(String::new(), |l| format!(" (CPU lv {l})"))))
             .collect();
         godot_print!("{} stocks on {}: {}", setup.stocks, setup.stage.name(), players.join(", "));
+        let characters: Vec<Character> = setup.players.iter().map(|p| p.character).collect();
+        self.world = World::new(setup.stage.stage(), &characters, setup.stocks);
+        self.cpus = setup.players.iter().enumerate().map(|(i, p)| p.cpu.map(|level| Cpu::with_level(i, level))).collect();
+        self.cstick_out = vec![false; characters.len()];
+        self.paused = false;
         self.setup = setup;
-        self.new_match();
         self.build_stage();
         self.build_fighters();
         self.build_hud();
@@ -511,15 +514,6 @@ impl FightWorld {
         if let Some(music) = &mut self.music {
             music.play_stage();
         }
-    }
-
-    /// Restarts the current match from the beginning (same players, stage and stocks).
-    fn new_match(&mut self) {
-        let characters: Vec<Character> = self.setup.players.iter().map(|p| p.character).collect();
-        self.world = World::new(self.setup.stage.stage(), &characters, self.setup.stocks);
-        self.cpus = self.setup.players.iter().enumerate().map(|(i, p)| p.cpu.map(|level| Cpu::with_level(i, level))).collect();
-        self.cstick_out = vec![false; characters.len()];
-        self.paused = false;
     }
 
     /// Ends the match and goes back to character select, Melee-style.
@@ -879,7 +873,7 @@ impl FightWorld {
             label.set_text(&format!("{name} {}  {}%\n{}", f.character.name(), f.percent, stocks));
         }
         let text = match self.winner() {
-            Some(winner) => format!("{} WINS!\nStart / Enter: menu · R: rematch", names[winner]),
+            Some(winner) => format!("{} WINS!\nStart / Enter: menu", names[winner]),
             None if self.paused => "PAUSED".to_string(),
             None => String::new(),
         };

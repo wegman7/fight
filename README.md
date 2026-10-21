@@ -238,8 +238,8 @@ reads as a side special, so to turn an up special around press up + special, the
 back right after.
 
 In a match: pad **Start** pauses (then **View/Back** quits to character select). **Esc**
-goes back to character select. **R** restarts the match. Once someone wins, **Start** /
-**Enter** goes back to character select, keeping everyone's picks.
+goes back to character select. Once someone wins, **Start** / **Enter** goes back to
+character select, keeping everyone's picks.
 
 Debug: **H** hitboxes · **P** pause · **F** frame-advance · **-** / **=** music volume
 
