@@ -122,6 +122,7 @@ How each input works, with the chef's moves:
 | Anywhere | Special (neutral) | Pie throw: lobs a cream pie that arcs about head height and splats on the floor about half a stage away |
 | Anywhere | Special + sideways | Lunge forward. Once per trip through the air. |
 | Anywhere | Special + up | Rising uppercut: the recovery move. You're helpless (special fall) until you land. |
+| Up special | Stick back, even slightly, on its first 3 frames | Turn the up special around (every character's). Steering is unchanged: hold where you want to drift. |
 | Anywhere | Special + down | Ground pound. It meteors (sends straight down) on the way down and makes a shockwave on landing. Off-stage, it falls all the way. |
 | Ground | Grab (or attack while shielding) | Grab. Running makes it a dash grab. It catches shielding opponents. |
 | Holding someone | Attack / direction | Pummel / forward, back, up, down throw |
@@ -132,7 +133,8 @@ How each input works, with the chef's moves:
 | Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
 
 Falling past a solid platform's ledge grabs it (soft, pass-through platforms have no
-grabbable edges): you hang there briefly invincible, and your double jump is restored.
+grabbable edges), whichever way you face: you turn to face the stage and hang there
+briefly invincible, and your double jump is restored.
 From a hang, up or toward the stage climbs up, jump ledge-jumps, shield rolls up, attack
 does a getup attack, and down or away drops off. Only one fighter can hold a ledge —
 grabbing an occupied one knocks its holder off.
@@ -218,11 +220,16 @@ odd arcs — none of them are the chef's (even his grab is his own):
 
 Tap down on a platform to drop through, or in the air to fast-fall. Hold down to
 crouch. Release jump before liftoff for a short hop. Up alone does nothing: jump is
-its own button (no tap jump yet).
+its own button (no tap jump yet). Jumping with the stick held back (on the same frame
+or during jumpsquat) keeps your facing and drifts backward, so a back air still comes
+out; to jump facing the other way, turn on the ground first (tap back), then jump.
+Double jumps never turn you either; they just go the held way.
 
 On a keyboard every press is a full flick. So pressing a direction and J together
 is a smash attack. Hold the direction a moment first to get a tilt, or use the
-Smash key for smash attacks on purpose.
+Smash key for smash attacks on purpose. Up and back together is a diagonal, which
+reads as a side special, so to turn an up special around press up + special, then
+back right after.
 
 In a match: pad **Start** pauses (then **View/Back** quits to character select). **Esc**
 goes back to character select. **R** restarts the match. Once someone wins, **Start** /
