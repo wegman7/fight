@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_plain.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Tin"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/color = Color(0.72, 0.72, 0.74, 1)
+shader_parameter/metallic = 1.0
+shader_parameter/roughness = 0.32
+shader_parameter/variation = 0.06
+shader_parameter/grain = 0.6
+shader_parameter/grain_scale = 400.0

@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_plain.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Pupil"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/color = Color(0.006, 0.006, 0.006, 1)
+shader_parameter/roughness = 0.03
+shader_parameter/specular = 0.5
+shader_parameter/clearcoat = 1.0
+shader_parameter/clearcoat_roughness = 0.02

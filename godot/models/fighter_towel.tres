@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_cloth.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Towel"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/color = Color(0.78, 0.77, 0.72, 1)
+shader_parameter/check_color = Color(0.1, 0.2, 0.42, 1)
+shader_parameter/pattern = 2
+shader_parameter/check_size = 0.05
+shader_parameter/roughness = 0.95
+shader_parameter/weave = 2.5
+shader_parameter/sheen = 0.4

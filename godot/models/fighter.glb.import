@@ -39,7 +39,100 @@ import_script/path=""
 materials/extract=0
 materials/extract_format=0
 materials/extract_path=""
-_subresources={}
+_subresources={
+"materials": {
+"Button": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_button.tres",
+"use_external/path": "res://models/fighter_button.tres"
+},
+"Cherry": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/pie_cherry.tres",
+"use_external/path": "res://models/pie_cherry.tres"
+},
+"Cream": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/pie_cream.tres",
+"use_external/path": "res://models/pie_cream.tres"
+},
+"Crust": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/pie_crust.tres",
+"use_external/path": "res://models/pie_crust.tres"
+},
+"Eye": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_eye.tres",
+"use_external/path": "res://models/fighter_eye.tres"
+},
+"Hair": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_hair.tres",
+"use_external/path": "res://models/fighter_hair.tres"
+},
+"Iris": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_iris.tres",
+"use_external/path": "res://models/fighter_iris.tres"
+},
+"Jacket": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_jacket.tres",
+"use_external/path": "res://models/fighter_jacket.tres"
+},
+"Lace": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_lace.tres",
+"use_external/path": "res://models/fighter_lace.tres"
+},
+"Lip": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_lip.tres",
+"use_external/path": "res://models/fighter_lip.tres"
+},
+"Nail": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_nail.tres",
+"use_external/path": "res://models/fighter_nail.tres"
+},
+"Pants": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_pants.tres",
+"use_external/path": "res://models/fighter_pants.tres"
+},
+"Pupil": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_pupil.tres",
+"use_external/path": "res://models/fighter_pupil.tres"
+},
+"Shoe": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_shoe.tres",
+"use_external/path": "res://models/fighter_shoe.tres"
+},
+"Skin": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_skin.tres",
+"use_external/path": "res://models/fighter_skin.tres"
+},
+"Sole": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_sole.tres",
+"use_external/path": "res://models/fighter_sole.tres"
+},
+"Tin": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/pie_tin.tres",
+"use_external/path": "res://models/pie_tin.tres"
+},
+"Towel": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://models/fighter_towel.tres",
+"use_external/path": "res://models/fighter_towel.tres"
+}
+}
+}
 gltf/naming_version=2
 gltf/embedded_image_handling=1
 gltf/texture_map_mode=1
