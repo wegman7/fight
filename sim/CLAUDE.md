@@ -45,5 +45,12 @@
   `jump_h_speed` within 60-80% of `air_speed`, and check vertical KO percents against
   `BLAST_TOP` and offstage recovery. `full_hop_is_floaty_without_going_higher` and
   `every_character_jumps_onto_the_side_platforms` pin the jumps.
+- `FighterParams::damage_scale` / `knockback_scale` (percent) scale everything a
+  fighter deals, applied once in `World::apply_throws` and where `resolve_hits` applies
+  each strike. Every new damage source must go through those paths (a `Strike` or a
+  throw) so the knobs cover it. At 100 they change nothing.
+- Balance is measured with the `balance/` crate (CPU-vs-CPU, see `balance/README.md`).
+  It overrides `Fighter::params` after `World::new` and reseeds CPUs with
+  `Cpu::with_seed`; keep both working. A CPU change shifts its results: re-run it.
 - Run `cargo test -p fight_sim` after every change. `rollback_resimulation_is_bit_identical`
   guards determinism.

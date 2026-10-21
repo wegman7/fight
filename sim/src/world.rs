@@ -251,18 +251,19 @@ impl World {
                 continue;
             }
             let (holder, victim) = pair_mut(&mut self.fighters, i, v);
-            victim.percent = (victim.percent + throw.damage).min(999);
+            let damage = holder.params.dealt_damage(throw.damage);
+            victim.percent = (victim.percent + damage).min(999);
             let mut kb = Fx::ZERO;
             if throw.release {
                 holder.holding = None;
                 victim.x = holder.x + throw.x * holder.facing;
                 victim.y = holder.y;
                 victim.grounded_on = None;
-                kb = knockback(victim.percent, throw.damage, victim.params.weight, throw.base_kb, throw.kb_growth);
+                kb = holder.params.dealt_knockback(knockback(victim.percent, damage, victim.params.weight, throw.base_kb, throw.kb_growth));
                 victim.take_hit(kb, throw.angle, holder.facing);
             }
             let (x, y) = (victim.x, victim.y + victim.params.height / Fx::int(2));
-            self.events.push(Event::Hit { attacker: i, defender: v, x, y, damage: throw.damage, knockback: kb, projectile: false });
+            self.events.push(Event::Hit { attacker: i, defender: v, x, y, damage, knockback: kb, projectile: false });
         }
     }
 
@@ -496,10 +497,12 @@ impl World {
 
         // Fighters that countered a strike this frame ignore the rest of them.
         let mut countered = 0u8;
-        for s in strikes {
+        for mut s in strikes {
             if countered & (1 << s.defender) != 0 {
                 continue;
             }
+            let attacker_params = self.fighters[s.attacker].params;
+            s.damage = attacker_params.dealt_damage(s.damage);
             let lag = hitlag_frames(s.damage);
             match s.projectile {
                 Some(pi) => spent_projectiles.push(pi),
@@ -542,7 +545,7 @@ impl World {
                 continue;
             }
             defender.percent = (defender.percent + s.damage).min(999);
-            let kb = knockback(defender.percent, s.damage, defender.params.weight, s.base_kb, s.kb_growth);
+            let kb = attacker_params.dealt_knockback(knockback(defender.percent, s.damage, defender.params.weight, s.base_kb, s.kb_growth));
             defender.take_hit(kb, s.angle, s.direction);
             self.events.push(Event::Hit {
                 attacker: s.attacker,

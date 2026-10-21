@@ -88,6 +88,21 @@ fn cpu_is_deterministic() {
 }
 
 #[test]
+fn cpu_seed_changes_the_game_and_replays_it() {
+    let play = |seed| {
+        let mut w = world();
+        let (mut a, mut b) = (Cpu::with_level(0, 9).with_seed(seed), Cpu::with_level(1, 9).with_seed(seed));
+        for _ in 0..1800 {
+            let inputs = [a.think(&w), b.think(&w)];
+            w.step(&inputs);
+        }
+        w
+    };
+    assert_eq!(play(7), play(7), "same seed, same match");
+    assert_ne!(play(7), play(8), "another seed plays another match");
+}
+
+#[test]
 fn easy_cpu_mashes_out_of_grabs() {
     let (mut w, mut cpu) = (world(), Cpu::easy(1));
     // Just in front of P1 (facing right from its spawn), inside its grab range.

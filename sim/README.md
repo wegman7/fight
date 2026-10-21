@@ -21,6 +21,7 @@ let snapshot = world.clone(); // full save state (rollback, replays)
 
 // A computer player is just another input source:
 let mut cpu = Cpu::with_level(1, 9);   // drives fighter 1, at Melee-style level 9 (1-9; Cpu::easy is 3)
+let mut cpu = Cpu::with_level(1, 9).with_seed(42);   // same, but its own stream of choices (the balance harness)
 let p2_input = cpu.think(&world);
 world.step(&[p1_input, p2_input]);
 ```
@@ -32,11 +33,11 @@ world.step(&[p1_input, p2_input]);
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
 | `character.rs` | `Character` (Chef, Pug, Samurai, Ninja, Soldier, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
-| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics, ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()` |
+| `fighter.rs` | `FighterParams` (tuning, one const per character, including the whole-character balance knobs `damage_scale` / `knockback_scale`: percent of the damage and knockback its hits deal), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics, ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()` |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → ledge occupancy (`sync_ledges`: one per edge, a fresh grab steals it) → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
-| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, recovers with double jump then up special, and climbs back up from a ledge. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. |
+| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks, tilts, hops into nair, grabs and throws, sometimes shields, mashes out of grabs, recovers with double jump then up special, and climbs back up from a ledge. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time, and how often it approaches, attacks, grabs and shields). `EASY` is level 3. Plans that take longer than a level's reaction time (hop attacks, shielding, jumps) are finished before it re-plans. Its RNG has a fixed seed per port; `with_seed` gives it another (deterministic) one. |
 
 ## How a move works
 
@@ -159,3 +160,13 @@ Helpers `input(x, y, buttons)`, `airborne()` (put a fighter in mid-air) and `mv(
 When you change frame data or physics on purpose, update the test that pins it.
 When you add a mechanic, add a test describing it in Smash terms ("jab comes out
 frame 2", "short hop peaks lower than full hop").
+
+## Balance testing
+
+The sim is fast and deterministic, so balance is measured by letting CPUs fight:
+`cargo run --release -p fight_balance -- --games 200` plays every matchup on every
+stage and prints a win-rate matrix with error bars; `--tune N` adds a buff/nerf loop
+that proposes changes to `damage_scale` and `weight` as a diff. The harness lives in
+its own crate, [`balance/`](../balance/README.md), and only uses the sim's public API.
+Its results measure each character as the CPU plays it (the CPU uses a fraction of
+each moveset and never edge-guards), so read its AI flags and caveats before acting.

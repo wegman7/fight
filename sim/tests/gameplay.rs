@@ -1,5 +1,5 @@
 use fight_sim::fighter::knockback;
-use fight_sim::{Character, DodgeKind, Event, Fx, Input, MoveId, SHIELD_MAX, Stage, StageId, State, World};
+use fight_sim::{Character, DodgeKind, Event, FighterParams, Fx, Input, MoveId, SHIELD_MAX, Stage, StageId, State, World};
 
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
@@ -317,6 +317,34 @@ fn jab_connects_on_frame_2_and_only_once() {
 
     run(&mut w, 30, NONE, NONE);
     assert_eq!(w.fighters[1].percent, 3, "one swing hits each target once");
+}
+
+#[test]
+fn damage_and_knockback_scales_tune_what_a_fighter_deals() {
+    // The chef's ftilt on a target at 60%: the hit's damage and launch, with and without the knobs.
+    let ftilt = |damage_scale, knockback_scale| {
+        let mut w = world();
+        w.fighters[0].params = Box::leak(Box::new(FighterParams { damage_scale, knockback_scale, ..FighterParams::CHEF }));
+        w.fighters[0].x = Fx::int(-40);
+        w.fighters[1].x = Fx::int(-32);
+        w.fighters[1].percent = 60;
+        for _ in 0..20 {
+            w.step(&[Input { stick_x: 60, ..press(Input::ATTACK) }, NONE]);
+            if let Some(&Event::Hit { damage, knockback, .. }) = w.events.iter().find(|e| matches!(e, Event::Hit { .. })) {
+                return (damage, knockback, w.fighters[1].percent);
+            }
+        }
+        panic!("ftilt never hit");
+    };
+    let (damage, kb, percent) = ftilt(100, 100);
+    assert_eq!(percent, 60 + damage, "100 is the unscaled game");
+    let (more, more_kb, more_percent) = ftilt(150, 100);
+    assert_eq!(more, (damage * 150 + 50) / 100);
+    assert_eq!(more_percent, 60 + more);
+    assert!(more_kb > kb, "more damage launches harder through the formula");
+    let (same, half_kb, _) = ftilt(100, 50);
+    assert_eq!(same, damage);
+    assert_eq!(half_kb, kb * Fx::ratio(1, 2));
 }
 
 #[test]

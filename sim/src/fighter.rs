@@ -5,7 +5,7 @@ use crate::moves::{DodgeKind, Landing, MoveData, MoveId};
 use crate::stage::Stage;
 
 /// Per-character tuning. Units are Melee-style: stage units per frame.
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FighterParams {
     /// 100 = average; heavier characters take less knockback.
     pub weight: i32,
@@ -32,6 +32,12 @@ pub struct FighterParams {
     /// Hurtbox: a vertical capsule standing on the fighter's feet.
     pub height: Fx,
     pub radius: Fx,
+    /// Damage this fighter's hits, throws and projectiles deal, in percent of what
+    /// `moves.rs` lists (100 = as written). A whole-character balance knob.
+    pub damage_scale: i32,
+    /// Knockback this fighter's hits and throws deal, in percent of what the formula
+    /// gives (100 = unchanged). A whole-character balance knob.
+    pub knockback_scale: i32,
 }
 
 impl FighterParams {
@@ -56,6 +62,8 @@ impl FighterParams {
         landing_lag: 4,
         height: Fx::int(12),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
 
     /// Light and short, quick on the ground, with lower jumps but two air jumps.
@@ -80,6 +88,8 @@ impl FighterParams {
         landing_lag: 4,
         height: Fx::int(9),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
 
     /// The chef's height, a little heavier and slower on the ground, quicker to drift.
@@ -104,6 +114,8 @@ impl FighterParams {
         landing_lag: 4,
         height: Fx::int(12),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
 
     /// The lightest fighter, and the fastest: the top run speed and air speed of the
@@ -130,6 +142,8 @@ impl FighterParams {
         landing_lag: 2,
         height: Fx::int(11),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
 
     /// The heavyweight: heaviest of the lot, the slowest to run, and it falls fast
@@ -155,6 +169,8 @@ impl FighterParams {
         landing_lag: 5,
         height: Fx::int(12),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
 
     /// The drunk hobo: floaty and loose. He falls slowly, drifts sideways in the air,
@@ -180,7 +196,20 @@ impl FighterParams {
         landing_lag: 5,
         height: Fx::int(12),
         radius: Fx::int(4),
+        damage_scale: 100,
+        knockback_scale: 100,
     };
+
+    /// `damage` (from a move, throw or projectile) after this attacker's
+    /// `damage_scale`, rounded to the nearest point.
+    pub fn dealt_damage(&self, damage: i32) -> i32 {
+        if self.damage_scale == 100 { damage } else { (damage * self.damage_scale + 50).div_euclid(100) }
+    }
+
+    /// `knockback` (from [`knockback`]) after this attacker's `knockback_scale`.
+    pub fn dealt_knockback(&self, knockback: Fx) -> Fx {
+        if self.knockback_scale == 100 { knockback } else { knockback * Fx::ratio(self.knockback_scale as i64, 100) }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
