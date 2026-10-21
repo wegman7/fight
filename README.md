@@ -101,7 +101,8 @@ The nth connected gamepad is port n (pad 1 shares port 1 with the P1 keys). Port
 The controls follow Smash. "Forward" is the way you face. There are six characters
 with their own movesets and tuning: the **chef** (an all-rounder in chef's whites, toque
 and apron), the **pug** (small, light and quick, with two air jumps), the **samurai**
-(a katana with the longest reach, a little heavier and slower to start), the **ninja**
+(a katana with the longest reach, a little heavier and slower to start — in laced
+lamellar armor and a crested kabuto over his kimono and hakama), the **ninja**
 (the lightest and fastest: low damage per hit, but quick combo-heavy knife-hands, in a
 dark gi with a face wrap, headband and shuriken pouch), the **soldier** (the
 heavyweight: slow and falls fast, but hits hard — a masked operator in a combat helmet,
