@@ -7,7 +7,7 @@
   plus the Melee-style menus (stocks → character select → stage select). See `gdext/CLAUDE.md`.
 - `godot/`: Godot project. `main.tscn` root node is `FightWorld` (defined in Rust); it
   also holds the beach backdrop (purely decorative; sand and ocean shaders in `godot/shaders/`,
-  next to the pug's `fur.gdshader`, the soldier's `camo.gdshader`, `gear.gdshader` and
+  next to the hit sparks' `hit_spark.gdshader`, the pug's `fur.gdshader`, the soldier's `camo.gdshader`, `gear.gdshader` and
   `weapon.gdshader` (which share `soldier.gdshaderinc`), and the chef's `chef_*.gdshader`).
 - `godot/music/`: the two background tracks — `rising_motif.mp3` during matches,
   `untitled.mp3` in the menus — loaded and looped by `gdext/src/music.rs`.
