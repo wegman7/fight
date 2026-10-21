@@ -7,8 +7,8 @@
   plus the Melee-style menus (stocks → character select → stage select). See `gdext/CLAUDE.md`.
 - `godot/`: Godot project. `main.tscn` root node is `FightWorld` (defined in Rust); it
   also holds the beach backdrop (purely decorative; sand and ocean shaders in `godot/shaders/`,
-  next to the pug's `fur.gdshader` and the soldier's `camo.gdshader` and
-  `gear.gdshader`).
+  next to the pug's `fur.gdshader` and the soldier's `camo.gdshader`, `gear.gdshader` and
+  `weapon.gdshader`, which share `soldier.gdshaderinc`).
 - `godot/music/`: the two background tracks — `rising_motif.mp3` during matches,
   `untitled.mp3` in the menus — loaded and looped by `gdext/src/music.rs`.
 - `art/fighter/`: Blender source for the chef model (`godot/models/fighter.glb`) and his
@@ -19,9 +19,10 @@
   chef's skeleton plus a katana bone, reusing the chef script's helpers. See `art/samurai/README.md`.
 - `art/soldier/`: the soldier model (`godot/models/soldier.glb`) and his grenade
   (`godot/models/grenade.glb`), script-generated on the chef's skeleton plus a rifle
-  bone. A masked operator: helmet, goggles, plate carrier, pads, holster and knife. His
-  fatigues' camo shader and his gear's cloth/leather shader are swapped in by
-  `soldier.glb.import`. See `art/soldier/README.md`.
+  bone. A masked operator: helmet, goggles, ear-pro, a plate carrier with MOLLE and
+  pouches, pads, holster, knife and a scoped carbine. His camo, gear and weapon shaders
+  are swapped in by `soldier.glb.import` and read a baked rest position (UVs) and
+  ambient occlusion (vertex color). See `art/soldier/README.md`.
 - `art/hobo/`: the drunk hobo model (`godot/models/hobo.glb`), script-generated on the
   chef's skeleton plus a bottle and a shopping-cart bone, with procedural grime/roughness
   textures for his coat. See `art/hobo/README.md`.
