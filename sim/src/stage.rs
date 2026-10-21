@@ -73,8 +73,10 @@ fn s(x: i32) -> Fx {
 /// Blast zones are in fighter units, not scaled with the layout: how far a hit has to
 /// send someone to KO them (and how far below the stage they can still recover from)
 /// is set by the fighters' knockback and movement, which the stage scale leaves alone.
-/// Top and bottom lines are shared by every stage.
-const BLAST_TOP: Fx = Fx::int(167);
+/// Top and bottom lines are shared by every stage. The top went up from 167 when gravity
+/// was lowered (floatier fighters carry further on a vertical hit), keeping vertical
+/// KO percents within a few percent of where they were.
+const BLAST_TOP: Fx = Fx::int(180);
 const BLAST_BOTTOM: Fx = Fx::int(-90);
 
 fn plat(left: i32, right: i32, y: i32, soft: bool) -> Platform {

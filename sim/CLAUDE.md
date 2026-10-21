@@ -40,5 +40,10 @@
 - CPU players (`cpu.rs`) read `&World` and return an `Input`, nothing else. Their
   randomness comes from the `rng` field (xorshift), never from time or the OS, so CPU
   matches replay identically. Behaviour changes need a test in `tests/cpu.rs`.
+- Changing gravity → retune that character's `full_hop` / `short_hop` / `double_jump`
+  so heights hold (h ≈ v²/2g; scale speeds by √ of the gravity ratio), keep
+  `jump_h_speed` within 60-80% of `air_speed`, and check vertical KO percents against
+  `BLAST_TOP` and offstage recovery. `full_hop_is_floaty_without_going_higher` and
+  `every_character_jumps_onto_the_side_platforms` pin the jumps.
 - Run `cargo test -p fight_sim` after every change. `rollback_resimulation_is_bit_identical`
   guards determinism.

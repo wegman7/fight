@@ -62,11 +62,12 @@ fn stages_are_scaled_down_so_fighters_read_bigger() {
 #[test]
 fn blast_zones_stay_in_fighter_units_when_the_stage_shrinks() {
     // KO distances belong to the fighters' knockback, so blast zones don't scale
-    // with the layout: same lines as before the 6/7 shrink, every stage.
+    // with the layout: same side lines as before the 6/7 shrink, every stage. (The
+    // top line moved from 167 to 180 with the floatier gravity, not with the layout.)
     for (id, side) in [(StageId::Boardwalk, 187), (StageId::Sandbar, 200), (StageId::Driftwood, 180)] {
         let stage = id.stage();
         assert_eq!((stage.blast_left, stage.blast_right), (Fx::int(-side), Fx::int(side)), "{}", id.name());
-        assert_eq!((stage.blast_top, stage.blast_bottom), (Fx::int(167), Fx::int(-90)), "{}", id.name());
+        assert_eq!((stage.blast_top, stage.blast_bottom), (Fx::int(180), Fx::int(-90)), "{}", id.name());
         let main = stage.platforms.iter().find(|p| !p.soft).unwrap();
         assert!(stage.blast_right - main.right > Fx::int(130), "{}: room to send someone off the side", id.name());
     }
@@ -100,6 +101,46 @@ fn full_hop_goes_higher_than_short_hop_and_both_land() {
     let short = peak(1);
     let full = peak(10);
     assert!(full > short + Fx::int(10), "full {full:?} vs short {short:?}");
+}
+
+#[test]
+fn full_hop_is_floaty_without_going_higher() {
+    // Gravity is Brawl-leaning-Melee: the chef's full hop hangs in the air for 55
+    // frames (48 before gravity was lowered by a fifth), and its takeoff speed came
+    // down with it so it still peaks about 27 units up, under the top platform.
+    let mut w = world();
+    w.fighters[0].x = Fx::ZERO;
+    let (mut peak, mut airtime) = (Fx::ZERO, 0);
+    for f in 0..120 {
+        w.step(&[if f < 20 { press(Input::JUMP) } else { NONE }, NONE]);
+        peak = peak.max(w.fighters[0].y);
+        if !w.fighters[0].grounded() {
+            airtime += 1;
+        } else if airtime > 0 {
+            break;
+        }
+    }
+    assert_eq!(airtime, 55);
+    assert!(peak > Fx::int(26) && peak < Fx::int(28), "{peak:?}");
+}
+
+#[test]
+fn every_character_jumps_onto_the_side_platforms() {
+    // Lower gravity came with lower jump speeds, so reach stays the same: a full hop
+    // plus every air jump at its apex clears the Boardwalk's side platforms.
+    let side = Stage::battlefield().platforms[1].y;
+    for c in Character::ALL {
+        let mut w = World::new(Stage::battlefield(), &[c, Character::Chef], 3);
+        w.fighters[0].x = Fx::ZERO;
+        let mut peak = Fx::ZERO;
+        for f in 0..200 {
+            let me = &w.fighters[0];
+            let air_jump = me.state == State::Air && me.vy <= Fx::ZERO && f % 2 == 0;
+            w.step(&[if f < 20 || air_jump { press(Input::JUMP) } else { NONE }, NONE]);
+            peak = peak.max(w.fighters[0].y);
+        }
+        assert!(peak > side + Fx::int(5), "{}: peaks at {peak:?}, platform at {side:?}", c.name());
+    }
 }
 
 #[test]

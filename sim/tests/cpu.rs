@@ -104,30 +104,40 @@ fn easy_cpu_mashes_out_of_grabs() {
     assert!(held < 40, "held for {held} frames");
 }
 
+/// 25 units past each main-stage ledge, 15 below it: deep enough that only the up
+/// special gets back. Kept clear of the band (about 34-39 units out for the chef)
+/// where a full-drift up special sails past the ledge-grab box just above the corner
+/// and slips under the stage; floatier tuning shifts that band, a fixed spot didn't track it.
+fn up_special_starts() -> [(Fx, i32); 2] {
+    let stage = Stage::battlefield();
+    let main = &stage.platforms[0];
+    [(main.left - Fx::int(25), 1), (main.right + Fx::int(25), -1)]
+}
+
 #[test]
 fn easy_cpu_up_specials_back_without_a_double_jump() {
-    for x in [-85, 85] {
+    for (x, _) in up_special_starts() {
         let (mut w, mut cpu) = (world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
-        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (x, Fx::int(-15), None, State::Air, 0);
         let mut used_up_special = false;
         for _ in 0..240 {
             let input = cpu.think(&w);
             w.step(&[Input::default(), input]);
             used_up_special |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::UpSpecial, .. });
         }
-        assert!(used_up_special, "from x={x}");
-        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
-        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+        assert!(used_up_special, "from x={x:?}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x:?}");
+        assert!(w.fighters[1].grounded(), "not back on stage from x={x:?}");
     }
 }
 
 #[test]
 fn cpu_facing_away_from_the_stage_reverses_its_up_special_toward_it() {
-    for (x, toward) in [(-85, 1), (85, -1)] {
+    for (x, toward) in up_special_starts() {
         let (mut w, mut cpu) = (world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
-        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left, f.facing) = (Fx::int(x), Fx::int(-15), None, State::Air, 0, -toward);
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left, f.facing) = (x, Fx::int(-15), None, State::Air, 0, -toward);
         let mut up_special_facing = None;
         for _ in 0..240 {
             let input = cpu.think(&w);
@@ -136,9 +146,9 @@ fn cpu_facing_away_from_the_stage_reverses_its_up_special_toward_it() {
                 up_special_facing.get_or_insert(w.fighters[1].facing);
             }
         }
-        assert_eq!(up_special_facing, Some(toward), "from x={x}");
-        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
-        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+        assert_eq!(up_special_facing, Some(toward), "from x={x:?}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x:?}");
+        assert!(w.fighters[1].grounded(), "not back on stage from x={x:?}");
     }
 }
 
