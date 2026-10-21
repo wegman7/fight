@@ -93,7 +93,9 @@ or edge-guards, and it spaces every character with the same attack range. So:
   `self-destructs` (over 10% of stocks lost unforced) and `timeouts` (well above the
   cast's rate) hold a character out of the loop; `whiffs` (hit rate far below the cast)
   and `recovery gaps` (it falls from distances *closer* than ones it makes it back from:
-  a ledge-grab or recovery bug) are warnings.
+  a ledge-grab or recovery bug) are warnings. (The gaps the first runs found, 4-6-unit
+  bands where a full-drift recovery dropped below the top just outside the corner and
+  fell through the stage, were a sim bug: solid platforms now have solid sides.)
 - A cast-wide timeout rate is reported once, above the tables, instead of holding
   everyone back.
 

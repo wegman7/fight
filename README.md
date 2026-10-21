@@ -149,8 +149,10 @@ How each input works, with the chef's moves:
 | Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
 
 Falling past a solid platform's ledge grabs it (soft, pass-through platforms have no
-grabbable edges), whichever way you face: you turn to face the stage and hang there
-briefly invincible, and your double jump is restored.
+grabbable edges), whichever way you face. A solid platform's sides are solid below its
+top, so drifting in under the top stops you at the edge and you slide down into the
+grab. You turn to face the stage and hang there briefly invincible, and your double jump
+is restored.
 From a hang, up or toward the stage climbs up, jump ledge-jumps, shield rolls up, attack
 does a getup attack, and down or away drops off. Only one fighter can hold a ledge —
 grabbing an occupied one knocks its holder off.

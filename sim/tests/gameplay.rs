@@ -1005,6 +1005,60 @@ fn falling_past_an_edge_grabs_the_ledge() {
     assert!(w.fighters[0].x > right, "hangs just off the edge");
 }
 
+/// Regression: a recovery drifting in at full air speed whose feet dropped below the
+/// stage's top a few units outside the edge (too low to land, head still too high to
+/// grab) used to slide into the stage's x range and fall through it. Every character,
+/// both edges, from every quarter unit up to 6 out and a spread of heights: it must
+/// land or grab the ledge, and never be inside the stage below its top.
+#[test]
+fn drifting_in_below_the_top_grabs_the_ledge_instead_of_slipping_under() {
+    for c in Character::ALL {
+        for side in [1, -1] {
+            for quarter in 1..=24 {
+                for feet in [1, 0, -1, -3, -5, -8] {
+                    for special_fall in [false, true] {
+                        let mut w = World::new(Stage::battlefield(), &[c, Character::Chef], 3);
+                        let main = w.stage.platforms[0].clone();
+                        let edge = if side > 0 { main.left } else { main.right };
+                        let f = &mut w.fighters[0];
+                        let p = f.params;
+                        let state = if special_fall { State::SpecialFall } else { State::Air };
+                        (f.x, f.y, f.grounded_on, f.state) = (edge - Fx::ratio(quarter, 4) * side, Fx::int(feet), None, state);
+                        (f.vx, f.vy, f.facing) = (p.air_speed * side, -p.max_fall, side);
+                        let what = format!("{c:?}, side {side}, {}/4 out, feet at {feet}, special fall {special_fall}", quarter);
+                        let mut safe = false;
+                        for _ in 0..60 {
+                            w.step(&[toward_stage(side), NONE]);
+                            let f = &w.fighters[0];
+                            // (A ledge getup passes the corner on its scripted path: only airborne counts.)
+                            let airborne = matches!(f.state, State::Air | State::SpecialFall);
+                            assert!(!(airborne && main.contains_x(f.x) && f.y < main.y), "{what}: inside the stage below its top");
+                            safe |= f.grounded() || f.state == State::LedgeHang;
+                        }
+                        assert!(safe, "{what}: neither landed nor grabbed the ledge");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_main_stage_sides_are_solid_below_the_top() {
+    // Rising beside the stage with the feet below its top, drifting in: the fighter
+    // stays outside until its feet clear the top, then lands on it.
+    let mut w = world();
+    let right = w.stage.platforms[0].right;
+    let f = &mut w.fighters[0];
+    (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy) = (right + Fx::int(1), Fx::int(-10), None, State::Air, -f.params.air_speed, Fx::int(2));
+    for _ in 0..90 {
+        w.step(&[toward_stage(-1), NONE]);
+        let f = &w.fighters[0];
+        assert!(f.x > right || f.y >= Fx::ZERO, "inside the stage below its top at ({:?}, {:?})", f.x, f.y);
+    }
+    assert!(w.fighters[0].grounded(), "back on stage");
+}
+
 #[test]
 fn only_solid_platform_edges_are_grabbable() {
     let mut w = world();
