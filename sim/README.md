@@ -32,7 +32,7 @@ world.step(&[p1_input, p2_input]);
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
 | `character.rs` | `Character` (Chef, Pug, Samurai, Ninja, Soldier, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
-| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics, ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), shield/grab/charge constants, `knockback()` |
+| `fighter.rs` | `FighterParams` (tuning, one const per character), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics, ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()` |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → ledge occupancy (`sync_ledges`: one per edge, a fresh grab steals it) → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
@@ -81,6 +81,16 @@ Dodges are `State::Dodge { kind, frame }` with timings in `DodgeData`.
 Smash-attack input: the stick goes from neutral to 0.8 or more within 3 frames of
 the attack press, or the press is the `SMASH` button. A tilt is the same direction
 without the flick, so the CPU (and tests) use a stick value of 60 for tilts.
+
+Jumping: jump starts `JumpSquat` without turning (back + jump is a backward jump, so
+bair still comes out; turning means a ground frame of back first). At liftoff,
+`Fighter::liftoff_vx` sets `vx` like Ultimate's jump initial horizontal speed: the
+stick's x (outside the deadzone) times the character's `FighterParams::jump_h_speed`,
+either way, added to the ground speed left after jumpsquat traction, and clamped to
+`air_speed` or to that ground speed if it's faster (so a running jump keeps its
+momentum and air drift slows it as before). Full and short hops share it, and so does
+jumping out of shield. Double jumps set `vx` to the stick's x times `air_speed` and
+never turn; ledge jumps leave inward at `air_speed`.
 
 ## Units
 
