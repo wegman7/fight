@@ -1,5 +1,7 @@
 use fight_sim::fighter::knockback;
-use fight_sim::{Character, DodgeKind, Event, FighterParams, Fx, Input, MoveId, SHIELD_MAX, Stage, StageId, State, World};
+use fight_sim::{
+    Character, DodgeKind, Event, FighterParams, Fx, Input, MAX_DI_DEGREES, MoveId, SHIELD_MAX, Stage, StageId, State, World, di_angle, world_angle,
+};
 
 const NONE: Input = Input { stick_x: 0, stick_y: 0, buttons: 0 };
 
@@ -421,6 +423,97 @@ fn landing_during_an_aerial_uses_its_landing_lag() {
         saw |= w.fighters[0].state == State::Landing { frames_left: 15 };
     }
     assert!(saw, "nair should end in 15 frames of landing lag");
+}
+
+// --- Directional influence ---------------------------------------------------
+
+#[test]
+fn di_turns_a_launch_by_up_to_18_degrees_toward_the_stick() {
+    let full = Fx::ONE;
+    assert_eq!(di_angle(0, Fx::ZERO, full), 18, "launched right, stick up: turns up");
+    assert_eq!(di_angle(90, full, Fx::ZERO), 72, "launched up, stick right: leans right");
+    assert_eq!(di_angle(90, -full, Fx::ZERO), 108);
+    assert_eq!(di_angle(0, Fx::ZERO, Fx::ratio(1, 2)), 9, "half a stick, half the turn");
+    assert_eq!(di_angle(45, Fx::ratio(7, 10), Fx::ratio(7, 10)), 45, "along the launch: no change");
+    assert_eq!(di_angle(45, Fx::ratio(-7, 10), Fx::ratio(-7, 10)), 45, "straight against it: none either");
+    assert_eq!(di_angle(30, Fx::ratio(1, 10), Fx::ratio(1, 10)), 30, "inside the deadzone");
+    assert_eq!(di_angle(5, Fx::ZERO, -full), 347, "wraps below zero");
+    assert_eq!(world_angle(38, 1), 38);
+    assert_eq!(world_angle(38, -1), 142, "a hit sending left is mirrored");
+    assert_eq!(MAX_DI_DEGREES, 18);
+}
+
+/// P1's forward smash from `x` on P2 just in front at `percent`. `p2(k)` is P2's input
+/// on the k-th frame after the hit. Returns P2's launch angle in degrees on the first
+/// frame it moves in hitstun, and whether the launch carried it out (side or top).
+fn fsmash_launch(x: i32, percent: i32, p2: impl Fn(usize) -> Input) -> (f32, bool) {
+    let mut w = world();
+    (w.fighters[0].x, w.fighters[1].x, w.fighters[1].percent) = (Fx::int(x), Fx::int(x + 8), percent);
+    w.step(&[input(60, 0, Input::SMASH), NONE]);
+    let mut hit: Option<u32> = None;
+    let mut angle = None;
+    let mut launched_out = false;
+    for _ in 0..400 {
+        let p2_input = hit.map_or(NONE, |h| p2((w.frame + 1 - h) as usize));
+        let moving = hit.is_some() && w.fighters[1].hitlag == 0 && angle.is_none();
+        let high = w.fighters[1].y > w.stage.blast_bottom + Fx::int(20);
+        w.step(&[NONE, p2_input]);
+        // Off the side or the top: a launch KO, not a fall after sliding off.
+        launched_out |= high && w.events.contains(&Event::Ko { fighter: 1 });
+        if hit.is_none() && w.events.iter().any(|e| matches!(e, Event::Hit { defender: 1, .. })) {
+            hit = Some(w.frame);
+            // Below 80 knockback a grounded target slides instead: nothing to DI.
+            let launched = !w.fighters[1].grounded();
+            assert_eq!(w.fighters[1].di_pending.is_some(), launched, "an airborne launch waits for DI");
+        }
+        if moving {
+            let f = &w.fighters[1];
+            assert!(f.di_pending.is_none(), "DI is read once");
+            angle = Some(f.kb_y.to_f32().atan2(f.kb_x.to_f32()).to_degrees());
+        }
+    }
+    (angle.expect("fsmash never hit"), launched_out)
+}
+
+/// The stick at `deg` degrees, at full tilt.
+fn stick_at(deg: f32) -> Input {
+    let r = deg.to_radians();
+    stick((r.cos() * 100.0).round() as i8, (r.sin() * 100.0).round() as i8)
+}
+
+#[test]
+fn the_stick_on_the_first_hitstun_frame_turns_the_launch() {
+    // The chef's fsmash sends at 38 degrees. Perpendicular up-and-in (128 degrees)
+    // turns it the full 18 degrees up; perpendicular down-and-out (308) 18 down; along
+    // the launch, or no stick, leaves it.
+    let at = |stick: Input| fsmash_launch(0, 60, move |_| stick).0;
+    assert!((at(NONE) - 38.0).abs() < 1.0, "{}", at(NONE));
+    assert!((at(stick_at(128.0)) - 56.0).abs() < 1.0, "{}", at(stick_at(128.0)));
+    assert!((at(stick_at(308.0)) - 20.0).abs() < 1.0, "{}", at(stick_at(308.0)));
+    assert!((at(stick_at(38.0)) - 38.0).abs() < 1.0, "{}", at(stick_at(38.0)));
+}
+
+#[test]
+fn di_is_read_on_the_first_hitstun_frame_only() {
+    // The fsmash's 15 damage freezes both for 8 frames of hitlag: frames 1-8 after the
+    // hit; frame 9 is the first one P2 moves, and the only one whose stick counts.
+    let first = 15 / 3 + 3 + 1;
+    let late = fsmash_launch(0, 60, |k| if k > first { stick_at(128.0) } else { NONE }).0;
+    assert!((late - 38.0).abs() < 1.0, "a stick pushed after the first hitstun frame: {late}");
+    let early = fsmash_launch(0, 60, |k| if k < first { stick_at(128.0) } else { NONE }).0;
+    assert!((early - 38.0).abs() < 1.0, "a stick let go during hitlag: {early}");
+    let on_time = fsmash_launch(0, 60, |k| if k == first { stick_at(128.0) } else { NONE }).0;
+    assert!((on_time - 56.0).abs() < 1.0, "just that frame: {on_time}");
+}
+
+#[test]
+fn survival_di_lives_to_a_higher_percent() {
+    // From near the right ledge, the lowest percent the fsmash KOs at: with no DI, and
+    // DI'd up and in (perpendicular, toward the stage) versus down and out.
+    let ko_percent = |stick: Input| (0..400).step_by(5).find(|&p| fsmash_launch(30, p, move |_| stick).1).expect("never KO'd");
+    let (none, survive, worst) = (ko_percent(NONE), ko_percent(stick_at(128.0)), ko_percent(stick_at(308.0)));
+    assert!(survive >= none + 10, "no DI KOs at {none}%, survival DI at {survive}%");
+    assert!(worst < none, "bad DI KOs earlier: {worst}% vs {none}%");
 }
 
 #[test]

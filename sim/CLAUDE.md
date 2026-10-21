@@ -58,6 +58,9 @@
   fighter deals, applied once in `World::apply_throws` and where `resolve_hits` applies
   each strike. Every new damage source must go through those paths (a `Strike` or a
   throw) so the knobs cover it. At 100 they change nothing.
+- Every launch goes through `Fighter::take_hit`, which leaves it in `di_pending` for
+  trajectory DI on the first hitstun frame (`di_angle`). Don't set `kb_x`/`kb_y` for a
+  hit anywhere else, or it can't be DI'd. The DI tests in `tests/gameplay.rs` pin it.
 - Balance is measured with the `balance/` crate (CPU-vs-CPU, see `balance/README.md`).
   It overrides `Fighter::params` after `World::new` and reseeds CPUs with
   `Cpu::with_seed`; keep both working. A CPU change shifts its results: re-run it.

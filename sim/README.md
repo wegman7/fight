@@ -33,7 +33,7 @@ world.step(&[p1_input, p2_input]);
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
 | `character.rs` | `Character` (Chef, Pug, Samurai, Ninja, Soldier, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
-| `fighter.rs` | `FighterParams` (tuning, one const per character, including the whole-character balance knobs `damage_scale` / `knockback_scale`: percent of the damage and knockback its hits deal), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics (solid platforms' sides stop an airborne fighter below the top: `stop_at_stage_side`), ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()` |
+| `fighter.rs` | `FighterParams` (tuning, one const per character, including the whole-character balance knobs `damage_scale` / `knockback_scale`: percent of the damage and knockback its hits deal), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics (solid platforms' sides stop an airborne fighter below the top: `stop_at_stage_side`), ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()`, trajectory DI (`di_angle`, `world_angle`, `Fighter::di_pending`) |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → ledge occupancy (`sync_ledges`: one per edge, a fresh grab steals it) → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
@@ -78,6 +78,18 @@ Which move an input starts depends on the fighter's `Character`: `Fighter::step`
 reads the input, then picks the slot from `character.moveset()`.
 
 Dodges are `State::Dodge { kind, frame }` with timings in `DodgeData`.
+
+DI (directional influence) is Melee's trajectory DI. A hit that launches (anything but
+a grounded slide under `GROUNDED_KB_THRESHOLD`) leaves its launch in
+`Fighter::di_pending` as a `Trajectory` (world angle, 0 = right and 90 = up, plus speed).
+On the fighter's first frame of hitstun (the frame after hitlag ends; throws have no
+hitlag, so the frame after the throw), the stick held that frame turns the launch by
+`di_angle`: up to `MAX_DI_DEGREES` (18°) toward the stick, scaled by the cross product of
+the launch direction and the stick (so a perpendicular stick turns it fully, one along
+the launch line not at all, and a stick in the deadzone does nothing). Speed and hitstun
+don't change. It's read once and cleared; later stick input does nothing. Humans and
+CPUs DI the same way. There is no SDI (nudging your position during hitlag) or DI on
+grounded slides.
 
 Smash-attack input: the stick goes from neutral to 0.8 or more within 3 frames of
 the attack press, or the press is the `SMASH` button. A tilt is the same direction
@@ -138,7 +150,9 @@ top CPUs on a side platform keep fighting, it doesn't chase a jumping opponent's
 level 9 edge-guards and level 1 doesn't, smash attacks at kill percent, projectiles at
 range, throws toward the near ledge, every character uses a wide part of its moveset)
 live in `tests/cpu.rs`. `tests/gameplay.rs` also pins the stage's solid sides (a recovery
-drifting in below the top grabs the ledge instead of falling through the stage).
+drifting in below the top grabs the ledge instead of falling through the stage) and DI
+(the 18° turn and its scaling, read on the first hitstun frame only, survival DI living
+to a higher percent).
 The helpers at the top of `gameplay.rs` (`world()`, `press()`, `stick()`,
 `run()`) keep tests short. The pattern is: set up, feed inputs frame by frame,
 then assert.

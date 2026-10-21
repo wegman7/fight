@@ -326,6 +326,16 @@ pub(crate) const KB_DECAY: Fx = Fx::ratio(51, 1000);
 pub(crate) const HITSTUN_PER_KB: Fx = Fx::ratio(4, 10);
 /// Grounded targets hit with less knockback than this slide instead of lifting off.
 pub(crate) const GROUNDED_KB_THRESHOLD: Fx = Fx::int(80);
+/// Trajectory DI turns a launch by up to this many degrees (Melee: 18).
+pub const MAX_DI_DEGREES: i32 = 18;
+
+/// A launch in world terms: `angle` in degrees (0 = right, 90 = up, counterclockwise)
+/// and `speed` in units per frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Trajectory {
+    pub angle: i32,
+    pub speed: Fx,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Fighter {
@@ -363,6 +373,10 @@ pub struct Fighter {
     pub air_dodge_used: bool,
     pub side_special_used: bool,
     pub hitlag: u8,
+    /// The launch of the last hit, while it can still be DI'd: set by `take_hit` for an
+    /// airborne launch, then turned by the stick and cleared on the first frame the
+    /// fighter moves in hitstun (the frame after hitlag ends). See [`di_angle`].
+    pub di_pending: Option<Trajectory>,
     pub intangible: u16,
     pub percent: i32,
     pub stocks: u8,
@@ -434,6 +448,7 @@ impl Fighter {
             air_dodge_used: false,
             side_special_used: false,
             hitlag: 0,
+            di_pending: None,
             intangible: 0,
             percent: 0,
             stocks,
@@ -562,6 +577,12 @@ impl Fighter {
             return;
         }
         self.intangible = self.intangible.saturating_sub(1);
+        if let Some(launch) = self.di_pending.take()
+            && matches!(self.state, State::Hitstun { .. })
+            && !self.grounded()
+        {
+            self.apply_di(launch, intent.sx, intent.sy);
+        }
         if !matches!(self.state, State::Shield | State::ShieldStun { .. } | State::ShieldBreak { .. }) {
             self.shield = (self.shield + SHIELD_REGEN).min(SHIELD_MAX);
         }
@@ -1254,6 +1275,23 @@ impl Fighter {
         }
     }
 
+    /// Sets the knockback velocity (and its decay) to `launch`.
+    fn relaunch(&mut self, launch: Trajectory) {
+        let (cos, sin) = (cos_deg(launch.angle), sin_deg(launch.angle));
+        self.kb_x = launch.speed * cos;
+        self.kb_y = launch.speed * sin;
+        self.kb_decay_x = (KB_DECAY * cos).abs();
+        self.kb_decay_y = (KB_DECAY * sin).abs();
+    }
+
+    /// Trajectory DI: the stick held on the first frame of hitstun turns the launch.
+    fn apply_di(&mut self, launch: Trajectory, sx: Fx, sy: Fx) {
+        let angle = di_angle(launch.angle, sx, sy);
+        if angle != launch.angle {
+            self.relaunch(Trajectory { angle, ..launch });
+        }
+    }
+
     pub(crate) fn take_hit(&mut self, knockback: Fx, angle: i32, direction: i32) {
         let (cos, sin) = (cos_deg(angle), sin_deg(angle));
         let speed = knockback * LAUNCH_SPEED;
@@ -1261,6 +1299,7 @@ impl Fighter {
         self.kb_y = speed * sin;
         self.kb_decay_x = (KB_DECAY * cos).abs();
         self.kb_decay_y = (KB_DECAY * sin).abs();
+        let launch = Trajectory { angle: world_angle(angle, direction), speed };
         self.vx = Fx::ZERO;
         self.vy = Fx::ZERO;
         self.fast_falling = false;
@@ -1269,9 +1308,12 @@ impl Fighter {
         self.charge = 0;
         self.ledge_on = None;
         if self.grounded() && (knockback < GROUNDED_KB_THRESHOLD || self.kb_y <= Fx::ZERO) {
+            // Slides along the ground: nothing to DI.
             self.kb_y = Fx::ZERO;
+            self.di_pending = None;
         } else {
             self.grounded_on = None;
+            self.di_pending = Some(launch);
         }
         let hitstun = (knockback * HITSTUN_PER_KB).floor_to_int().max(1);
         self.state = State::Hitstun { frames_left: hitstun as u16 };
@@ -1313,6 +1355,7 @@ impl Fighter {
 
     /// This fighter was caught by fighter `by`.
     pub(crate) fn get_held(&mut self, by: usize) {
+        self.di_pending = None;
         self.vx = Fx::ZERO;
         self.vy = Fx::ZERO;
         self.kb_x = Fx::ZERO;
@@ -1349,6 +1392,7 @@ impl Fighter {
         self.fast_falling = false;
         self.holding = None;
         self.charge = 0;
+        self.di_pending = None;
         self.shield = SHIELD_MAX;
         (self.x, self.y) = stage.respawn;
         self.state = if self.stocks == 0 { State::Eliminated } else { State::Respawning { frames_left: RESPAWN_FRAMES } };
@@ -1398,6 +1442,26 @@ fn aerial(moves: &Moveset, intent: &Intent, facing: i32) -> MoveId {
         None if intent.sx.signum() == facing => moves.fair,
         None => moves.bair,
     }
+}
+
+/// A hit's angle (Smash degrees: 0 = forward, 90 = up) in world degrees, mirrored
+/// when it sends to the left (`direction` -1). In 0..360.
+pub fn world_angle(angle: i32, direction: i32) -> i32 {
+    (if direction < 0 { 180 - angle } else { angle }).rem_euclid(360)
+}
+
+/// Melee-style trajectory DI: a launch at world `angle` (degrees, 0 = right, 90 = up)
+/// with the stick at (sx, sy) (each -1..=1) is turned toward the stick by up to
+/// [`MAX_DI_DEGREES`], in proportion to how perpendicular the stick is to the launch
+/// (the cross product of the launch direction and the stick, clamped to ±1). A stick in
+/// the deadzone, or held along the launch line, changes nothing; the speed never changes.
+pub fn di_angle(angle: i32, sx: Fx, sy: Fx) -> i32 {
+    if Fx::hypot(sx, sy) < DEADZONE {
+        return angle;
+    }
+    let perp = (cos_deg(angle) * sy - sin_deg(angle) * sx).clamp(-Fx::ONE, Fx::ONE);
+    let turn = (perp * Fx::int(MAX_DI_DEGREES) + Fx::ratio(1, 2)).floor_to_int();
+    (angle + turn).rem_euclid(360)
 }
 
 /// Smash's knockback formula (Melee/Brawl form), in knockback units.
