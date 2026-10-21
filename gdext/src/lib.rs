@@ -15,8 +15,9 @@ use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
     AnimationPlayer, Camera3D, CanvasLayer, INode3D, Input, InputEvent, InputEventJoypadButton, InputEventKey, Label, Mesh,
-    MeshInstance3D, Node3D, PackedScene, SphereMesh, StandardMaterial3D,
+    MeshInstance3D, Node3D, PackedScene, QuadMesh, Shader, ShaderMaterial, SphereMesh, StandardMaterial3D,
 };
+use godot::classes::geometry_instance_3d::ShadowCastingSetting;
 use godot::global::{HorizontalAlignment, JoyAxis, JoyButton, Key};
 use godot::prelude::*;
 
@@ -123,10 +124,66 @@ struct FighterView {
     color: Color,
 }
 
+/// What made a hit effect; sets its tint, size, spikes and life (see `SparkKind::style`).
+#[derive(Clone, Copy)]
+enum SparkKind {
+    /// A landed hit. `launch` is the defender's launch direction (world space).
+    Hit { knockback: f32, launch: Vector3 },
+    Shield,
+    Explosion,
+    Counter,
+    Shatter,
+}
+
+/// How a `SparkKind` looks: the quad's size in meters, its `hit_spark.gdshader` uniforms
+/// and how many render frames it lasts.
+struct SparkStyle {
+    size: f32,
+    tint: Color,
+    energy: f32,
+    spikes: i32,
+    frames: u32,
+    launch: Vector3,
+}
+
+/// Knockback from which a hit's spark adds streaks along the launch direction.
+const SPARK_STREAK_KB: f32 = 60.0;
+/// Knockback at which a hit's spark is at its biggest, reddest and brightest.
+const SPARK_STRONG_KB: f32 = 120.0;
+
+impl SparkKind {
+    fn style(self) -> SparkStyle {
+        match self {
+            SparkKind::Hit { knockback, launch } => {
+                // 0 for a jab, 1 for a strong smash.
+                let power = ((knockback - 20.0) / (SPARK_STRONG_KB - 20.0)).clamp(0.0, 1.0);
+                let streaks = knockback >= SPARK_STREAK_KB && launch.length_squared() > 0.0;
+                SparkStyle {
+                    // Grows with knockback; the quad is wider than the burst its spikes draw.
+                    size: 2.4 * (0.3 + knockback / 150.0),
+                    tint: Color::from_rgb(1.0, 0.6 - 0.25 * power, 0.1 - 0.06 * power),
+                    energy: 1.5 + 1.2 * power,
+                    spikes: 8 + (4.0 * power) as i32,
+                    frames: 9 + (3.0 * power) as u32,
+                    launch: if streaks { launch.normalized() } else { Vector3::ZERO },
+                }
+            }
+            // Smaller, dimmer and cool blue-white, as Smash draws shield hits.
+            SparkKind::Shield => SparkStyle { size: 0.8, tint: Color::from_rgb(0.3, 0.6, 1.0), energy: 1.3, spikes: 6, frames: 8, launch: Vector3::ZERO },
+            SparkKind::Explosion => SparkStyle { size: 2.6, tint: Color::from_rgb(1.0, 0.28, 0.04), energy: 2.4, spikes: 14, frames: 12, launch: Vector3::ZERO },
+            SparkKind::Counter => SparkStyle { size: 1.5, tint: Color::from_rgb(1.0, 0.8, 0.25), energy: 2.0, spikes: 10, frames: 10, launch: Vector3::ZERO },
+            // The hobo's bottle: a pale glassy green.
+            SparkKind::Shatter => SparkStyle { size: 1.2, tint: Color::from_rgb(0.45, 1.0, 0.5), energy: 1.6, spikes: 9, frames: 9, launch: Vector3::ZERO },
+        }
+    }
+}
+
+/// A hit effect: a billboard quad drawn by `hit_spark.gdshader`, aged by render frame.
 struct Spark {
     node: Gd<MeshInstance3D>,
-    frames_left: u32,
-    size: f32,
+    material: Gd<ShaderMaterial>,
+    age: u32,
+    life: u32,
 }
 
 struct ProjectileView {
@@ -173,6 +230,8 @@ pub struct FightWorld {
     hitbox_pool: Vec<(Gd<MeshInstance3D>, Gd<StandardMaterial3D>)>,
     projectile_pool: Vec<ProjectileView>,
     sparks: Vec<Spark>,
+    /// Cycles to vary each spark's spike pattern.
+    spark_seed: f32,
     splats: Vec<Splat>,
     hud: Vec<Gd<Label>>,
     banner: Option<Gd<Label>>,
@@ -207,6 +266,7 @@ impl INode3D for FightWorld {
             hitbox_pool: Vec::new(),
             projectile_pool: Vec::new(),
             sparks: Vec::new(),
+            spark_seed: 0.0,
             splats: Vec::new(),
             hud: Vec::new(),
             banner: None,
@@ -305,17 +365,22 @@ impl INode3D for FightWorld {
 
         for event in self.world.events.clone() {
             match event {
-                Event::Hit { attacker, x, y, knockback, projectile, .. } => {
+                Event::Hit { attacker, defender, x, y, knockback, projectile, .. } => {
                     let kb = knockback.to_f32();
                     match self.splat_color(attacker, projectile) {
                         Some(cream) => self.spawn_splat(to_godot(x, y), cream, None),
-                        None => self.spawn_spark(to_godot(x, y), 0.3 + kb / 150.0),
+                        None => {
+                            // The defender was just launched: its knockback velocity points the way it flies.
+                            let d = &self.world.fighters[defender];
+                            let launch = Vector3::new(d.kb_x.to_f32(), d.kb_y.to_f32(), 0.0);
+                            self.spawn_spark(to_godot(x, y), SparkKind::Hit { knockback: kb, launch });
+                        }
                     }
                     self.shake = self.shake.max((kb - 40.0).max(0.0) / 400.0);
                 }
                 Event::ShieldHit { attacker, x, y, projectile, .. } => match self.splat_color(attacker, projectile) {
                     Some(cream) => self.spawn_splat(to_godot(x, y), cream, None),
-                    None => self.spawn_spark(to_godot(x, y), 0.25),
+                    None => self.spawn_spark(to_godot(x, y), SparkKind::Shield),
                 },
                 Event::ProjectileLanded { owner, x, y } => {
                     if let Some(cream) = self.splat_color(owner, true) {
@@ -324,7 +389,7 @@ impl INode3D for FightWorld {
                     }
                 }
                 Event::Explosion { x, y, .. } => {
-                    self.spawn_spark(to_godot(x, y), 0.9);
+                    self.spawn_spark(to_godot(x, y), SparkKind::Explosion);
                     self.shake = self.shake.max(0.25);
                 }
                 Event::ShieldBreak { fighter } => {
@@ -333,11 +398,11 @@ impl INode3D for FightWorld {
                 }
                 Event::Grab { .. } => {}
                 Event::Counter { x, y, .. } => {
-                    self.spawn_spark(to_godot(x, y), 0.6);
+                    self.spawn_spark(to_godot(x, y), SparkKind::Counter);
                     self.shake = self.shake.max(0.15);
                 }
                 Event::Shatter { x, y, .. } => {
-                    self.spawn_spark(to_godot(x, y), 0.5);
+                    self.spawn_spark(to_godot(x, y), SparkKind::Shatter);
                     self.shake = self.shake.max(0.1);
                 }
                 Event::Ko { fighter } => {
@@ -772,25 +837,42 @@ impl FightWorld {
         });
     }
 
-    fn spawn_spark(&mut self, at: Vector3, size: f32) {
-        let (mut node, mut mat) = sphere_instance(Color::from_rgba(1.0, 0.9, 0.4, 0.9));
-        mat.set_emission_energy_multiplier(4.0);
-        mat.set_feature(godot::classes::base_material_3d::Feature::EMISSION, true);
-        mat.set_emission(Color::from_rgb(1.0, 0.7, 0.2));
+    /// A Smash-style impact starburst at `at` (see `godot/shaders/hit_spark.gdshader`).
+    fn spawn_spark(&mut self, at: Vector3, kind: SparkKind) {
+        let style = kind.style();
+        let mut material = ShaderMaterial::new_gd();
+        material.set_shader(&load::<Shader>("res://shaders/hit_spark.gdshader"));
+        material.set_shader_parameter("tint", &style.tint.to_variant());
+        material.set_shader_parameter("energy", &style.energy.to_variant());
+        material.set_shader_parameter("spikes", &style.spikes.to_variant());
+        material.set_shader_parameter("launch", &style.launch.to_variant());
+        // Varies the spike pattern from spark to spark; purely cosmetic.
+        self.spark_seed = (self.spark_seed + 0.618_034) % 1.0;
+        material.set_shader_parameter("seed", &self.spark_seed.to_variant());
+        material.set_shader_parameter("age", &0.0f32.to_variant());
+        let mut quad = QuadMesh::new_gd();
+        quad.set_size(Vector2::ONE);
+        let mut node = MeshInstance3D::new_alloc();
+        node.set_mesh(&quad);
+        node.set_material_override(&material);
+        node.set_cast_shadows_setting(ShadowCastingSetting::OFF);
+        // The shader turns the quad to face the camera, outside its flat AABB.
+        node.set_extra_cull_margin(style.size);
         node.set_position(at + Vector3::new(0.0, 0.0, 0.3));
+        node.set_scale(Vector3::splat(style.size));
         self.arena.add_child(&node);
-        self.sparks.push(Spark { node, frames_left: 10, size });
+        self.sparks.push(Spark { node, material, age: 0, life: style.frames });
     }
 
+    /// Ages each spark by one render frame; it's gone after `life` frames.
     fn update_sparks(&mut self) {
-        for spark in &mut self.sparks {
-            spark.frames_left = spark.frames_left.saturating_sub(1);
-            let t = 1.0 - spark.frames_left as f32 / 10.0;
-            spark.node.set_scale(Vector3::splat(spark.size * (0.5 + t)));
-        }
         self.sparks.retain_mut(|spark| {
-            let alive = spark.frames_left > 0;
-            if !alive {
+            let alive = spark.age < spark.life;
+            if alive {
+                let t = spark.age as f32 / (spark.life - 1).max(1) as f32;
+                spark.material.set_shader_parameter("age", &t.to_variant());
+                spark.age += 1;
+            } else {
                 spark.node.queue_free();
             }
             alive

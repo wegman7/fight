@@ -12,7 +12,7 @@ In the menus, `physics_process` reads each port's controls (`read_menu_input`) i
 1. `physics_process` (fixed 60 Hz) builds one `fight_sim::Input` per player, from the
    keyboard and gamepads for humans or from `Cpu::think` for CPU slots, and calls `World::step`.
 2. `process` (every rendered frame) mirrors the sim state onto 3D nodes: the fighter
-   model posed by `pose()`, hitbox spheres, hit sparks, HUD, and the Smash-style camera that zooms
+   model posed by `pose()`, debug hitbox spheres (**H**), hit sparks, HUD, and the Smash-style camera that zooms
    to fit everyone.
 
 Gameplay logic doesn't belong here. This layer only reads the sim, except that it builds the inputs.
@@ -114,6 +114,16 @@ screen doesn't also act on the next one.
   the soldier's riot shield) and `Event::Shatter` (the hobo's bottle bursting as it lands)
   make a spark and a small shake, and `Event::Explosion` (the grenade's blast) a bigger
   spark and shake. With **H**, hitboxes are red and grab boxes purple.
+- A hit spark (`spawn_spark` / `update_sparks`) is a Smash-style impact starburst, not a
+  sphere: one camera-facing quad drawn by `godot/shaders/hit_spark.gdshader` as a white-hot
+  core flash, alternating long and short tapered spikes that fly outward and thin away, and
+  a faint shock ring. It pops on its first frame and is gone after 8-12 render frames;
+  `update_sparks` sets the shader's `age` each frame, so nothing free-runs. `SparkKind`
+  picks the look (`SparkKind::style`): a hit grows with knockback (still `0.3 + kb / 150`,
+  scaled up) and turns redder, brighter and spikier, and from `SPARK_STREAK_KB` adds long
+  streaks along the defender's launch direction (read from its `kb_x` / `kb_y` right after
+  the hit). Shield hits are small, dim and cool blue; explosions big and red-orange;
+  counters gold; shatters glassy green.
 - Smoke test with no window: `godot --headless --path godot --quit-after 600` (sits in
   the menus) and `FIGHT_DEMO=1 godot --headless --path godot --quit-after 900` (plays a
   match). They should print no `ERROR` lines.
