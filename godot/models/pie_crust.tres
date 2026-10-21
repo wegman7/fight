@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_plain.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Crust"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/color = Color(0.68, 0.4, 0.16, 1)
+shader_parameter/roughness = 0.75
+shader_parameter/specular = 0.3
+shader_parameter/variation = 0.25
+shader_parameter/variation_scale = 60.0
+shader_parameter/grain = 2.0
+shader_parameter/grain_scale = 300.0

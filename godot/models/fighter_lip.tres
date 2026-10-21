@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_skin.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Lip"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/skin_color = Color(0.66, 0.36, 0.32, 1)
+shader_parameter/roughness = 0.38
+shader_parameter/sss = 0.6
+shader_parameter/mottle = 0.06
+shader_parameter/pores = 0.4

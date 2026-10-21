@@ -8,6 +8,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_fighter import GLB_PATH, export  # noqa: E402
+from build_fighter import CHEF_EXPORT, GLB_PATH, export  # noqa: E402
 
-export(GLB_PATH)
+export(GLB_PATH, **CHEF_EXPORT)

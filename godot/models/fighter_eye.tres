@@ -1,0 +1,18 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/chef_plain.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "Eye"
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/color = Color(0.8, 0.76, 0.7, 1)
+shader_parameter/mask_color = Color(0.75, 0.5, 0.45, 1)
+shader_parameter/mask_amount = 0.8
+shader_parameter/roughness = 0.05
+shader_parameter/mask_roughness = 0.08
+shader_parameter/specular = 0.5
+shader_parameter/sss = 0.4
+shader_parameter/clearcoat = 1.0
+shader_parameter/clearcoat_roughness = 0.02
+shader_parameter/variation = 0.02

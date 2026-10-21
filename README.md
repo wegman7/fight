@@ -254,7 +254,7 @@ joypad's name to the console at startup and whenever one connects.
 - Menus: `gdext/src/menu.rs` (state, layout, what each press does) and `gdext/src/menu_view.rs` (drawing)
 - Background music: `gdext/src/music.rs` loads and loops `godot/music/untitled.mp3` (menus) and `godot/music/rising_motif.mp3` (matches)
 - Controls, camera, visuals: `gdext/src/lib.rs`
-- Chef model, animations and the pie: `art/fighter/build_fighter.py` → `godot/models/fighter.glb` and `pie.glb`
+- Chef model, animations and the pie: `art/fighter/build_fighter.py` → `godot/models/fighter.glb` and `pie.glb`, shaded by `godot/shaders/chef_*.gdshader` (skin, cloth, hair and everything else) via `fighter_*.tres` / `pie_*.tres`
 - Pug model and animations: `art/pug/build_pug.py` → `godot/models/pug.glb`
 - Samurai model and animations: `art/samurai/build_samurai.py` → `godot/models/samurai.glb`
 - Ninja model and animations: `art/ninja/build_ninja.py` → `godot/models/ninja.glb`

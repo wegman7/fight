@@ -1,8 +1,10 @@
 # Chef model
 
-The chef (`Character::Chef`): a portly cook with a handlebar mustache, in a
-double-breasted jacket, pleated toque, neckerchief, bistro apron, dark trousers and
-black shoes. He's rigged and animated in Blender and exported to `godot/models/fighter.glb`.
+The chef (`Character::Chef`): a portly, ruddy cook with a handlebar mustache, in a
+double-breasted jacket (seams, drag folds, creased sleeves, a pen and thermometer in
+the near sleeve's pocket), pleated toque, neckerchief, bistro apron with a striped
+kitchen towel tucked in at the hip, check trousers that break over the shoe, and
+polished black shoes with stitched soles and laces. He's rigged and animated in Blender and exported to `godot/models/fighter.glb`.
 The same script also builds the cream pie he throws (his neutral special) as
 `godot/models/pie.glb`, which the game draws as the flying projectile.
 
@@ -10,7 +12,9 @@ The same script also builds the cream pie he throws (his neutral special) as
 |---|---|
 | `build_fighter.py` | Generates the whole asset from code: mesh, armature, every animation. Saves `fighter.blend` and exports the `.glb`, then builds and exports `pie.glb`. |
 | `fighter.blend` | The Blender file. Open it to look at or edit the model by hand. |
-| `export_fighter.py` | Exports `fighter.blend` to `godot/models/fighter.glb` with the settings the game expects. (`pie.glb` only comes from the build script.) |
+| `export_fighter.py` | Exports `fighter.blend` to `godot/models/fighter.glb` with the settings the game expects (`CHEF_EXPORT`). (`pie.glb` only comes from the build script.) |
+| `godot/shaders/chef_*.gdshader` | His surfaces in game: `chef_skin` (skin, lips), `chef_cloth` (jacket and toque, trousers, towel), `chef_hair`, `chef_plain` (shoes, soles, laces, nails, eyes, buttons, the pie), sharing `chef_common.gdshaderinc`. |
+| `godot/models/fighter_*.tres`, `pie_*.tres` | One `ShaderMaterial` per glTF material, with its colors and settings; `fighter.glb.import` and `pie.glb.import` swap them in by material name. |
 
 ## Two ways to change it
 
@@ -37,7 +41,8 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
 
 - **Animation names = `Fighter::anim()` names.** States: `idle`, `walk`, `run`,
   `crouch`, `jumpsquat`, `air`, `specialfall`, `land`, `hitstun`, `shield`, `dizzy`,
-  `grab_hold`, `grabbed`. Dodges (`DodgeData::name`): `spotdodge`, `roll_f`, `roll_b`,
+  `grab_hold`, `grabbed`, and the ledge clips `ledge_hang`, `ledge_climb`, `ledge_roll`,
+  `ledge_attack` (see below). Dodges (`DodgeData::name`): `spotdodge`, `roll_f`, `roll_b`,
   `airdodge`. Every chef move's `MoveData::name` (`Character::Chef.moves()`): `jab`, `jab2`, `jab3`, `ftilt`, `utilt`,
   `dtilt`, `dashattack`, `fsmash`, `usmash`, `dsmash`, `nair`, `fair`, `bair`, `uair`,
   `dair`, `pie_throw`, `special_s`, `special_u`, `special_d`, `special_d_land`, `grab`,
@@ -59,21 +64,46 @@ In both cases, Godot reimports the `.glb` the next time the editor opens or on
   `sim/src/moves.rs` on active frames (press **H** in game to compare).
 - **Materials:** surfaces using the material named `Body` (the apron, its ties and the
   neckerchief) get the player's color in game, and only they show hit flashes and other
-  state tints. `Jacket` (also the toque), `Pants`, `Skin`, `Lip`, `Hair`, `Shoe`,
-  `Button`, `Eye`, `Iris`, `Pupil` and the pie's `Tin`, `Crust`, `Cream` and `Cherry`
-  keep their own colors.
+  state tints. `Jacket` (also the toque and sleeve pocket), `Pants`, `Towel`, `Skin`,
+  `Lip`, `Nail`, `Hair` (also brows, lashes, mustache), `Shoe`, `Sole`, `Lace`, `Button`
+  (also the pen), `Eye`, `Iris`, `Pupil` and the pie's `Tin` (also the thermometer),
+  `Crust`, `Cream` and `Cherry` keep their own look. Every one but `Body` is replaced on
+  import by its `.tres` shader material, so the colors in `MATERIALS` only show in
+  Blender. A new material needs a `.tres` and an entry in `fighter.glb.import`.
+- **Shader inputs:** glTF drops Blender's procedural node trees, so detail lives in the
+  Godot shaders, which read two things the script bakes into the mesh
+  (`surface_data`): UV = (rest x, rest z) and UV2.x = rest y, the rest-pose position,
+  so weave, pores and the trouser check stick to the surface as it deforms (no UV
+  unwrap); and the color attribute, R = ambient occlusion baked in the rest pose (only
+  from parts that move together, `AO_GROUP`), G/B = per-material masks (`masks`:
+  flushed cheeks/nose/ears and stubble on the skin, stains on the jacket, gray temples
+  and strand direction on the hair, creases on the shoes, pink corners on the eyes).
+  The export needs `CHEF_EXPORT` (`export_vertex_color="ACTIVE"`) to keep the colors.
 - **The pie bone.** `pie` (child of `forearm.R`) carries the pie he holds. Its scale is
   keyed in every action: 0 everywhere except `pie_throw` frames 4-11, so it never
   lingers when a move is interrupted. On frame 12 it vanishes as the sim fires the
   projectile. `holding_pie(pose, facing)` aims its cream (0 = forward, 90 = up).
+- **Ledge clips.** On a ledge the sim puts the origin 0.1 m outside the edge with the
+  top of the 1.2 m hurtbox level with the deck, so the corner is at model (0.1, 1.2).
+  `ledge_hang` (80 frames) loops on the world clock: fists on the corner, dangling with
+  a slow sway. The getups follow their state's frame and the sim slides the origin
+  linearly onto the stage (`ledge_getup_pos`): `ledge_climb` 20 frames / 0.8 m in,
+  `ledge_roll` 25 / 1.6 m (a hoist, then a tucked forward roll, one full turn of the
+  hips), `ledge_attack` 30 / 1.1 m (hoist, then a low sweeping kick on the active
+  frames 15-18). `ledge_clip` keys them in ledge space (origin = the corner) and
+  converts every frame to model space, re-solving the arms (`arm_ik`) and legs while
+  hands grip the corner or feet are planted, and each ends exactly on `guard()` (idle).
+  `joints(pose)` is the side-view forward kinematics they use.
 - **Visual only.** Hurtboxes and hitboxes stay in the sim, and nothing reads collision
   from this mesh.
 - **New actions made in Blender** must be stashed (Action Editor → Stash) or be on an
   NLA track, so the exporter includes them.
 
-The samurai (`art/samurai/build_samurai.py`) imports this script's shapes, skeleton
-and pose helpers, so changing the joint positions, `guard`, `crouch`, `AIR` or the like
-changes him too. Rebuild both after such a change.
+The samurai, ninja, soldier and hobo scripts import this script's skeleton (`BONES`),
+`Model`, `Blob`, `hand_blob` (the samurai), `export` and pose helpers, so changing the
+joint positions, `guard`, `crouch`, `AIR` or the like changes them too. Keep those
+backward compatible (their materials are still `(color, roughness, metallic)` tuples)
+and rebuild them after such a change.
 
 ## Pose convention (in `build_fighter.py`)
 
@@ -87,12 +117,20 @@ are `.R`.
 ## How it's built
 
 - **Cloth and flesh** are metaball surfaces, one per piece so the limbs don't fuse to
-  the body: head (cheeks, bulbous nose, double chin, ears, eye sockets), hair, the
-  jacket's body (chest, belly, shoulders), each sleeve, fist, trouser leg and shoe.
+  the body: head (cheeks, cheekbones, jowls, a big nose with wings and nostrils, smile
+  lines, cupid's-bow lips, double chin, ears with a rolled rim, lobe and bowl, eye
+  sockets), hair, the jacket's body (chest, belly, shoulders, drag folds), each sleeve
+  (elbow creases), fist (`chef_hand_blob`: three-segment fingers, knuckles, tendons;
+  the plainer `hand_blob` is the samurai's), trouser leg (folds at the knee, the break
+  over the shoe) and shoe. Creases are negative metaballs.
   Each is polygonized, smoothed, decimated, and skinned by distance to its own bones
   (`by_distance`), so joints bend smoothly. Fists, hair and shoes are rigid.
 - **Details** are modeled in bmesh and placed by ray casting onto those surfaces
-  (`Model.hit`, `Model.fit`): the eyes, brows and handlebar mustache sit on the face,
+  (`Model.hit`, `Model.fit`): the eyes (an iris and pupil set into the eyeball, upper and
+  lower lids with rounded margins, a lid crease and lashes, `eye_and_lids`), the brows
+  and handlebar mustache (a base tube with seeded individual hairs over it, `strands`)
+  sit on the face, the thumbnail on the fist, seams (`surface_line`) and the pen pocket
+  on the jacket, soles and laces on the shoes,
   the toque's band is fitted to the head, the buttons and the front panel's edge are
   sewn on the jacket and take the weights of the nearest jacket vertex.
 - **The apron** hangs straight down from the widest point above it in soft folds. Its
