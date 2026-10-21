@@ -31,7 +31,12 @@
   60 (not 100) for tilts.
 - New stage → a `StageId` variant (name, `stage()`), added to `StageId::ALL`. Its spawns
   must sit on a platform; `every_stage_spawns_four_fighters_on_the_floor` and
-  `every_cpu_level_keeps_its_stocks_on_every_stage` cover it automatically.
+  `every_cpu_level_keeps_its_stocks_on_every_stage` cover it automatically. Write its
+  platforms, spawns and respawn through `s()` (`STAGE_SCALE`), and its blast zones as
+  plain `Fx::int` in fighter units. Never resize fighters to change how big they look
+  next to the stage: change `STAGE_SCALE`.
+- Tests that place P2 near P1 also pin P1 (`w.fighters[0].x = Fx::int(-40)`), so they
+  don't depend on where the stage's spawns are.
 - CPU players (`cpu.rs`) read `&World` and return an `Input`, nothing else. Their
   randomness comes from the `rng` field (xorshift), never from time or the OS, so CPU
   matches replay identically. Behaviour changes need a test in `tests/cpu.rs`.

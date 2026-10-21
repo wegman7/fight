@@ -53,7 +53,8 @@ screen doesn't also act on the next one.
   nodes (`build_stage`, `build_fighters`, `build_hud`, plus effects) all go under
   `FightWorld::arena`, which `clear_arena` empties when the match ends. `build_stage` puts a model from [`art/stage/`](../art/stage/README.md)
   on each sim platform (`stage.glb` for the solid one, `raft.glb` for soft ones),
-  stretched in x from the width it was built at (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`). Only the light, environment, `Camera3D` and the decorative backdrop
+  stretched in x from the width it was built at (`STAGE_MODEL_WIDTH`, `RAFT_MODEL_WIDTH`) and
+  shrunk in height and depth by the sim's `STAGE_SCALE`, so the models keep the layout's proportions. Only the light, environment, `Camera3D` and the decorative backdrop
   live in `main.tscn`, so they can be tweaked in the editor. The backdrop (`Beach`,
   `Clouds`) is a subdivided plane shaped by `shaders/sand.gdshader`, an ocean plane
   using `shaders/ocean.gdshader`, and props from `art/beach/` (palms, rocks,

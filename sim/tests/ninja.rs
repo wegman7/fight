@@ -120,6 +120,7 @@ fn ninja_inputs_start_ninja_moves() {
 #[test]
 fn kunai_chains_into_a_finisher() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-34);
     let mut seen = Vec::new();
     for f in 0..60 {
@@ -135,6 +136,7 @@ fn kunai_chains_into_a_finisher() {
 #[test]
 fn shuriken_fires_on_frame_10_and_hits() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-20);
     w.step(&[press(Input::SPECIAL), NONE]);
     run(&mut w, 8, NONE, NONE);
@@ -177,6 +179,7 @@ fn shadow_dash_passes_through_a_jab_unhurt() {
     // P2 faces the oncoming ninja and jabs as he dashes through: the intangibility
     // lets the ninja pass through the hitbox without taking damage.
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.fighters[1].facing = 1;
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
@@ -205,6 +208,7 @@ fn smoke_bomb_vanishes_and_reappears_higher_then_helpless() {
 #[test]
 fn substitution_counters_a_hit_and_strikes_back() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Ninja], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     assert_eq!(mv(&w, 1), Some(MoveId::NinjaSubstitution));
@@ -226,6 +230,7 @@ fn substitution_counters_a_hit_and_strikes_back() {
 #[test]
 fn substitution_too_late_just_gets_hit() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Ninja], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 25, NONE, NONE);
@@ -239,6 +244,7 @@ fn substitution_too_late_just_gets_hit() {
 /// The ninja grabs P2 (standing at x = -32).
 fn grabbed() -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[press(Input::GRAB), NONE]);
     run(&mut w, 6, NONE, NONE);

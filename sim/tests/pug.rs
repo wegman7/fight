@@ -123,6 +123,7 @@ fn pug_has_two_air_jumps() {
 #[test]
 fn bites_chain_into_nibbles_that_repeat_while_attack_is_mashed() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     let mut seen = Vec::new();
     let mut nibbles_started = 0;
@@ -221,6 +222,7 @@ fn only_special_charges_the_sneeze() {
 #[test]
 fn a_full_sneeze_launches_a_close_target() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-25);
     sneeze(&mut w, press(Input::SPECIAL));
     run(&mut w, 5, NONE, NONE);
@@ -231,6 +233,7 @@ fn a_full_sneeze_launches_a_close_target() {
 #[test]
 fn tackle_latches_on_rides_for_three_bites_then_hops_off() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-25);
     w.step(&[input(100, 0, Input::SPECIAL), NONE]);
     assert_eq!(mv(&w, 0), Some(MoveId::PugTackle));
@@ -259,6 +262,7 @@ fn tackle_latches_on_rides_for_three_bites_then_hops_off() {
 #[test]
 fn tackle_whiffs_on_a_shield() {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-25);
     let shield = press(Input::SHIELD);
     w.step(&[input(100, 0, Input::SPECIAL), shield]);
@@ -337,6 +341,7 @@ fn play_dead_counters_a_hit_and_pounces_back() {
 #[test]
 fn play_dead_outside_its_window_just_gets_hit() {
     let mut w = World::new(Stage::battlefield(), &[Character::Chef, Character::Pug], 3);
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[NONE, input(0, -100, Input::SPECIAL)]);
     run(&mut w, 27, NONE, NONE);
@@ -366,6 +371,7 @@ fn play_dead_counters_projectiles_too() {
 /// The pug grabs P2 (standing at x = -32).
 fn grabbed() -> World {
     let mut w = world();
+    w.fighters[0].x = Fx::int(-40);
     w.fighters[1].x = Fx::int(-32);
     w.step(&[press(Input::GRAB), NONE]);
     run(&mut w, 6, NONE, NONE);

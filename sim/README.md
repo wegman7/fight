@@ -94,9 +94,13 @@ never turn; ledge jumps leave inward at `air_speed`.
 
 ## Units
 
-Melee-style: 1 unit ≈ 0.1 m in Godot. The main stage is laid out at 5/6 scale
-(≈113 units wide, down from 136) so characters read ~20% larger relative to it;
-every stage coordinate goes through `stage.rs`'s `s()`. Speeds are in units per
+Melee-style: 1 unit ≈ 0.1 m in Godot. Stages are laid out at 5/7 scale
+(`STAGE_SCALE`: the Boardwalk's main stage is ≈97 units wide, down from 136) so
+characters read 40% larger relative to them; every platform, spawn and respawn
+coordinate goes through `stage.rs`'s `s()`. Blast zones don't: they're in fighter
+units (how far knockback has to carry someone), so KO percents and recovery depth
+don't change with the layout. Fighters, moves and the CPU's distances are never
+scaled. Speeds are in units per
 frame, and frame numbers are 1-based like Smash frame data (a hitbox with
 `first: 2` is a "frame 2 jab").
 

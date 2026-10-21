@@ -27,7 +27,8 @@ unsafe impl ExtensionLibrary for FightExtension {}
 
 /// Simulation units -> Godot meters.
 pub(crate) const SCALE: f32 = 0.1;
-/// Stage models made by `art/stage/build_stage.py`, and the platform width (m) each was built at.
+/// Stage models made by `art/stage/build_stage.py`, and the platform width (m) each was built
+/// at: the Boardwalk's, before `STAGE_SCALE` (see `build_stage`).
 const STAGE_MODEL: &str = "res://models/stage.glb";
 const STAGE_MODEL_WIDTH: f32 = 13.6;
 const RAFT_MODEL: &str = "res://models/raft.glb";
@@ -507,6 +508,9 @@ impl FightWorld {
 
     fn build_stage(&mut self) {
         let stage = self.world.stage.clone();
+        // The models are built at the unscaled layout's sizes; the sim lays every stage
+        // out at `STAGE_SCALE`, so their height and depth shrink by it too.
+        let stage_scale = fight_sim::STAGE_SCALE.to_f32();
         for (i, plat) in stage.platforms.iter().enumerate() {
             let width = (plat.right - plat.left).to_f32() * SCALE;
             // A boardwalk on a floating sandstone rock, and driftwood rafts (art/stage/),
@@ -515,7 +519,7 @@ impl FightWorld {
             let mut node = load::<PackedScene>(model).instantiate_as::<Node3D>();
             let center_x = (plat.left + plat.right).to_f32() * 0.5 * SCALE;
             node.set_position(Vector3::new(center_x, plat.y.to_f32() * SCALE, 0.0));
-            node.set_scale(Vector3::new(width / model_width, 1.0, 1.0));
+            node.set_scale(Vector3::new(width / model_width, stage_scale, stage_scale));
             if plat.soft && i % 2 == 0 {
                 // Turn every other raft around so they don't all look the same.
                 node.set_rotation_degrees(Vector3::new(0.0, 180.0, 0.0));

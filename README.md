@@ -259,7 +259,7 @@ joypad's name to the console at startup and whenever one connects.
 - Characters and which move each input starts: `sim/src/character.rs` (`Character`, `Moveset`)
 - Character tuning: `FighterParams::CHEF` / `PUG` / `SAMURAI` / `NINJA` / `SOLDIER` / `HOBO` in `sim/src/fighter.rs`
 - Moves, dodges and frame data: `sim/src/moves.rs`, the chef's first, then the pug's, then the samurai's, then the ninja's, then the soldier's, then the hobo's (reading inputs into a move slot is in `Fighter::step`)
-- Stage layouts and blast zones: `StageId` (the selectable list) and `Stage::battlefield()` / `flat()` / `single_platform()` in `sim/src/stage.rs`
+- Stage layouts and blast zones: `StageId` (the selectable list) and `Stage::battlefield()` / `flat()` / `single_platform()` in `sim/src/stage.rs`. How big stages are next to the fighters: `STAGE_SCALE` there (layout only; blast zones are in fighter units)
 - Stage look (boardwalk on a floating rock, driftwood rafts): `art/stage/build_stage.py` → `godot/models/stage.glb` and `raft.glb`, textured by `godot/shaders/wood.gdshader` and `stone.gdshader`
 - Knockback / hitstun / hitlag formulas: bottom of `sim/src/fighter.rs`. Shield, grab and smash-charge numbers: constants near the top.
 - Hits, grabs, throws and projectiles between fighters: `World` in `sim/src/world.rs`

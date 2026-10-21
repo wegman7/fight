@@ -32,7 +32,8 @@ have no rig or animations, and the game never reads them. They're purely decorat
   only ever seen far out on the water.
 
 Sizes are in Godot units, base at the origin: palms are about 9 to 11 tall, next to
-a stage about 14 wide. Leaves and sails are double-sided materials.
+a stage that is drawn about 10 wide (the models are built 13.6 wide, then
+scaled to the sim layout). Leaves and sails are double-sided materials.
 
 ## The rest of the backdrop
 

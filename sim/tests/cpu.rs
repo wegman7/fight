@@ -90,7 +90,8 @@ fn cpu_is_deterministic() {
 #[test]
 fn easy_cpu_mashes_out_of_grabs() {
     let (mut w, mut cpu) = (world(), Cpu::easy(1));
-    w.fighters[1].x = Fx::int(-32);
+    // Just in front of P1 (facing right from its spawn), inside its grab range.
+    w.fighters[1].x = w.fighters[0].x + Fx::int(1);
     let grab = Input { buttons: Input::GRAB, ..Input::default() };
     let mut held = 0;
     for f in 0..200 {
