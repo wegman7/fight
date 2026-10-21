@@ -231,6 +231,10 @@ or during jumpsquat) keeps your facing and leaves the ground moving backward, so
 air still comes out; to jump facing the other way, turn on the ground first (tap back),
 then jump. Double jumps never turn you either; they just go the held way.
 
+Movement is moderately floaty, closer to Brawl-leaning-Melee than to Ultimate: everyone
+falls fairly slowly and hangs in the air a while, so jumps take a beat longer without
+going any higher. The soldier still drops like a rock and the hobo still drifts.
+
 On a keyboard every press is a full flick. So pressing a direction and J together
 is a smash attack. Hold the direction a moment first to get a tilt, or use the
 Smash key for smash attacks on purpose. Up and back together is a diagonal, which

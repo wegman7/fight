@@ -92,6 +92,15 @@ momentum and air drift slows it as before). Full and short hops share it, and so
 jumping out of shield. Double jumps set `vx` to the stick's x times `air_speed` and
 never turn; ledge jumps leave inward at `air_speed`.
 
+Feel: movement is moderately floaty, Brawl leaning toward Melee. Gravity, top fall
+speed and fast-fall speed are about 20% / 15% / 15% below their first tuning, ground
+speeds about 7% and air speeds 5% lower. Jump speeds came down by about 10% with the
+gravity (height ≈ v²/2g), so jumps reach the same heights (within ~2%) but hang about
+12% longer: the chef's full hop peaks ~27 units up and lands 55 frames later. Floatier
+fighters carry further on a vertical hit, so the shared top blast zone went up from 167
+to 180 to keep vertical KO percents close. The characters keep their order: the soldier
+still falls fastest and the hobo slowest.
+
 ## Units
 
 Melee-style: 1 unit ≈ 0.1 m in Godot. Stages are laid out at 5/7 scale
@@ -99,7 +108,8 @@ Melee-style: 1 unit ≈ 0.1 m in Godot. Stages are laid out at 5/7 scale
 characters read 40% larger relative to them; every platform, spawn and respawn
 coordinate goes through `stage.rs`'s `s()`. Blast zones don't: they're in fighter
 units (how far knockback has to carry someone), so KO percents and recovery depth
-don't change with the layout. Fighters, moves and the CPU's distances are never
+don't change with the layout. The top one does depend on gravity, though: lower
+gravity carries a launched fighter higher (see Feel, above). Fighters, moves and the CPU's distances are never
 scaled. Speeds are in units per
 frame, and frame numbers are 1-based like Smash frame data (a hitbox with
 `first: 2` is a "frame 2 jab").
