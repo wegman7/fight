@@ -247,6 +247,12 @@ const LEDGE_ATTACK_IN: Fx = Fx::int(10);
 const LEDGE_STEAL_POP: Fx = Fx::int(2);
 const RESPAWN_FRAMES: u16 = 60;
 const RESPAWN_INTANGIBLE_FRAMES: u16 = 120;
+/// An up special can be turned around on its first this many frames (its input frame
+/// included), before any character's up special hits.
+pub const UP_SPECIAL_TURN_FRAMES: u16 = 3;
+/// How far back the stick must lean to turn an up special around: a slight tilt,
+/// just past the deadzone (a keyboard's full press is well past it).
+const UP_SPECIAL_TURN_THRESHOLD: Fx = DEADZONE;
 const SPECIAL_FALL_LANDING_LAG: u8 = 20;
 const AIR_DODGE_LANDING_LAG: u8 = 10;
 /// Smash attacks charge for up to this many frames, for up to 1.4x damage.
@@ -732,9 +738,23 @@ impl Fighter {
             }
         }
 
+        self.reverse_up_special(sx);
         self.scripted_motion();
         self.apply_teleport();
         self.physics(stage);
+    }
+
+    /// On an up special's first `UP_SPECIAL_TURN_FRAMES` frames (the input frame
+    /// included), the slightest tilt turns the fighter around (Ultimate's up-B
+    /// reversal). Its drift is plain air control, so it needs no other change.
+    fn reverse_up_special(&mut self, sx: Fx) {
+        if let State::Attack { mv, frame, .. } = self.state
+            && frame <= UP_SPECIAL_TURN_FRAMES
+            && mv == self.moveset().up_special
+            && sx.abs() >= UP_SPECIAL_TURN_THRESHOLD
+        {
+            self.facing = sx.signum();
+        }
     }
 
     /// Updates buffers and stick history, and returns what this frame's input means.
@@ -776,6 +796,7 @@ impl Fighter {
         let running = self.vx.abs() > self.params.walk_speed && sx.abs() >= RUN_THRESHOLD && sx.signum() == self.vx.signum();
         let shield_held = input.held(Input::SHIELD);
         if take(&mut self.jump_buffer) {
+            // Facing stays put: back + jump is a backward jump (bair still comes out).
             self.state = State::JumpSquat { frame: 0 };
         } else if take(&mut self.grab_buffer) || (shield_held && take(&mut self.attack_buffer)) {
             let moves = self.moveset();

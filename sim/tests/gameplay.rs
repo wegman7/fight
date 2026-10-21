@@ -88,6 +88,64 @@ fn full_hop_goes_higher_than_short_hop_and_both_land() {
 }
 
 #[test]
+fn back_and_jump_together_jump_backward_without_turning() {
+    // P1 starts facing right, P2 facing left. Each presses jump and back on the same
+    // frame: like Ultimate, they keep facing and jump backward, so a bair still comes out.
+    let mut w = world();
+    let (x0, x1) = (w.fighters[0].x, w.fighters[1].x);
+    w.step(&[input(-100, 0, Input::JUMP), input(100, 0, Input::JUMP)]);
+    assert!(matches!(w.fighters[0].state, State::JumpSquat { .. }));
+    assert_eq!((w.fighters[0].facing, w.fighters[1].facing), (1, -1), "no turn on the jump's input frame");
+    run(&mut w, 9, input(-100, 0, Input::JUMP), input(100, 0, Input::JUMP));
+    assert_eq!((w.fighters[0].state, w.fighters[1].state), (State::Air, State::Air));
+    assert_eq!((w.fighters[0].facing, w.fighters[1].facing), (1, -1), "still facing forward in the air");
+    assert!(w.fighters[0].vx < Fx::ZERO && w.fighters[0].x < x0, "P1 drifts back (left)");
+    assert!(w.fighters[1].vx > Fx::ZERO && w.fighters[1].x > x1, "P2 drifts back (right)");
+    w.step(&[input(-100, 0, Input::ATTACK), input(100, 0, Input::ATTACK)]);
+    assert_eq!((mv(&w, 0), mv(&w, 1)), (Some(MoveId::Bair), Some(MoveId::Bair)));
+}
+
+#[test]
+fn back_held_during_jumpsquat_still_jumps_backward_without_turning() {
+    let mut w = world();
+    let (x0, x1) = (w.fighters[0].x, w.fighters[1].x);
+    w.step(&[press(Input::JUMP), press(Input::JUMP)]);
+    run(&mut w, 9, input(-100, 0, Input::JUMP), input(100, 0, Input::JUMP));
+    assert_eq!((w.fighters[0].state, w.fighters[1].state), (State::Air, State::Air));
+    assert_eq!((w.fighters[0].facing, w.fighters[1].facing), (1, -1));
+    assert!(w.fighters[0].vx < Fx::ZERO && w.fighters[0].x < x0);
+    assert!(w.fighters[1].vx > Fx::ZERO && w.fighters[1].x > x1);
+}
+
+#[test]
+fn turning_on_the_ground_then_jumping_faces_the_new_way() {
+    let mut w = world();
+    // One frame of back on the ground turns around; the jump on the next frame keeps it.
+    w.step(&[stick(-100, 0), stick(100, 0)]);
+    assert_eq!((w.fighters[0].facing, w.fighters[1].facing), (-1, 1), "turned on the ground");
+    run(&mut w, 10, input(-100, 0, Input::JUMP), input(100, 0, Input::JUMP));
+    assert_eq!((w.fighters[0].state, w.fighters[1].state), (State::Air, State::Air));
+    assert_eq!((w.fighters[0].facing, w.fighters[1].facing), (-1, 1), "jumped out of the turn facing the new way");
+    assert!(w.fighters[0].vx < Fx::ZERO && w.fighters[1].vx > Fx::ZERO);
+    w.step(&[input(-100, 0, Input::ATTACK), input(100, 0, Input::ATTACK)]);
+    assert_eq!((mv(&w, 0), mv(&w, 1)), (Some(MoveId::Fair), Some(MoveId::Fair)));
+}
+
+#[test]
+fn double_jumps_drift_back_without_turning() {
+    for facing in [1, -1] {
+        let mut w = world();
+        airborne(&mut w, 0, 0, 150);
+        w.fighters[0].facing = facing;
+        w.step(&[input((-facing * 100) as i8, 0, Input::JUMP), NONE]);
+        let f = &w.fighters[0];
+        assert_eq!(f.air_jumps_left, 0, "double jumped");
+        assert_eq!(f.facing, facing, "a back-held double jump keeps facing");
+        assert_eq!(f.vx.signum(), -facing, "but still goes the held way");
+    }
+}
+
+#[test]
 fn jab_connects_on_frame_2_and_only_once() {
     let mut w = world();
     w.fighters[1].x = Fx::int(-32);
@@ -443,6 +501,74 @@ fn up_special_rises_then_leaves_you_helpless_until_landing() {
     assert_eq!(lag, Some(20));
 }
 
+/// P1 as `c` at x = 0, facing `facing`, against an idle chef out of the way.
+fn up_special_world(c: Character, facing: i32) -> World {
+    let mut w = World::new(Stage::battlefield(), &[c, Character::Chef], 3);
+    (w.fighters[0].x, w.fighters[0].facing) = (Fx::ZERO, facing);
+    w
+}
+
+#[test]
+fn up_special_turns_around_with_a_slight_back_tilt_on_its_first_frames() {
+    for c in Character::ALL {
+        let up = c.moveset().up_special;
+        for facing in [1, -1] {
+            let back = |x: i8| stick((-facing) as i8 * x, 0);
+            // Up-B, then a slight tilt back on its second frame.
+            let mut w = up_special_world(c, facing);
+            w.step(&[input(0, 100, Input::SPECIAL), NONE]);
+            assert_eq!(mv(&w, 0), Some(up), "{c:?}");
+            assert_eq!(w.fighters[0].facing, facing);
+            w.step(&[back(25), NONE]);
+            assert_eq!(w.fighters[0].facing, -facing, "{c:?} facing {facing}: a slight back tilt reverses");
+            run(&mut w, 10, back(100), NONE);
+            assert_eq!(w.fighters[0].facing, -facing, "{c:?} stays reversed");
+
+            // Already tilted back on the input frame.
+            let mut w = up_special_world(c, facing);
+            w.step(&[input((-facing * 30) as i8, 100, Input::SPECIAL), NONE]);
+            assert_eq!(mv(&w, 0), Some(up), "{c:?}");
+            assert_eq!(w.fighters[0].facing, -facing, "{c:?} facing {facing}: reverses on the input frame");
+
+            // Just under the threshold: no turn.
+            let mut w = up_special_world(c, facing);
+            w.step(&[input(0, 100, Input::SPECIAL), NONE]);
+            run(&mut w, 3, back(19), NONE);
+            assert_eq!(w.fighters[0].facing, facing, "{c:?} facing {facing}: 19 is too slight");
+
+            // Forward never turns, and once the window has passed, back doesn't either.
+            let mut w = up_special_world(c, facing);
+            w.step(&[input(0, 100, Input::SPECIAL), NONE]);
+            run(&mut w, 2, stick((facing * 100) as i8, 0), NONE);
+            assert_eq!(w.fighters[0].facing, facing);
+            run(&mut w, 5, back(100), NONE);
+            assert_eq!(mv(&w, 0), Some(up));
+            assert_eq!(w.fighters[0].facing, facing, "{c:?} facing {facing}: too late to reverse");
+        }
+    }
+}
+
+#[test]
+fn the_up_special_reversal_window_ends_before_any_up_special_hits() {
+    use fight_sim::fighter::UP_SPECIAL_TURN_FRAMES;
+    for c in Character::ALL {
+        let data = c.moveset().up_special.data();
+        let first = data.hitboxes.iter().map(|h| h.first).chain(data.teleport.as_ref().map(|t| t.frame)).min();
+        assert!(first.is_none_or(|f| f > UP_SPECIAL_TURN_FRAMES), "{c:?}'s up special acts on frame {first:?}");
+    }
+}
+
+#[test]
+fn a_reversed_up_special_hits_behind() {
+    for (reverse, hits) in [(false, false), (true, true)] {
+        let mut w = up_special_world(Character::Chef, 1);
+        w.fighters[1].x = Fx::int(-8);
+        w.step(&[input(if reverse { -30 } else { 0 }, 100, Input::SPECIAL), NONE]);
+        run(&mut w, 10, NONE, NONE);
+        assert_eq!(w.fighters[1].percent > 0, hits, "reversed: {reverse}");
+    }
+}
+
 #[test]
 fn down_special_plunges_and_makes_a_shockwave_on_landing() {
     let mut w = world();
@@ -722,6 +848,23 @@ fn the_left_edge_grabs_too() {
     assert_eq!(w.fighters[0].state, State::LedgeHang);
     assert_eq!(w.fighters[0].ledge_side, 1, "the left edge: the stage is to the right");
     assert_eq!(w.fighters[0].facing, 1);
+}
+
+#[test]
+fn ledges_grab_facing_either_way_and_turn_to_the_stage() {
+    for (edge, side) in [("left", 1), ("right", -1)] {
+        for facing in [1, -1] {
+            let mut w = world();
+            let plat = &w.stage.platforms[0];
+            let x = if side > 0 { plat.left - Fx::int(2) } else { plat.right + Fx::int(2) };
+            let h = w.fighters[0].params.height;
+            let f = &mut w.fighters[0];
+            (f.x, f.y, f.grounded_on, f.state, f.vx, f.vy, f.facing) = (x, -h, None, State::Air, Fx::ZERO, -Fx::ONE, facing);
+            w.step(&[NONE, NONE]);
+            assert_eq!(w.fighters[0].state, State::LedgeHang, "{edge} edge, facing {facing}");
+            assert_eq!(w.fighters[0].facing, side, "{edge} edge, facing {facing}: snaps to face the stage");
+        }
+    }
 }
 
 #[test]

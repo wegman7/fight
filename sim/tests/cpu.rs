@@ -122,6 +122,26 @@ fn easy_cpu_up_specials_back_without_a_double_jump() {
 }
 
 #[test]
+fn cpu_facing_away_from_the_stage_reverses_its_up_special_toward_it() {
+    for (x, toward) in [(-85, 1), (85, -1)] {
+        let (mut w, mut cpu) = (world(), Cpu::easy(1));
+        let f = &mut w.fighters[1];
+        (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left, f.facing) = (Fx::int(x), Fx::int(-15), None, State::Air, 0, -toward);
+        let mut up_special_facing = None;
+        for _ in 0..240 {
+            let input = cpu.think(&w);
+            w.step(&[Input::default(), input]);
+            if let State::Attack { mv: MoveId::UpSpecial, frame: 4, .. } = w.fighters[1].state {
+                up_special_facing.get_or_insert(w.fighters[1].facing);
+            }
+        }
+        assert_eq!(up_special_facing, Some(toward), "from x={x}");
+        assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
+        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+    }
+}
+
+#[test]
 fn easy_cpu_grabs_and_throws_sometimes() {
     let (mut w, mut cpu) = (world(), Cpu::easy(1));
     let (mut grabs, mut throws) = (0, 0);
