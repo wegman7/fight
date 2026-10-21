@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "fight_balance"
+version = "0.1.0"
+dependencies = [
+ "fight_sim",
+]
+
+[[package]]
 name = "fight_gd"
 version = "0.1.0"
 dependencies = [

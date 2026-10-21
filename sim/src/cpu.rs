@@ -110,6 +110,16 @@ impl Cpu {
         Cpu { player, level, rng: rng.max(1), plan: Plan::Wait, plan_age: 0, prev: Input::default() }
     }
 
+    /// This CPU with its RNG reseeded from `seed` (mixed with its port), so CPU-vs-CPU
+    /// runs such as the balance harness can play many different games. Still
+    /// deterministic: the same seed replays the same choices. `new` keeps its fixed
+    /// per-port seed.
+    pub fn with_seed(mut self, seed: u32) -> Cpu {
+        let mixed = (seed ^ 0x9E37_79B9).wrapping_mul(0x85EB_CA6B) ^ (self.player as u32 + 1).wrapping_mul(0xC2B2_AE35);
+        self.rng = (mixed ^ (mixed >> 16)).max(1);
+        self
+    }
+
     pub fn easy(player: usize) -> Cpu {
         Cpu::new(player, &CpuLevel::EASY)
     }

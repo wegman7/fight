@@ -3,6 +3,9 @@
 2.5D platform fighter (Smash-like mechanics, original content). Rust workspace + Godot 4.7.
 
 - `sim/` (`fight_sim`): all gameplay rules, deterministic, engine-free. See `sim/CLAUDE.md`.
+- `balance/` (`fight_balance`): balance-testing harness. CPUs fight every matchup
+  headlessly on the sim and the results become a win-rate matrix and buff/nerf
+  suggestions (never written to the source). See `balance/CLAUDE.md` and `balance/README.md`.
 - `gdext/` (`fight_gd`): godot-rust extension that feeds input to the sim and renders it,
   plus the Melee-style menus (stocks → character select → stage select). See `gdext/CLAUDE.md`.
 - `godot/`: Godot project. `main.tscn` root node is `FightWorld` (defined in Rust); it
@@ -46,9 +49,12 @@
 ## Commands
 
 ```sh
-cargo test                                         # sim tests + menu logic tests: run after any change to either
+cargo test                                         # sim, harness and menu logic tests: run after any change to any of them
 cargo clippy --workspace --all-targets             # keep at zero warnings
 cargo build                                        # required before running Godot
+cargo run --release -p fight_balance -- --games 200            # balance: CPU-vs-CPU win-rate matrix (~10 s)
+cargo run --release -p fight_balance -- --games 100 --tune 4   # balance: buff/nerf loop, prints a suggested diff
+cargo run --release -p fight_balance -- --set ninja:damage=+3,weight=+3 --seed 100 --games 200   # try a change
 godot --headless --path godot --quit-after 600     # smoke test (menus, model checks): must print no ERROR lines
 FIGHT_DEMO=1 godot --headless --path godot --quit-after 900   # smoke test a match (skips the menus)
 FIGHT_DEMO=1 godot --path godot                    # visual check: CPUs fight, hitboxes on
@@ -89,13 +95,19 @@ If `cargo` isn't on PATH, prefix with `. "$HOME/.cargo/env";`.
   `Character::moves()` names and the dodge names. gdext logs an `ERROR` at startup for
   any that are missing, so the smoke test catches them. A new move needs a new action
   in that character's `art/*/build_*.py`.
+- **Balance changes are measured, then applied by hand.** Run the harness before and
+  after a tuning change and quote its numbers (with error bars) in the commit. It
+  measures characters as the CPU plays them: read the AI flags and the caveat in
+  `balance/README.md` before acting on a result, and fix CPU bugs rather than tuning
+  around them. Whole-character knobs are `FighterParams::damage_scale` /
+  `knockback_scale` (percent, 100 = as written in `moves.rs`).
 - Frame data uses Smash conventions: 1-based frames, angles in degrees (0 = forward,
   90 = up), knockback with Melee/Brawl formula constants.
 
 ## Docs
 
 **Keep the docs current as part of every change, not as a follow-up.** The docs are
-`CLAUDE.md` and `README.md` at the root and in each crate (`sim/`, `gdext/`). Before
+`CLAUDE.md` and `README.md` at the root and in each crate (`sim/`, `gdext/`, `balance/`). Before
 calling a task done, check each one the change touches: commands, env vars, controls,
 file/module tables, test locations, "where things live", "not built yet", and rules.
 Fix anything stale, and delete statements that are no longer true. If a new directory,

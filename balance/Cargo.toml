@@ -1,0 +1,12 @@
+[package]
+name = "fight_balance"
+description = "Balance-testing harness: CPU-vs-CPU tournaments on the headless sim, with buff/nerf suggestions"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+fight_sim = { path = "../sim" }
+
+[[bin]]
+name = "balance"
+path = "src/main.rs"
