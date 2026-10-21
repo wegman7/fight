@@ -220,10 +220,15 @@ odd arcs — none of them are the chef's (even his grab is his own):
 
 Tap down on a platform to drop through, or in the air to fast-fall. Hold down to
 crouch. Release jump before liftoff for a short hop. Up alone does nothing: jump is
-its own button (no tap jump yet). Jumping with the stick held back (on the same frame
-or during jumpsquat) keeps your facing and drifts backward, so a back air still comes
-out; to jump facing the other way, turn on the ground first (tap back), then jump.
-Double jumps never turn you either; they just go the held way.
+its own button (no tap jump yet). Like Ultimate, where the stick points sideways at
+liftoff sets how fast the jump leaves sideways, either way: full tilt gives the
+character's jump speed (about 60-80% of its air speed), a slight tilt less, neutral
+goes straight up. Full and short hops both get it. A running jump keeps its run speed;
+the stick adds to whatever speed you had, up to your air speed but never cutting a
+run's momentum unless you hold back. Jumping with the stick held back (on the same frame
+or during jumpsquat) keeps your facing and leaves the ground moving backward, so a back
+air still comes out; to jump facing the other way, turn on the ground first (tap back),
+then jump. Double jumps never turn you either; they just go the held way.
 
 On a keyboard every press is a full flick. So pressing a direction and J together
 is a smash attack. Hold the direction a moment first to get a tilt, or use the

@@ -131,6 +131,105 @@ fn turning_on_the_ground_then_jumping_faces_the_new_way() {
     assert_eq!((mv(&w, 0), mv(&w, 1)), (Some(MoveId::Fair), Some(MoveId::Fair)));
 }
 
+/// Holds `p1` (P2 idles) until P1 leaves jumpsquat, and returns P1's `vx` on its last
+/// grounded frame. `w` is left on P1's first airborne frame.
+fn until_liftoff(w: &mut World, p1: impl Fn(usize) -> Input) -> Fx {
+    for frame in 0..30 {
+        let ground_vx = w.fighters[0].vx;
+        w.step(&[p1(frame), NONE]);
+        if w.fighters[0].state == State::Air {
+            return ground_vx;
+        }
+    }
+    panic!("never left the ground");
+}
+
+#[test]
+fn the_stick_at_liftoff_sets_a_standing_jumps_sideways_speed() {
+    // Ultimate: the stick's x at liftoff gives the jump its starting sideways speed,
+    // either way, whatever the facing. Full hops and short hops alike.
+    for c in Character::ALL {
+        for facing in [1, -1] {
+            for (stick_x, scale) in [(100, Fx::ONE), (-100, -Fx::ONE), (0, Fx::ZERO)] {
+                for full_hop in [true, false] {
+                    let mut w = World::new(Stage::battlefield(), &[c, c], 3);
+                    w.fighters[0].facing = facing;
+                    let hold = |frame: usize| input(stick_x, 0, if frame == 0 || full_hop { Input::JUMP } else { 0 });
+                    let ground_vx = until_liftoff(&mut w, hold);
+                    let f = &w.fighters[0];
+                    let what = format!("{} facing {facing}, stick {stick_x}, full hop {full_hop}", c.name());
+                    assert_eq!(ground_vx, Fx::ZERO, "{what}: standing still");
+                    assert_eq!(f.vx, scale * f.params.jump_h_speed, "{what}: first airborne frame");
+                    assert_eq!(f.facing, facing, "{what}: jumping never turns");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_slight_tilt_scales_the_jumps_sideways_speed() {
+    let speed = |stick_x: i8| {
+        let mut w = world();
+        until_liftoff(&mut w, |_| input(stick_x, 0, Input::JUMP));
+        w.fighters[0].vx
+    };
+    let full = world().fighters[0].params.jump_h_speed;
+    assert_eq!(speed(50), Fx::ratio(50, 100) * full);
+    assert_eq!(speed(-30), Fx::ratio(-30, 100) * full);
+    assert_eq!(speed(10), Fx::ZERO, "inside the deadzone");
+}
+
+#[test]
+fn a_running_jump_keeps_its_ground_speed() {
+    // Run speed beats air speed: the jump keeps the momentum it had (air drift then
+    // slows it to air speed as before), and holding forward adds nothing past it.
+    let mut w = world();
+    run(&mut w, 20, stick(100, 0), NONE);
+    let ground_vx = until_liftoff(&mut w, |_| input(100, 0, Input::JUMP));
+    let (f, p) = (&w.fighters[0], w.fighters[0].params);
+    assert!(ground_vx > p.air_speed, "{ground_vx:?} is a run");
+    assert_eq!(f.vx, ground_vx.approach(Fx::ZERO, p.traction), "the same speed a running jump had before");
+    assert_eq!(f.facing, 1);
+
+    // Holding back at liftoff takes the stick's speed off the run.
+    let mut w = world();
+    run(&mut w, 20, stick(100, 0), NONE);
+    let ground_vx = until_liftoff(&mut w, |frame| input(if frame == 0 { 100 } else { -100 }, 0, Input::JUMP));
+    let (f, p) = (&w.fighters[0], w.fighters[0].params);
+    assert_eq!(f.vx, ground_vx.approach(Fx::ZERO, p.traction) - p.jump_h_speed);
+    assert_eq!(f.facing, 1, "still facing the run");
+}
+
+#[test]
+fn ground_speed_and_the_stick_add_up_to_the_air_speed() {
+    let jump_with = |ground_vx: Fx, stick_x: i8| {
+        let mut w = world();
+        w.step(&[press(Input::JUMP), NONE]);
+        w.fighters[0].vx = ground_vx;
+        until_liftoff(&mut w, |_| input(stick_x, 0, Input::JUMP));
+        w.fighters[0].vx
+    };
+    let p = world().fighters[0].params;
+    // Jumpsquat traction slows the slide a little before liftoff.
+    let slide = |vx: Fx| (0..p.jump_squat).fold(vx, |vx, _| vx.approach(Fx::ZERO, p.traction));
+    let slow = Fx::ratio(7, 10);
+    assert!(slide(slow) + p.jump_h_speed > p.air_speed, "the test needs the sum to pass air speed");
+    assert_eq!(jump_with(slow, 100), p.air_speed, "capped at air speed");
+    assert_eq!(jump_with(-slow, -100), -p.air_speed);
+    assert_eq!(jump_with(slow, 0), slide(slow), "no stick: the slide carries over");
+    assert_eq!(jump_with(slow, -100), slide(slow) - p.jump_h_speed, "back cuts into it");
+}
+
+#[test]
+fn jump_sideways_speed_fits_each_characters_air_speed() {
+    for c in Character::ALL {
+        let p = c.params();
+        let (low, high) = (p.air_speed * Fx::ratio(6, 10), p.air_speed * Fx::ratio(8, 10));
+        assert!(p.jump_h_speed >= low && p.jump_h_speed <= high, "{}: {:?} vs air speed {:?}", c.name(), p.jump_h_speed, p.air_speed);
+    }
+}
+
 #[test]
 fn double_jumps_drift_back_without_turning() {
     for facing in [1, -1] {

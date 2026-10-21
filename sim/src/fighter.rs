@@ -14,6 +14,10 @@ pub struct FighterParams {
     pub ground_accel: Fx,
     pub traction: Fx,
     pub air_speed: Fx,
+    /// Sideways speed a grounded jump leaves with at a full stick tilt, either way
+    /// (Ultimate's jump initial horizontal speed). Partial tilts scale it; see
+    /// `Fighter::liftoff_vx` for how it adds to ground momentum.
+    pub jump_h_speed: Fx,
     pub air_accel: Fx,
     pub air_friction: Fx,
     pub gravity: Fx,
@@ -38,6 +42,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(2, 10),
         traction: Fx::ratio(8, 100),
         air_speed: Fx::ratio(86, 100),
+        jump_h_speed: Fx::ratio(60, 100),
         air_accel: Fx::ratio(45, 1000),
         air_friction: Fx::ratio(2, 100),
         gravity: Fx::ratio(95, 1000),
@@ -61,6 +66,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(25, 100),
         traction: Fx::ratio(7, 100),
         air_speed: Fx::ratio(8, 10),
+        jump_h_speed: Fx::ratio(56, 100),
         air_accel: Fx::ratio(5, 100),
         air_friction: Fx::ratio(2, 100),
         gravity: Fx::ratio(1, 10),
@@ -84,6 +90,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(2, 10),
         traction: Fx::ratio(9, 100),
         air_speed: Fx::ratio(9, 10),
+        jump_h_speed: Fx::ratio(63, 100),
         air_accel: Fx::ratio(5, 100),
         air_friction: Fx::ratio(2, 100),
         gravity: Fx::ratio(1, 10),
@@ -109,6 +116,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(3, 10),
         traction: Fx::ratio(7, 100),
         air_speed: Fx::ratio(95, 100),
+        jump_h_speed: Fx::ratio(74, 100),
         air_accel: Fx::ratio(55, 1000),
         air_friction: Fx::ratio(2, 100),
         gravity: Fx::ratio(95, 1000),
@@ -133,6 +141,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(2, 10),
         traction: Fx::ratio(7, 100),
         air_speed: Fx::ratio(8, 10),
+        jump_h_speed: Fx::ratio(50, 100),
         air_accel: Fx::ratio(4, 100),
         air_friction: Fx::ratio(2, 100),
         gravity: Fx::ratio(13, 100),
@@ -157,6 +166,7 @@ impl FighterParams {
         ground_accel: Fx::ratio(18, 100),
         traction: Fx::ratio(5, 100),
         air_speed: Fx::ratio(11, 10),
+        jump_h_speed: Fx::ratio(72, 100),
         air_accel: Fx::ratio(35, 1000),
         air_friction: Fx::ratio(15, 1000),
         gravity: Fx::ratio(7, 100),
@@ -564,6 +574,7 @@ impl Fighter {
                 if frame + 1 >= p.jump_squat {
                     // Releasing jump before liftoff gives a short hop.
                     self.vy = if input.held(Input::JUMP) { p.full_hop } else { p.short_hop };
+                    self.vx = self.liftoff_vx(sx);
                     self.grounded_on = None;
                     self.state = State::Air;
                 } else {
@@ -1162,6 +1173,19 @@ impl Fighter {
             // No teching yet: tumbling fighters just keep sliding in hitstun.
             _ => {}
         }
+    }
+
+    /// A grounded jump's sideways speed at liftoff (full and short hops). Like Ultimate,
+    /// the stick's x adds up to `jump_h_speed` either way, whatever the facing (the
+    /// facing itself never changes), on top of the ground speed left after jumpsquat
+    /// traction. The sum is capped at air speed, or at the ground speed if that's
+    /// faster, so the stick can't push a jump past air speed but a running jump keeps
+    /// its momentum (air drift then slows it to air speed, as before).
+    fn liftoff_vx(&self, sx: Fx) -> Fx {
+        let p = self.params;
+        let stick = if sx.abs() >= DEADZONE { sx * p.jump_h_speed } else { Fx::ZERO };
+        let cap = p.air_speed.max(self.vx.abs());
+        (self.vx + stick).clamp(-cap, cap)
     }
 
     fn air_control(&mut self, sx: Fx, down_tap: bool) {
