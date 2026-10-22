@@ -43,6 +43,7 @@ FIGHT_DEMO=1 godot --path godot   # skip the menus: two level-3 CPUs fight, hitb
 FIGHT_STAGE=sandbar FIGHT_CPU=9 godot --path godot   # FIGHT_STAGE picks the stage for either
 FIGHT_CHARACTERS=samurai,pug FIGHT_CPU=3 godot --path godot   # and FIGHT_CHARACTERS P1's and P2's characters
 FIGHT_MUSIC_VOLUME=50 godot --path godot   # music volume 0-100 (default 70)
+FIGHT_RENDER_SCALE=1 godot --path godot    # fixed 3D render scale 0.25-1 (default: auto, at most 4K's pixels)
 godot -e --path godot             # open the editor (F5 runs the game)
 ```
 
@@ -267,6 +268,12 @@ Debug: **H** hitboxes · **P** pause · **F** frame-advance · **-** / **=** mus
 
 Music: `untitled` plays in the menus and `rising_motif` during every match, both looping.
 Set the volume with `FIGHT_MUSIC_VOLUME` (0-100) or the `-` / `=` keys (works in menus and matches).
+
+Resolution: the 3D scene is drawn at no more than 3840x2160 pixels and upscaled (FSR 1) to
+bigger windows, so a 5K/8K screen, or a 4K Mac monitor in a "looks like 2560x1440" scaled
+mode (which renders at 5120x2880), costs the GPU no more than native 4K. Menus and the HUD
+stay at full resolution. `FIGHT_RENDER_SCALE` (0.25-1) fixes the scale instead, e.g. `1`
+for native or `0.5` for a weak GPU. The console prints the scale it picked.
 
 Pad buttons use the Switch layout, as in Smash Ultimate: A is the right face button and
 B the bottom one, by position. So on an Xbox pad attack is B and special is A; on a

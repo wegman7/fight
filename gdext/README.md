@@ -28,6 +28,7 @@ FIGHT_DEMO=1 godot --path godot   # skip the menus: both players are level-3 CPU
 FIGHT_STAGE=driftwood FIGHT_DEMO=1 godot --path godot   # stage for the two above (default Boardwalk)
 FIGHT_CHARACTERS=samurai,pug FIGHT_DEMO=1 godot --path godot   # P1's and P2's characters for them (default chef, pug)
 FIGHT_MUSIC_VOLUME=50 godot --path godot   # music volume 0-100 (default 70)
+FIGHT_RENDER_SCALE=1 godot --path godot    # fixed 3D render scale 0.25-1 (default: auto)
 ```
 
 `godot/fight.gdextension` points Godot at `../target/{debug,release}/`, so
@@ -75,6 +76,14 @@ the next one.
 - Connected joypads are printed to the console at startup and whenever they change,
   which is the quickest way to check a controller is detected.
 - `SCALE` converts sim units to meters (0.1).
+- `render_scale.rs` (`RenderScale`) caps the 3D render resolution: `process` hands it the
+  window every frame, and when the window's size changes (resize, fullscreen) it sets the
+  root viewport's `scaling_3d_scale` so the 3D scene is at most 3840x2160 pixels
+  (`auto_scale`), upscaled with FSR 1. Windows up to 4K render native (Godot skips FSR at
+  1.0). A 4K Mac monitor at "looks like 2560x1440" renders at 5120x2880 and gets 0.75.
+  `FIGHT_RENDER_SCALE` (0.25-1) fixes the scale instead. 2D is unaffected. A frame that
+  runs over 16.7 ms makes `physics_process` step the sim twice on the next one, which looks
+  like a skipped frame, so keep the GPU under budget at the resolutions players use.
 - Background music lives in `music.rs`: a single `AudioStreamPlayer` swaps between
   `godot/music/untitled.mp3` (menus) and `godot/music/rising_motif.mp3` (matches), both
   set to loop. `start_match` starts the stage track, `leave_match` and startup start the

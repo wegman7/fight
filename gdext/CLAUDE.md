@@ -13,7 +13,7 @@
 - All 2D UI (menus, HUD) is placed in fixed 1600x900 coordinates (`menu::SCREEN`).
   `godot/project.godot` sets stretch mode `canvas_items` / aspect `keep`, so Godot scales
   it to the window and letterboxes other aspect ratios. Don't read the window size or
-  use anchors to lay out UI.
+  use anchors to lay out UI. (`render_scale.rs` reads it only to size the 3D render.)
 - Everything a match creates goes under `FightWorld::arena` (never `base_mut()`), so
   `clear_arena` can tear it down.
 - Background music is `music.rs` (`Music`): one `AudioStreamPlayer` attached to the

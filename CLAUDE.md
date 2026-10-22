@@ -62,6 +62,7 @@ FIGHT_CPU=3 godot --path godot                     # skip the menus: P1 vs a lev
 FIGHT_STAGE=sandbar FIGHT_DEMO=1 godot --path godot   # pick the stage for FIGHT_DEMO / FIGHT_CPU
 FIGHT_CHARACTERS=samurai,pug FIGHT_DEMO=1 godot --path godot   # pick P1's and P2's characters for either
 FIGHT_MUSIC_VOLUME=50 godot --path godot    # music volume 0-100 (default 70); in-game: - lowers, = raises
+FIGHT_RENDER_SCALE=0.5 godot --path godot   # fixed 3D render scale 0.25-1 (default: auto, capped at 4K's pixels)
 godot --path godot --write-movie <dir>/f.png --fixed-fps 60 --quit-after 120   # render frames to PNG for inspection
 blender --background --factory-startup --python art/fighter/build_fighter.py   # rebuild chef .blend + .glb, and pie.glb
 blender --background --factory-startup --python art/pug/build_pug.py           # rebuild pug .blend + .glb

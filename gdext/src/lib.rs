@@ -6,11 +6,13 @@
 mod menu;
 mod menu_view;
 mod music;
+mod render_scale;
 
 use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Input as SimInput, MoveId, SHIELD_MAX, STATE_ANIMS, Stage, StageId, State, World};
 use menu::{DEFAULT_CPU_LEVEL, DEFAULT_STOCKS, MatchSetup, Menu, MenuEvent, PORTS, Player, PortInput, Screen};
 use menu_view::MenuView;
 use music::Music;
+use render_scale::RenderScale;
 use godot::classes::animation_mixer::AnimationCallbackModeProcess;
 use godot::classes::base_material_3d::{Flags, ShadingMode, Transparency};
 use godot::classes::{
@@ -222,6 +224,8 @@ pub struct FightWorld {
     menu_view: Option<MenuView>,
     /// Background music; created and attached to the tree in `ready`.
     music: Option<Music>,
+    /// The 3D scene's render resolution, kept under 4K as the window changes size.
+    render_scale: RenderScale,
     /// Parent of everything a match builds (stage, fighters, effects, HUD), freed when it ends.
     arena: Gd<Node3D>,
     /// Who plays (fighter `i` is `setup.players[i]`), where, and for how many stocks.
@@ -260,6 +264,7 @@ impl INode3D for FightWorld {
             menu: Menu::new(),
             menu_view: None,
             music: None,
+            render_scale: RenderScale::new(),
             arena: Node3D::new_alloc(),
             setup: MatchSetup { stocks: DEFAULT_STOCKS, stage: StageId::ALL[0], players: Vec::new() },
             world: World::new(Stage::battlefield(), &[], DEFAULT_STOCKS),
@@ -423,6 +428,9 @@ impl INode3D for FightWorld {
 
     fn process(&mut self, delta: f64) {
         self.time += delta;
+        if let Some(mut window) = self.base().get_window() {
+            self.render_scale.update(&mut window);
+        }
         if self.mode == Mode::Menu {
             if let Some(view) = &mut self.menu_view {
                 view.update(&self.menu);
