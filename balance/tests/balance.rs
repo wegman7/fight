@@ -105,7 +105,7 @@ fn mirror_matches_are_roughly_even() {
 #[test]
 fn the_loop_buffs_the_loser_and_only_proposes() {
     let t = TournamentConfig {
-        characters: vec![Character::Samurai, Character::Ninja],
+        characters: vec![Character::Samurai, Character::Hobo],
         stages: vec![StageId::Sandbar],
         games: 12,
         ..TournamentConfig::default()
@@ -114,15 +114,25 @@ fn the_loop_buffs_the_loser_and_only_proposes() {
     let rounds = tune(&t, &Tuning::default(), &tuner, |_| {});
     assert_eq!(rounds.len(), 2, "baseline plus one round");
     let base = &rounds[0].summary;
-    let ninja = base.index(Character::Ninja).unwrap();
-    assert!(base.overall[ninja].rate() < 0.45, "the ninja loses this matchup under CPU play");
-    assert!(matches!(rounds[0].verdicts[ninja], Verdict::Adjust(step) if step > 0), "{:?}", rounds[0].verdicts);
-    let knobs = rounds[1].tuning.knobs(Character::Ninja);
+    let hobo = base.index(Character::Hobo).unwrap();
+    assert!(base.overall[hobo].rate() < 0.45, "the hobo loses this matchup under CPU play");
+    assert!(matches!(rounds[0].verdicts[hobo], Verdict::Adjust(step) if step > 0), "{:?}", rounds[0].verdicts);
+    let knobs = rounds[1].tuning.knobs(Character::Hobo);
     assert!(knobs.damage > 0 && knobs.weight > 0, "{knobs:?}");
     // The report shows it as a reviewable diff; the source is never touched.
-    assert!(tuning_diff(&rounds[1].tuning).contains("FighterParams::NINJA"));
+    assert!(tuning_diff(&rounds[1].tuning).contains("FighterParams::HOBO"));
     let text = render(&rounds);
     assert!(text.contains("## Suggestion") && text.contains("Caveat"));
     assert!(to_json(&rounds).starts_with("{\"best_round\":"));
     assert_eq!(to_csv(&rounds).lines().count(), 1 + 2 * 4);
+}
+
+#[test]
+fn a_match_counts_each_sides_defense() {
+    let r = run_match(&config([Character::Chef, Character::Samurai], 2), &Tuning::default());
+    for (port, d) in r.defense.iter().enumerate() {
+        assert!(d.launches > 0 && d.di > 0 && d.di <= d.launches, "port {port}: {d:?}");
+        assert!(d.shields + d.air_dodges + d.spot_dodges + d.rolls > 0, "port {port} never defended: {d:?}");
+        assert!(d.out_of_shield <= d.shields, "port {port}: {d:?}");
+    }
 }

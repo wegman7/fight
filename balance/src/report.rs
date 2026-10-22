@@ -14,11 +14,14 @@ pub const AI_CAVEAT: &str = "\
 CPU-vs-CPU results measure each character *as the CPU plays it*, not the character's
 ceiling. The CPU (sim/src/cpu.rs) picks moves from the move data (hitboxes, motion,
 projectiles and the knockback formula: smash attacks to KO, projectiles at range,
-throws toward the ledge), anti-airs, edge-guards and recovers. It never dodges, DIs,
-charges smash attacks or runs hand-made combos, and its recovery is plain, so
-evasive, combo-heavy characters are likely undersold and hard hitters oversold; see
-the Move use table for what each rate measures. Flagged characters' rates say more
-about the AI (or a ledge/recovery bug) than the character: fix those before tuning.";
+throws toward the ledge), anti-airs, edge-guards, shields and dodges what it sees coming
+(10 frames into an attack at level 9) and punishes it, DIs every launch, chases launches
+with an aerial and mixes up its recovery (air dodge, high, low, ledge). It doesn't
+charge smash attacks, run hand-made combo routes, tech, SDI or anticipate an attack
+before it starts, so slow-starting moves are easier to answer than against a person who
+guesses; see the Defense and Move use tables for what each rate measures. Flagged
+characters' rates say more about the AI (or a ledge/recovery bug) than the character:
+fix those before tuning.";
 
 fn pct(x: f64) -> String {
     if x.is_nan() { "-".into() } else { format!("{:.1}", x * 100.0) }

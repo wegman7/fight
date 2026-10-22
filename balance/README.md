@@ -88,19 +88,24 @@ shipped game exactly.
 ## The caveat: this measures the CPU, too
 
 CPU-vs-CPU results measure each character **as the CPU plays it**. The CPU
-(`sim/src/cpu.rs`) walks or runs in to its own reach, picks moves from the move data (every hitbox, grab box, scripted motion and projectile is played forward against where it predicts the opponent will be, and scored on damage, speed, end lag and whether the knockback formula says the launch KOs or leaves the opponent offstage), anti-airs or waits under an airborne opponent rather than chasing its jumps, edge-guards from level 4 (ground moves and projectiles from the ledge; from level 7 it also jumps off after the recovering opponent, keeping a jump to come back with), picks throws the same way, shields attacks and projectiles (counters at high levels), mixes up ledge getups, and recovers with double jump then up special. It is generic: the same scoring runs on every character's move data, with no
+(`sim/src/cpu.rs`) walks or runs in to its own reach, picks moves from the move data (every hitbox, grab box, scripted motion and projectile is played forward against where it predicts the opponent will be, and scored on damage, speed, end lag and whether the knockback formula says the launch KOs or leaves the opponent offstage), anti-airs or waits under an airborne opponent rather than chasing its jumps, edge-guards from level 4 (ground moves and projectiles from the ledge; from level 7 it also jumps off after the recovering opponent, keeping a jump to come back with), picks throws the same way, mixes up ledge getups, and defends: once it sees an attack coming (10 frames in at level 9) or a projectile about to arrive, it plays a copy of the world forward with each answer it has (shield, spot dodge, rolls, air dodges, a counter) and takes one that isn't hit, preferring those that leave it free close enough to punish before the attacker can act; out of shield it grabs, up-smashes or up-specials an attacker in its end lag. It DIs every launch (toward survival near a blast zone, out of combo range otherwise), chases a launched opponent with the hop and aerial that a rollout says connects, and recovers with a style picked by playing it out: plain (drift, double jump, up special), high, low, an air dodge in, an air dodge for distance from farther out, or drifting to the ledge. It is generic: the same scoring runs on every character's move data, with no
 per-character script. What it still doesn't do, so read the numbers with it in mind:
 
-- No dodges, rolls or air dodges, no DI, no charged smash attacks, no dash grabs, and
-  only jab combos (no hand-made combo routes). Its up and down throws rarely score best.
-  Characters whose strength is speed, combos or evasion (the ninja, the pug) are likely
-  undersold; heavy, hard-hitting ones (soldier, samurai) gain most from a CPU that
-  scores moves on damage and kill power.
-- Its recovery is plain (drift, double jump, up special; no side-special or air-dodge
-  recoveries, no mix-ups against an edge-guarder), so short-reach recoverers (the
-  soldier) still lose stocks to failed recoveries (`recov%`).
-- It can't see an opponent's counter window coming, and it shields projectiles only
-  within a few frames.
+- It only reacts: it never guesses an attack before it starts, so moves faster than its
+  reaction (10 frames at level 9) always land, and slow-starting kits (the hobo, the
+  samurai and soldier's smashes) are answered more reliably than a person would. That
+  favours quick kits (the pug, the ninja's jab) a little.
+- No charged smash attacks, no dash grabs, only jab combos and rollout-checked
+  hop-and-aerial chases (no hand-made combo routes), no teching or SDI. Its up and down
+  throws rarely score best.
+- Its kill estimates ignore the defender's DI, so it reaches for kill moves a little
+  early against a CPU that DIs.
+- Rolls and spot dodges are rare (`roll`, `spot` in the Defense table): with a 10-frame
+  reaction only smash attacks and slow specials are worth dodging on the ground, and
+  shield usually scores better. Most of its defense is air dodges and shields.
+- The DI heavily favours heavy characters (they live much longer with survival DI) and
+  hurts light, floaty ones that die off the top, where DI barely helps. That is
+  character data, not an AI fault: the sim has DI for everyone.
 - Flagged characters' rates say more about the AI than the character. Flags:
   `self-destructs` (over 10% of stocks lost unforced) and `timeouts` (well above the
   cast's rate) hold a character out of the loop; `whiffs` (hit rate far below the cast)

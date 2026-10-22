@@ -11,32 +11,51 @@
 //! offstage. So smash attacks come out as kill moves at high percent, projectiles at
 //! range, back and down aerials when the opponent is behind or below, and every
 //! character spaces by its own reach.
+//!
+//! Defense works on a copy of the world: once it sees an attack coming (a level's
+//! `react` frames after it starts) or a projectile about to arrive, it plays the world
+//! forward with each answer it has (shield, spot dodge, rolls, air dodges, a counter)
+//! and keeps the ones that don't get hit, preferring those that leave it free to punish
+//! before the attacker can act. The same rollouts pick a recovery that makes it back
+//! (and mix it up), and check which hop and aerial reach a juggled opponent. Launches
+//! are DI'd from the knockback formula: toward survival near a blast zone, out of
+//! combo range otherwise.
 
 use crate::character::Moveset;
-use crate::fighter::{Fighter, FighterParams, GROUNDED_KB_THRESHOLD, HITSTUN_PER_KB, KB_DECAY, LAUNCH_SPEED, State, knockback};
+use crate::fighter::{Fighter, FighterParams, GROUNDED_KB_THRESHOLD, HITSTUN_PER_KB, KB_DECAY, LAUNCH_SPEED, State, Trajectory, di_angle, knockback};
 use crate::fixed::{Fx, cos_deg, sin_deg};
 use crate::input::Input;
 use crate::moves::{Landing, MoveData, MoveId, ProjectileData};
 use crate::stage::{Platform, Stage};
-use crate::world::World;
+use crate::world::{Event, MAX_FIGHTERS, Projectile, World};
 
-/// How a CPU plays. Lower `reaction_frames` and higher chances make it harder.
+/// How a CPU plays. Lower `reaction_frames` and `react` and higher chances make it harder.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CpuLevel {
     /// The CPU commits to a plan for this many frames before looking again.
     pub reaction_frames: u8,
+    /// How many frames into an opponent's attack it can react to it (shield, dodge,
+    /// counter), and how soon it re-plans to punish an opening. An attack that hits
+    /// sooner than this lands.
+    pub react: u8,
     /// Percent chance, when out of range, to walk in rather than stand around.
     pub approach_chance: u32,
     /// Percent chance, when a move would connect, to throw it rather than wait or back off.
     pub attack_chance: u32,
     /// Percent of neutral openings it takes with a grab instead of a strike.
     pub grab_chance: u32,
-    /// Percent chance to put up shield when an opponent starts an attack nearby.
-    pub shield_chance: u32,
+    /// Percent chance to defend against a hit it sees coming (rolled once per attack or
+    /// projectile): shield, or a dodge or counter when `dodge` allows.
+    pub defend: u32,
+    /// Percent chance, defending on the ground, to consider spot dodges and rolls as well
+    /// as its shield. (In the air the air dodge is its only defense, so `defend` alone
+    /// decides it.)
+    pub dodge: u32,
     /// Percent chance to pick the best-scoring move (kill power, speed, end lag) rather
     /// than any move that connects; also how often it times aerials to connect instead
-    /// of swinging on a fixed frame, picks the best throw, runs, counters and mixes up
-    /// its ledge getups.
+    /// of swinging on a fixed frame, picks the best throw, runs, counters, mixes up its
+    /// ledge getups, picks the best guard, punishes out of shield, chases a launched
+    /// opponent, and switches to a recovery that makes it when its plain one wouldn't.
     pub judgement: u32,
     /// Percent chance, with the opponent offstage or on the ledge, to go and cover the
     /// ledge (ground moves and projectiles at the recovering opponent) rather than wait.
@@ -44,42 +63,69 @@ pub struct CpuLevel {
     /// Percent chance, edge-guarding, to jump off after the opponent with an aerial
     /// (only while it keeps a jump to come back with).
     pub offstage: u32,
+    /// Percent chance to DI a launch (toward survival near a blast zone, away from the
+    /// attacker otherwise); the rest it holds nothing.
+    pub di: u32,
+    /// Percent chance to mix up a recovery that would make it anyway: high, low, an air
+    /// dodge in, or drifting to the ledge instead of the stage.
+    pub recovery_mix: u32,
 }
 
 #[allow(clippy::too_many_arguments)]
 const fn level(
     reaction_frames: u8,
+    react: u8,
     approach_chance: u32,
     attack_chance: u32,
     grab_chance: u32,
-    shield_chance: u32,
+    defend: u32,
+    dodge: u32,
     judgement: u32,
     edge_guard: u32,
     offstage: u32,
+    di: u32,
+    recovery_mix: u32,
 ) -> CpuLevel {
-    CpuLevel { reaction_frames, approach_chance, attack_chance, grab_chance, shield_chance, judgement, edge_guard, offstage }
+    CpuLevel {
+        reaction_frames,
+        react,
+        approach_chance,
+        attack_chance,
+        grab_chance,
+        defend,
+        dodge,
+        judgement,
+        edge_guard,
+        offstage,
+        di,
+        recovery_mix,
+    }
 }
 
 /// Melee-style levels 1 to 9, from barely fighting back to reacting within a few
 /// frames. Levels 1-3 never edge-guard and mostly swing at whatever connects; from
 /// level 4 they cover the ledge, and from level 7 they jump off after a recovering
-/// opponent. Every level walks or runs rather than dashing, and recovers.
+/// opponent. Level 1 almost never defends or DIs; level 9 sees an attack 10 frames in
+/// (a strong human's reaction, not a machine's: slow startups stay worth something),
+/// defends most of what it sees and DIs nearly every launch. Every level walks or runs
+/// rather than dashing, and recovers.
 static LEVELS: [CpuLevel; 9] = [
-    level(40, 40, 15, 10, 0, 0, 0, 0),
-    level(32, 55, 25, 15, 5, 10, 0, 0),
+    //    reac react appr att grab def dodge judg edge off  di mix
+    level(40, 32, 40, 15, 10, 2, 10, 0, 0, 0, 0, 0),
+    level(32, 28, 55, 25, 15, 8, 15, 10, 0, 0, 10, 0),
     CpuLevel::EASY,
-    level(20, 75, 45, 20, 25, 40, 25, 0),
-    level(16, 80, 55, 25, 35, 50, 40, 0),
-    level(14, 85, 62, 25, 45, 60, 55, 0),
-    level(12, 90, 70, 30, 55, 70, 70, 20),
-    level(10, 95, 78, 30, 65, 85, 85, 35),
-    level(8, 100, 85, 30, 75, 100, 95, 50),
+    level(20, 22, 75, 45, 20, 30, 30, 40, 25, 0, 35, 20),
+    level(16, 20, 80, 55, 25, 40, 40, 50, 40, 0, 50, 30),
+    level(14, 18, 85, 62, 25, 50, 50, 60, 55, 0, 60, 40),
+    level(12, 15, 90, 70, 30, 60, 60, 70, 70, 20, 70, 50),
+    level(10, 12, 95, 78, 30, 72, 70, 85, 85, 35, 85, 60),
+    level(8, 10, 100, 85, 30, 85, 80, 100, 95, 50, 95, 70),
 ];
 
 impl CpuLevel {
     /// Level 3. Slow to react, swings at a fraction of its openings, never edge-guards.
     /// Still recovers, so it doesn't throw stocks away on its own.
-    pub const EASY: CpuLevel = level(24, 70, 35, 20, 15, 25, 0, 0);
+    pub const EASY: CpuLevel = level(24, 25, 70, 35, 20, 18, 20, 25, 0, 0, 20, 10);
     pub const MIN: u8 = 1;
     pub const MAX: u8 = 9;
 
@@ -108,8 +154,13 @@ enum Slot {
     NeutralSpecial,
     SideSpecial,
     DownSpecial,
+    /// Only out of shield; otherwise it's kept for recovering.
+    UpSpecial,
     Grab,
 }
+
+/// What it can do straight out of shield (besides jumping).
+const OUT_OF_SHIELD_SLOTS: [Slot; 3] = [Slot::Grab, Slot::USmash, Slot::UpSpecial];
 
 /// What the CPU considers from the ground. Up special is kept for recovering.
 const GROUND_SLOTS: [Slot; 12] = [
@@ -147,6 +198,7 @@ impl Slot {
             Slot::NeutralSpecial => m.neutral_special,
             Slot::SideSpecial => m.side_special,
             Slot::DownSpecial => m.down_special,
+            Slot::UpSpecial => m.up_special,
             Slot::Grab => m.grab,
         }
     }
@@ -173,6 +225,7 @@ impl Slot {
             Slot::NeutralSpecial => (0, 0, Input::SPECIAL),
             Slot::SideSpecial => (dir * TILT, 0, Input::SPECIAL),
             Slot::DownSpecial => (0, -TILT, Input::SPECIAL),
+            Slot::UpSpecial => (0, 100, Input::SPECIAL),
             Slot::Grab => (0, 0, Input::GRAB),
         };
         Input { stick_x, stick_y, buttons }
@@ -223,8 +276,8 @@ enum Plan {
     /// a frame of stick toward `dir` first when the fighter faces away. A jab keeps
     /// pressing into its combo while the hits land.
     Strike { slot: Slot, dir: i8 },
-    /// Hold shield for the plan's duration.
-    Shield,
+    /// Answering a hit it saw coming (see [`Guard`]).
+    Guard(Guard),
     /// A hop (`full` or short) drifting toward `dir`, then the aerial that will connect,
     /// picked frame by frame (or, with `swing_at`, a nair/fair on that frame: lower
     /// levels). `offstage`: jumping off the ledge after a recovering opponent, ended by
@@ -235,15 +288,120 @@ enum Plan {
     DropDown,
 }
 
+/// A defensive answer to a hit the CPU sees coming.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Guard {
+    /// Hold shield while the attack lasts, then act out of it or let go.
+    Shield,
+    Spot,
+    /// A roll toward this side of the world (-1 left, 1 right).
+    Roll(i8),
+    /// An air dodge with this stick (0, 0: in place).
+    AirDodge(i8, i8),
+    /// The down special, if it is a counter.
+    Counter,
+}
+
+/// How the CPU gets back to the stage: when it double-jumps and up-specials, whether it
+/// air-dodges in, and whether it drifts for the ledge or the stage. Picked once per trip
+/// offstage (`Cpu::pick_recovery`), checked by playing it out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct Recovery {
+    /// Double-jumps once falling below this height above the stage's top (units).
+    jump_at: i32,
+    /// With the jumps gone, up-specials once falling below this height.
+    special_at: i32,
+    /// Whether, and when, it spends its air dodge getting back.
+    air_dodge: AirDodgeIn,
+    /// Drifts for the ledge (stops pushing in just outside it) instead of the stage.
+    ledge: bool,
+}
+
+/// A recovery's air dodge toward the stage (up and in).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum AirDodgeIn {
+    No,
+    /// Once within `AIR_DODGE_REACH` of the ledge: a mix-up past an edge-guarder.
+    Near,
+    /// As soon as it's falling, for distance (no gravity while it travels): before the
+    /// double jump and up special, from farther out than they reach alone. Diagonally
+    /// up and in, or (`false`) straight in.
+    Far(bool),
+}
+
+/// Drift in, double jump once falling near the stage's height, then up special.
+const PLAIN_RECOVERY: Recovery = Recovery { jump_at: 5, special_at: 5, air_dodge: AirDodgeIn::No, ledge: false };
+/// The mix-ups: jump early and come in high, save the jump and come in low, air-dodge
+/// in, or hang from the ledge. And one only for distance (`AirDodgeIn::Far`).
+const MIXED_RECOVERIES: [Recovery; 4] = [
+    Recovery { jump_at: 35, ..PLAIN_RECOVERY },
+    Recovery { jump_at: -12, special_at: -10, ..PLAIN_RECOVERY },
+    Recovery { air_dodge: AirDodgeIn::Near, ..PLAIN_RECOVERY },
+    Recovery { ledge: true, ..PLAIN_RECOVERY },
+];
+const FAR_RECOVERIES: [Recovery; 2] = [Recovery { air_dodge: AirDodgeIn::Far(true), ..PLAIN_RECOVERY }, Recovery { air_dodge: AirDodgeIn::Far(false), ..PLAIN_RECOVERY }];
+
 /// Below the run threshold, so the CPU walks.
 const WALK: i8 = 60;
 /// Past the tilt threshold but short of a smash flick, so attacks come out as tilts.
 const TILT: i8 = 60;
 /// Just past the deadzone: turns a standing fighter without walking it anywhere much.
 const TURN: i8 = 30;
-const SHIELD_FRAMES: u8 = 20;
-/// Being thrown or hit from this close counts as "nearby".
-const THREAT_RANGE: Fx = Fx::int(20);
+/// Holds its shield at least this long once it's up, while the attacker stays close.
+const SHIELD_FRAMES: u8 = 6;
+/// Never shields into a hit that would leave less than this, and lets go below it.
+const SHIELD_LOW: Fx = Fx::int(12);
+/// An attack farther than this (feet to feet) is no threat.
+const THREAT_RANGE: Fx = Fx::int(50);
+/// Plays a guard forward this many frames: long enough to see a roll end, at most
+/// `GUARD_FRAMES` (or `RECOVERY_FRAMES` for an air dodge while recovering).
+const GUARD_MIN_FRAMES: u16 = 34;
+const GUARD_FRAMES: u16 = 44;
+/// Score for a guard that leaves it free `n` frames before the attacker (or after):
+/// `GUARD_PER_FRAME` per frame, within `±GUARD_ADVANTAGE`.
+const GUARD_PER_FRAME: i32 = 3;
+const GUARD_ADVANTAGE: i32 = 25;
+/// Guards' base scores: a counter, then shield (quick to act out of and doesn't move
+/// it), spot dodge, then rolls and air dodges (long end lag, and they move it).
+const COUNTER_SCORE: i32 = 50;
+const SHIELD_SCORE: i32 = 40;
+const SPOT_DODGE_SCORE: i32 = 25;
+const ROLL_SCORE: i32 = 15;
+const AIR_DODGE_SCORE: i32 = 15;
+const COUNTER_HIT_BONUS: i32 = 40;
+/// A guard that leaves it free at least `PUNISH_FRAMES` before the attacker, within
+/// `PUNISH_RANGE` of it (a grab or a jab away), is a punish: rolling behind a laggy
+/// move beats a shield whose pushback leaves it out of reach.
+const PUNISH_FRAMES: i32 = 8;
+const PUNISH_RANGE: Fx = Fx::int(14);
+const PUNISH_BONUS: i32 = 40;
+/// Random spread added to guard scores, so close options take turns.
+const GUARD_NOISE: u32 = 20;
+/// A roll that ends this close to a ledge is a bad idea.
+const ROLL_LEDGE_MARGIN: Fx = Fx::int(8);
+const LEDGE_ROLL_PENALTY: i32 = 40;
+/// Pressured this close to a ledge, a roll that ends `CORNER_ESCAPE` farther from it
+/// gets out of the corner.
+const CORNER: Fx = Fx::int(20);
+const CORNER_ESCAPE: Fx = Fx::int(10);
+const CORNER_BONUS: i32 = 25;
+/// A recovery is played out at most this many frames, a hop after a launched opponent this many.
+const RECOVERY_FRAMES: u16 = 240;
+const CHASE_FRAMES: u16 = 40;
+/// Air-dodges in toward the ledge from at most this far outside it (and below it).
+const AIR_DODGE_REACH: Fx = Fx::int(24);
+/// The stick for a directional air dodge up and in: about 45 degrees.
+const DIAGONAL: i8 = 70;
+/// DI: its scores per unit of room left before a blast zone (up to `DI_ROOM`), per
+/// unit offstage where the launch ends, and per unit of distance from the attacker when
+/// hitstun ends (up to `DI_ESCAPE`).
+const DI_PER_ROOM: i32 = 10;
+const DI_ROOM: Fx = Fx::int(50);
+const DI_PER_OFFSTAGE: i32 = 3;
+const DI_PER_ESCAPE: i32 = 2;
+const DI_ESCAPE: Fx = Fx::int(40);
+/// A DI that still KOs.
+const DI_KO: i32 = -100_000;
 /// Targets standing higher than this above the CPU are out of utilt range.
 const UTILT_REACH: Fx = Fx::int(20);
 /// An airborne opponent this far above the CPU's feet is "above": wait under it,
@@ -278,8 +436,8 @@ const OFFSTAGE_HIGH: Fx = Fx::int(45);
 const OFFSTAGE_LIMIT: Fx = Fx::int(42);
 const OFFSTAGE_DEPTH: Fx = Fx::int(10);
 const OFFSTAGE_FRAMES: u8 = 45;
-/// Shields projectiles that would hit within this many frames.
-const INCOMING_FRAMES: u16 = 8;
+/// Guards against projectiles that would hit within this many frames.
+const INCOMING_FRAMES: u16 = 14;
 /// Frames of the opponent's path the CPU predicts, and so how far ahead a move's
 /// hitboxes are checked against it.
 const HORIZON: usize = 48;
@@ -379,12 +537,75 @@ pub struct Cpu {
     /// The world frame of its last projectile, for `SHOT_COOLDOWN`.
     last_shot: u32,
     prev: Input,
+    /// The threat (an attack or a projectile, see `threat`) it last decided about, and
+    /// whether it is still looking for a guard against it, with dodges allowed.
+    guard_seen: Option<Threat>,
+    /// The target's current attack: its move, the last frame of it seen, and the world
+    /// frame it started on (so `react` counts real frames, charging and hitlag included).
+    watch: Option<(MoveId, u16, u32)>,
+    guard_open: bool,
+    guard_dodges: bool,
+    /// The stick it holds for the pending launch's DI, once chosen.
+    di_input: Option<Input>,
+    /// How it's getting back this trip offstage, once picked.
+    recovery: Option<Recovery>,
+    /// A copy playing a rollout: it never rolls out itself.
+    simulating: bool,
+}
+
+/// What happened to the CPU's fighter when a copy of the world was played forward.
+#[derive(Clone, Copy, Debug, Default)]
+struct Outcome {
+    /// Frame (1 = the next step) it was hit, grabbed or had its shield broken.
+    hit: Option<u16>,
+    /// The frame after the last one it couldn't act on (dodging, in shield stun...).
+    free: u16,
+    /// The same for the opponent.
+    opp_free: u16,
+    /// How far apart the two were (feet, sideways) on its last frame it couldn't act.
+    gap: Fx,
+    /// Frame its own hit on the opponent landed.
+    landed: Option<u16>,
+    /// Frame it was standing on a platform or hanging from a ledge (a recovery made it).
+    safe: Option<u16>,
+    ko: bool,
+    /// Where it was at the end, and its shield.
+    x: Fx,
+    shield: Fx,
+}
+
+/// What the CPU feeds its fighter in a rollout after the first frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Then {
+    /// Nothing.
+    Idle,
+    /// Keeps shield held.
+    Shield,
+    /// Whatever a copy of the CPU would do (recovering, a hop's aerial).
+    Policy,
 }
 
 impl Cpu {
     pub fn new(player: usize, level: &'static CpuLevel) -> Cpu {
         let rng = 0x9E37_79B9 ^ (player as u32 + 1).wrapping_mul(0x85EB_CA6B);
-        Cpu { player, level, rng: rng.max(1), plan: Plan::Wait, plan_age: 0, swung: false, grab_plan: None, last_shot: 0, prev: Input::default() }
+        Cpu {
+            player,
+            level,
+            rng: rng.max(1),
+            plan: Plan::Wait,
+            plan_age: 0,
+            swung: false,
+            grab_plan: None,
+            last_shot: 0,
+            prev: Input::default(),
+            guard_seen: None,
+            watch: None,
+            guard_open: false,
+            guard_dodges: false,
+            di_input: None,
+            recovery: None,
+            simulating: false,
+        }
     }
 
     /// This CPU with its RNG reseeded from `seed` (mixed with its port), so CPU-vs-CPU
@@ -418,41 +639,59 @@ impl Cpu {
         if me.holding.is_none() {
             self.grab_plan = None;
         }
+        if me.di_pending.is_none() {
+            self.di_input = None;
+        }
         let Some(mi) = world.stage.platforms.iter().position(|p| !p.soft) else { return Input::default() };
         let main = &world.stage.platforms[mi];
         let target = self.target(world);
+        self.watch = match target.map(|t| t.state) {
+            Some(State::Attack { mv, frame, .. }) => match self.watch {
+                Some((m, f, start)) if m == mv && frame >= f => Some((mv, frame, start)),
+                _ => Some((mv, frame, world.frame.saturating_sub(u32::from(frame) - 1))),
+            },
+            _ => None,
+        };
         match me.state {
             // Mash: a fresh press every other frame.
             State::Held { .. } => return if self.prev.buttons == 0 { Input { buttons: Input::ATTACK, ..Input::default() } } else { Input::default() },
             State::Holding { .. } => return self.hold(me, world),
-            State::Hitstun { .. } | State::ShieldBreak { .. } | State::Respawning { .. } | State::Eliminated => return Input::default(),
-            State::LedgeHang => return self.ledge_getup(me, target, main),
+            State::Hitstun { .. } => {
+                // A new launch: pick its recovery afresh once it can act.
+                self.recovery = None;
+                return self.di(me, target, world, main);
+            }
+            State::ShieldBreak { .. } | State::Respawning { .. } | State::Eliminated => return Input::default(),
+            State::LedgeHang => {
+                self.recovery = None;
+                return self.ledge_getup(me, target, main);
+            }
             _ => {}
         }
-        if !me.grounded() && (me.x < main.left || me.x > main.right || me.y < main.y) && !self.offstage_ok(me, main) {
-            return self.recover(me, main);
-        }
-
+        let recovering = !me.grounded() && (me.x < main.left || me.x > main.right || me.y < main.y) && !self.offstage_ok(me, main);
         self.plan_age = self.plan_age.saturating_add(1);
+        if let Some(input) = self.guard(me, target, world, recovering) {
+            return input;
+        }
+        if recovering {
+            return self.recover(me, world, main);
+        }
+        self.recovery = None;
+
         // Plans that take longer than a quick CPU's reaction time get to finish.
         let committed = match self.plan {
             Plan::Jump { .. } => !me.grounded(),
             Plan::Hop { .. } => !me.grounded() || self.plan_age <= me.params.jump_squat + 1,
-            Plan::Shield => self.plan_age < SHIELD_FRAMES,
             Plan::Strike { slot, .. } => self.plan_age < 2 || (slot == Slot::Jab && matches!(me.state, State::Attack { .. })),
             _ => false,
         };
-        let threat = target.and_then(|t| threat(me, t)).or_else(|| incoming(me, self.player, world));
-        if let Some(startup) = threat
-            && me.state == State::Ground
-            && !matches!(self.plan, Plan::Shield)
-        {
-            if let Some(plan) = self.defend(me, startup) {
-                self.plan = plan;
-                self.plan_age = 0;
-                self.swung = false;
-            }
-        } else if self.plan_age >= self.level.reaction_frames && !committed {
+        // An opening (end lag, a landing, hitstun) is worth looking at sooner.
+        let opening = target.is_some_and(vulnerable)
+            && matches!(self.plan, Plan::Wait | Plan::Approach { .. } | Plan::Retreat)
+            && self.plan_age >= self.level.react.div_ceil(2);
+        // New plans only once it can act: a press during lag would be buffered and come
+        // out on its first free frame, even if a guard is needed by then.
+        if (self.plan_age >= self.level.reaction_frames || opening) && !committed && actionable(me) {
             self.plan = match target {
                 Some(t) => {
                     let shots = world.frame >= self.last_shot + SHOT_COOLDOWN || self.last_shot == 0;
@@ -485,16 +724,266 @@ impl Cpu {
             .min_by_key(|f| ((f.x - me.x).abs() + (f.y - me.y).abs()).raw())
     }
 
-    /// Shield, or (judgement allowing) a counter whose window covers the attack's
-    /// startup, against an attack starting nearby.
-    fn defend(&mut self, me: &Fighter, startup: u16) -> Option<Plan> {
-        if let Some(counter) = me.character.moveset().down_special.data().counter.as_ref()
-            && (counter.first..=counter.last).contains(&startup)
-            && self.chance(self.level.judgement / 3)
-        {
-            return Some(Plan::Strike { slot: Slot::DownSpecial, dir: me.facing as i8 });
+    fn target_index(&self, world: &World) -> Option<usize> {
+        let t = self.target(world)?;
+        world.fighters.iter().position(|f| std::ptr::eq(f, t))
+    }
+
+    /// Keeps a guard going, or answers a hit it sees coming: plays each guard it may use
+    /// forward on a copy of the world and takes one that doesn't get hit, the one that
+    /// leaves it freest to punish when judgement allows. A hit that would whiff anyway
+    /// is left alone (the opening is then punished by `choose`).
+    fn guard(&mut self, me: &Fighter, target: Option<&Fighter>, world: &World, recovering: bool) -> Option<Input> {
+        if let Plan::Guard(g) = self.plan {
+            match g {
+                Guard::Shield => {
+                    if let Some(input) = self.keep_shield(me, target, world) {
+                        return Some(input);
+                    }
+                }
+                // Recovering: `recover` steers the air dodge.
+                Guard::AirDodge(..) if recovering => {}
+                _ if self.plan_age <= 1 || matches!(me.state, State::Dodge { .. } | State::Attack { .. }) => return Some(Input::default()),
+                _ => {}
+            }
+            // Over: look again straight away (to punish).
+            self.plan = Plan::Wait;
+            self.plan_age = self.level.reaction_frames;
+            if recovering {
+                return None;
+            }
         }
-        self.chance(self.level.shield_chance).then_some(Plan::Shield)
+        if self.simulating {
+            return None;
+        }
+        let watched = self.watch.map_or(0, |(_, _, start)| world.frame + 1 - start);
+        let (seen, opp) = threat(self.player, me, target, world, watched >= u32::from(self.level.react))?;
+        if !seen.same(self.guard_seen) {
+            self.guard_open = self.chance(self.level.defend);
+            self.guard_dodges = self.chance(self.level.dodge);
+        }
+        self.guard_seen = Some(seen);
+        if !self.guard_open {
+            return None;
+        }
+        let options = self.guard_options(me, world, !world.fighters[opp].charging());
+        if options.iter().all(Option::is_none) {
+            return None;
+        }
+        // While recovering, an air dodge has to get it hit-free all the way back.
+        let frames = if recovering { RECOVERY_FRAMES } else { guard_frames(&world.fighters[opp]) };
+        let baseline = if me.grounded() {
+            self.rollout(world, Some(Input::default()), Then::Idle, frames, opp, None, false)
+        } else {
+            self.rollout(world, None, Then::Policy, frames, opp, None, recovering)
+        };
+        if baseline.hit.is_none() {
+            // It whiffs: no need.
+            self.guard_open = false;
+            return None;
+        }
+        let main = world.stage.platforms.iter().find(|p| !p.soft)?;
+        let mut picks: [Option<(i32, Guard)>; 8] = [None; 8];
+        for (slot, g) in picks.iter_mut().zip(options.iter()) {
+            let Some(g) = *g else { continue };
+            let then = match g {
+                Guard::Shield => Then::Shield,
+                Guard::AirDodge(..) => Then::Policy,
+                _ => Then::Idle,
+            };
+            let out = self.rollout(world, Some(guard_input(g)), then, frames, opp, Some(Plan::Guard(g)), recovering);
+            *slot = guard_score(g, &out, main, recovering, me.x).map(|s| (s, g));
+        }
+        let n = picks.iter().flatten().count();
+        if n == 0 {
+            // Nothing works yet (a dodge too early, say): look again next frame.
+            return None;
+        }
+        let (_, g) = if self.chance(self.level.judgement) {
+            let mut best: Option<(i32, Guard)> = None;
+            for &(s, g) in picks.iter().flatten() {
+                let s = s + self.roll(GUARD_NOISE) as i32;
+                if best.is_none_or(|(b, _)| s > b) {
+                    best = Some((s, g));
+                }
+            }
+            best?
+        } else {
+            *picks.iter().flatten().nth(self.roll(n as u32) as usize)?
+        };
+        self.guard_open = false;
+        self.plan = Plan::Guard(g);
+        self.plan_age = 0;
+        self.swung = false;
+        Some(guard_input(g))
+    }
+
+    /// The guards it can use from where it is: shield and dodges on the ground (or in
+    /// shield), air dodges in the air, and its counter if it has one. Against a charge
+    /// still being held (`timed` false) only the shield: the hit could come any time.
+    fn guard_options(&mut self, me: &Fighter, world: &World, timed: bool) -> [Option<Guard>; 8] {
+        let mut out = [None; 8];
+        let dodges = self.guard_dodges && timed;
+        // In the air the air dodge is its shield: `defend` alone decides.
+        let air_dodges = timed;
+        let counter = timed && me.character.moveset().down_special.data().counter.is_some() && self.chance(self.level.judgement / 3);
+        let center = world.stage.platforms.iter().find(|p| !p.soft).map_or(Fx::ZERO, |m| (m.left + m.right) * Fx::ratio(1, 2));
+        let inward = dir_of(center - me.x);
+        let list: &[Option<Guard>] = match me.state {
+            State::Ground | State::Crouch => &[
+                Some(Guard::Shield),
+                counter.then_some(Guard::Counter),
+                dodges.then_some(Guard::Spot),
+                dodges.then_some(Guard::Roll(-1)),
+                dodges.then_some(Guard::Roll(1)),
+            ],
+            State::Shield => &[Some(Guard::Shield), dodges.then_some(Guard::Spot), dodges.then_some(Guard::Roll(-1)), dodges.then_some(Guard::Roll(1))],
+            State::Air if !me.air_dodge_used => &[
+                counter.then_some(Guard::Counter),
+                air_dodges.then_some(Guard::AirDodge(0, 0)),
+                air_dodges.then_some(Guard::AirDodge(inward * DIAGONAL, DIAGONAL)),
+                air_dodges.then_some(Guard::AirDodge(0, 100)),
+                air_dodges.then_some(Guard::AirDodge(inward * 100, 0)),
+                air_dodges.then_some(Guard::AirDodge(-inward * DIAGONAL, DIAGONAL)),
+            ],
+            State::Air => &[counter.then_some(Guard::Counter)],
+            _ => &[],
+        };
+        for (o, g) in out.iter_mut().zip(list) {
+            *o = *g;
+        }
+        out
+    }
+
+    /// Shielding: hold it while the attack or projectile still threatens (and the shield
+    /// holds), then act out of shield on an opponent in its end lag, or let go.
+    fn keep_shield(&mut self, me: &Fighter, target: Option<&Fighter>, world: &World) -> Option<Input> {
+        let hold = Input { buttons: Input::SHIELD, ..Input::default() };
+        match me.state {
+            State::ShieldStun { .. } => return Some(hold),
+            State::Shield => {}
+            // The press frame, before the shield is up.
+            State::Ground | State::Crouch if self.plan_age <= 1 => return Some(hold),
+            _ => return None,
+        }
+        let threatened = target.is_some_and(|t| threatening(t, me)) || incoming(me, self.player, world).is_some();
+        if threatened {
+            if me.shield > SHIELD_LOW {
+                return Some(hold);
+            }
+            // About to break: dodge out instead.
+            self.guard_open = true;
+            self.guard_dodges = true;
+            return None;
+        }
+        if let Some(t) = target
+            && let Some(plan) = self.out_of_shield(me, t, world)
+        {
+            self.plan = plan;
+            self.plan_age = 0;
+            self.swung = false;
+            let main = world.stage.platforms.iter().find(|p| !p.soft)?;
+            return Some(self.execute(me, target, &world.stage, main));
+        }
+        let near = target.is_some_and(|t| (t.x - me.x).abs() < Fx::int(20) && !vulnerable(t));
+        (near && self.plan_age < SHIELD_FRAMES).then_some(hold)
+    }
+
+    /// The best grab, up smash or up special straight out of shield that connects with
+    /// an opponent in its end lag (judgement allowing).
+    fn out_of_shield(&mut self, me: &Fighter, t: &Fighter, world: &World) -> Option<Plan> {
+        if !vulnerable(t) || !self.chance(self.level.judgement.max(self.level.attack_chance)) {
+            return None;
+        }
+        let main = world.stage.platforms.iter().find(|p| !p.soft)?;
+        let c = Ctx { me, t, stage: &world.stage, main, path: predict(t, &world.stage), shots: false };
+        let mut best: Option<(i32, Slot)> = None;
+        for slot in OUT_OF_SHIELD_SLOTS {
+            let data = slot.move_id(me.character.moveset()).data();
+            if data.counter.is_some() {
+                continue;
+            }
+            if let Some(hit) = simulate(&c, data, me.facing, 0) {
+                let s = score(&c, data, &hit) + self.roll(NOISE) as i32;
+                if best.is_none_or(|(b, _)| s > b) {
+                    best = Some((s, slot));
+                }
+            }
+        }
+        best.map(|(_, slot)| Plan::Strike { slot, dir: me.facing as i8 })
+    }
+
+    /// Hitstun with a launch still to DI: the stick it holds for it (chosen once per
+    /// launch: the best by `best_di`, or nothing).
+    fn di(&mut self, me: &Fighter, target: Option<&Fighter>, world: &World, main: &Platform) -> Input {
+        let Some(launch) = me.di_pending else { return Input::default() };
+        if let Some(input) = self.di_input {
+            return input;
+        }
+        let input = if self.chance(self.level.di) { best_di(me, launch, target, &world.stage, main) } else { Input::default() };
+        self.di_input = Some(input);
+        input
+    }
+
+    /// Plays a copy of `world` forward up to `frames` frames, feeding its fighter `first`
+    /// (or, with `None`, what a copy of this CPU would do) and then `then`, everyone
+    /// else nothing. `plan` starts the copy's plan for `Then::Policy`. With `stop_safe`
+    /// it stops once its fighter stands on a platform or hangs from a ledge.
+    #[allow(clippy::too_many_arguments)]
+    fn rollout(&self, world: &World, first: Option<Input>, then: Then, frames: u16, opp: usize, plan: Option<Plan>, stop_safe: bool) -> Outcome {
+        let mut w = world.clone();
+        let mut sim = self.clone();
+        sim.simulating = true;
+        if let Some(p) = plan {
+            sim.plan = p;
+            sim.plan_age = 0;
+        }
+        let n = w.fighters.len().min(MAX_FIGHTERS);
+        let mut inputs = [Input::default(); MAX_FIGHTERS];
+        let mut out = Outcome { free: 1, opp_free: 1, gap: (world.fighters[self.player].x - world.fighters[opp].x).abs(), ..Outcome::default() };
+        for k in 1..=frames {
+            let mine = match (k, first, then) {
+                (1, Some(input), _) => input,
+                (_, _, Then::Policy) | (1, None, _) => sim.think(&w),
+                (_, _, Then::Shield) => Input { buttons: Input::SHIELD, ..Input::default() },
+                (_, _, Then::Idle) => Input::default(),
+            };
+            sim.prev = mine;
+            inputs[self.player] = mine;
+            w.step(&inputs[..n]);
+            for e in &w.events {
+                match *e {
+                    Event::Hit { defender, .. } | Event::Grab { defender, .. } if defender == self.player => {
+                        out.hit.get_or_insert(k);
+                    }
+                    Event::ShieldBreak { fighter } if fighter == self.player => {
+                        out.hit.get_or_insert(k);
+                    }
+                    Event::Hit { attacker, defender, .. } if attacker == self.player && defender == opp => {
+                        out.landed.get_or_insert(k);
+                    }
+                    Event::Ko { fighter } if fighter == self.player => out.ko = true,
+                    _ => {}
+                }
+            }
+            let f = &w.fighters[self.player];
+            if !actionable(f) {
+                out.free = k + 1;
+                out.gap = (f.x - w.fighters[opp].x).abs();
+            }
+            if !actionable(&w.fighters[opp]) {
+                out.opp_free = k + 1;
+            }
+            if out.safe.is_none() && (f.state == State::LedgeHang || f.grounded()) {
+                out.safe = Some(k);
+            }
+            if out.ko || (stop_safe && out.safe.is_some()) {
+                break;
+            }
+        }
+        let f = &w.fighters[self.player];
+        (out.x, out.shield) = (f.x, f.shield);
+        out
     }
 
     fn choose(&mut self, c: &Ctx, world: &World) -> Plan {
@@ -520,6 +1009,15 @@ impl Cpu {
             }
         }
 
+        if standing
+            && !t.grounded()
+            && matches!(t.state, State::Hitstun { .. })
+            && dy > Fx::ZERO
+            && self.chance(self.level.judgement)
+            && let Some(plan) = self.chase(c, world)
+        {
+            return plan;
+        }
         if !t.grounded() && dy > ABOVE {
             // Airborne above: wait under where it comes down (anti-airs come from the
             // move search above as it falls into range) or jump after it with an
@@ -613,6 +1111,67 @@ impl Cpu {
             && !(self.swung && me.state == State::Air)
     }
 
+    /// A launched opponent above, still in hitstun: the hop (full or short, toward it)
+    /// whose aerial lands soonest when played out, if any does.
+    fn chase(&mut self, c: &Ctx, world: &World) -> Option<Plan> {
+        if self.simulating {
+            return None;
+        }
+        let opp = self.target_index(world)?;
+        let toward = dir_of(c.t.x - c.me.x);
+        let mut best: Option<(u16, Plan)> = None;
+        for full in [true, false] {
+            let plan = Plan::Hop { full, dir: toward, offstage: false, swing_at: None };
+            let out = self.rollout(world, None, Then::Policy, CHASE_FRAMES, opp, Some(plan), false);
+            if let Some(k) = out.landed
+                && out.hit.is_none()
+                && best.is_none_or(|(b, _)| k < b)
+            {
+                best = Some((k, plan));
+            }
+        }
+        best.map(|(_, plan)| plan)
+    }
+
+    /// How to get back this trip offstage. Mostly the plain recovery; with `recovery_mix`
+    /// one of the mix-ups instead, and (judgement allowing) one that makes it when the
+    /// plain one wouldn't. Every candidate is played out first, so a mix-up never trades
+    /// a recovery that works for one that doesn't.
+    fn pick_recovery(&mut self, world: &World) -> Recovery {
+        if self.simulating {
+            return PLAIN_RECOVERY;
+        }
+        let mix = self.chance(self.level.recovery_mix);
+        let smart = self.chance(self.level.judgement);
+        if !mix && !smart {
+            return PLAIN_RECOVERY;
+        }
+        let opp = self.target_index(world).unwrap_or(self.player);
+        let makes_it = |cpu: &Cpu, r: Recovery| {
+            let mut sim = cpu.clone();
+            sim.recovery = Some(r);
+            sim.plan = Plan::Wait;
+            let out = sim.rollout(world, None, Then::Policy, RECOVERY_FRAMES, opp, None, true);
+            out.safe.is_some() && out.hit.is_none() && !out.ko
+        };
+        let plain = makes_it(self, PLAIN_RECOVERY);
+        if (plain && !mix) || (!plain && !smart) {
+            // It makes it and no mix-up is wanted, or it doesn't and no judgement to fix it.
+            return PLAIN_RECOVERY;
+        }
+        let start = self.roll(MIXED_RECOVERIES.len() as u32) as usize;
+        for i in 0..MIXED_RECOVERIES.len() {
+            let r = MIXED_RECOVERIES[(start + i) % MIXED_RECOVERIES.len()];
+            if makes_it(self, r) {
+                return r;
+            }
+        }
+        if !plain && let Some(&r) = FAR_RECOVERIES.iter().find(|&&r| makes_it(self, r)) {
+            return r;
+        }
+        PLAIN_RECOVERY
+    }
+
     /// The best move among `slots` that connects with the target, by score: with
     /// probability `judgement` the top one (plus a little noise), otherwise any that
     /// connects.
@@ -673,9 +1232,10 @@ impl Cpu {
                     Input::default()
                 }
             }
-            Plan::Shield if age < SHIELD_FRAMES => Input { buttons: Input::SHIELD, ..Input::default() },
-            Plan::Shield => Input::default(),
             Plan::Hop { full, dir, swing_at, .. } => self.hop(me, target, stage, full, dir, swing_at),
+            // `guard` drives these; this only starts one.
+            Plan::Guard(g) if age == 0 => guard_input(g),
+            Plan::Guard(_) => Input::default(),
             Plan::Jump { goal } => {
                 let drift = if (goal - me.x).abs() < Fx::int(3) { 0 } else { dir_of(goal - me.x) * 100 };
                 let double_jump = me.state == State::Air && me.vy <= Fx::ZERO && me.air_jumps_left > 0 && !self.prev.held(Input::JUMP);
@@ -815,17 +1375,43 @@ impl Cpu {
 
     /// Drift back toward the stage and double-jump once falling below it; with
     /// the double jump gone, up special.
-    fn recover(&mut self, me: &Fighter, stage: &Platform) -> Input {
+    fn recover(&mut self, me: &Fighter, world: &World, stage: &Platform) -> Input {
         self.plan = Plan::Wait;
         self.plan_age = 0;
+        let style = match self.recovery {
+            Some(r) => r,
+            None => {
+                let r = self.pick_recovery(world);
+                self.recovery = Some(r);
+                r
+            }
+        };
         let center = (stage.left + stage.right) * Fx::ratio(1, 2);
         let toward: i8 = if me.x < center { 1 } else { -1 };
-        let mut input = Input { stick_x: toward * 100, ..Input::default() };
-        let falling_low = me.state == State::Air && me.vy + me.kb_y <= Fx::ZERO && me.y < stage.y + Fx::int(5);
-        if falling_low && !self.prev.held(Input::JUMP) && !self.prev.held(Input::SPECIAL) {
-            if me.air_jumps_left > 0 {
-                input.buttons |= Input::JUMP;
+        let edge = if toward > 0 { stage.left } else { stage.right };
+        // How far outside the near edge it is (negative once over the stage).
+        let outside = (edge - me.x) * toward as i32;
+        let height = me.y - stage.y;
+        let drift = if style.ledge && outside > Fx::ZERO && outside < Fx::int(3) { 0 } else { toward * 100 };
+        let mut input = Input { stick_x: drift, ..Input::default() };
+        let falling = me.state == State::Air && me.vy + me.kb_y <= Fx::ZERO;
+        let dodge_in = match style.air_dodge {
+            AirDodgeIn::No => false,
+            AirDodgeIn::Near => outside > Fx::ZERO && outside < AIR_DODGE_REACH && height < Fx::int(4) && height > -AIR_DODGE_REACH,
+            AirDodgeIn::Far(_) => outside > AIR_DODGE_REACH,
+        };
+        if dodge_in && falling && !me.air_dodge_used && !self.prev.held(Input::SHIELD) {
+            let up = !matches!(style.air_dodge, AirDodgeIn::Far(false));
+            return if up {
+                Input { stick_x: toward * DIAGONAL, stick_y: DIAGONAL, buttons: Input::SHIELD }
             } else {
+                Input { stick_x: toward * 100, stick_y: 0, buttons: Input::SHIELD }
+            };
+        }
+        if falling && !self.prev.held(Input::JUMP) && !self.prev.held(Input::SPECIAL) {
+            if me.air_jumps_left > 0 && height < Fx::int(style.jump_at) {
+                input.buttons |= Input::JUMP;
+            } else if me.air_jumps_left == 0 && height < Fx::int(style.special_at) {
                 // Mostly up, so it reads as up special rather than side.
                 input = Input { stick_x: toward * 40, stick_y: 100, buttons: Input::SPECIAL };
             }
@@ -858,10 +1444,12 @@ fn offstage(f: &Fighter, main: &Platform) -> bool {
     f.state == State::LedgeHang || (!f.grounded() && (!main.contains_x(f.x) || f.y < main.y))
 }
 
-/// Open to a punish: landing, shield broken, in a move's end lag, or already in hitstun.
+/// Open to a punish: landing, shield broken or being let go, helpless, in a move's or a
+/// dodge's end lag, or already in hitstun.
 fn vulnerable(t: &Fighter) -> bool {
     match t.state {
-        State::Landing { .. } | State::ShieldBreak { .. } | State::Hitstun { .. } => true,
+        State::Landing { .. } | State::ShieldBreak { .. } | State::ShieldDrop { .. } | State::Hitstun { .. } | State::SpecialFall => true,
+        State::Dodge { kind, frame } => frame > kind.data().intangible.1,
         State::Attack { mv, frame, .. } => {
             let data = mv.data();
             let last = data.hitboxes.iter().map(|h| h.last).chain(data.grabbox.as_ref().map(|g| g.last)).max().unwrap_or(0);
@@ -871,19 +1459,182 @@ fn vulnerable(t: &Fighter) -> bool {
     }
 }
 
-/// An attack starting nearby: frames until its first hitbox, if `t` just started one.
-fn threat(me: &Fighter, t: &Fighter) -> Option<u16> {
-    let State::Attack { mv, frame: 1, .. } = t.state else { return None };
+/// A hit the CPU can see coming, for `Cpu::guard`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Threat {
+    /// The target's attack, seen on this frame of it.
+    Attack { mv: MoveId, frame: u16 },
+    /// A projectile, by the world frame it expires on (the same every frame of its flight).
+    Shot(u32),
+}
+
+impl Threat {
+    /// Whether `self` is the same attack or projectile as `seen`, one frame or more on.
+    fn same(self, seen: Option<Threat>) -> bool {
+        match (self, seen) {
+            (Threat::Attack { mv, frame }, Some(Threat::Attack { mv: m, frame: f })) => mv == m && frame >= f,
+            (Threat::Shot(a), Some(Threat::Shot(b))) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// What the CPU can react to: the target's attack once it has seen it long enough
+/// (`seen`: its level's `react` frames; close, with hitboxes, a grab box or a projectile
+/// still to come), or a projectile about to arrive. Returns it and who threw it.
+fn threat(player: usize, me: &Fighter, target: Option<&Fighter>, world: &World, seen: bool) -> Option<(Threat, usize)> {
+    if let Some(t) = target
+        && let State::Attack { mv, frame, .. } = t.state
+        && seen
+        && threatening(t, me)
+        && let Some(i) = world.fighters.iter().position(|f| std::ptr::eq(f, t))
+    {
+        return Some((Threat::Attack { mv, frame }, i));
+    }
+    let (_, p) = incoming(me, player, world)?;
+    Some((Threat::Shot(world.frame + u32::from(p.frames_left)), p.owner))
+}
+
+/// Whether `t`'s attack can still hurt `me`: hitboxes, a grab box or a projectile still
+/// to come, within `THREAT_RANGE`.
+fn threatening(t: &Fighter, me: &Fighter) -> bool {
+    let State::Attack { mv, frame, .. } = t.state else { return false };
     if (t.x - me.x).abs() >= THREAT_RANGE || (t.y - me.y).abs() >= THREAT_RANGE {
+        return false;
+    }
+    let d = mv.data();
+    let last = d.hitboxes.iter().map(|h| h.last).chain(d.grabbox.as_ref().map(|g| g.last)).chain(d.projectile.as_ref().map(|p| p.frame)).max().unwrap_or(0);
+    frame <= last
+}
+
+/// Free to act: standing, crouching, airborne or holding shield (out-of-shield options).
+fn actionable(f: &Fighter) -> bool {
+    matches!(f.state, State::Ground | State::Crouch | State::Air | State::Shield)
+}
+
+/// How far to play a guard out: until the attacker's move is over (so a guard's punish
+/// window shows), at least long enough to see a roll end, within `GUARD_FRAMES`.
+fn guard_frames(opp: &Fighter) -> u16 {
+    let left = match opp.state {
+        State::Attack { mv, frame, .. } => mv.data().total_frames.saturating_sub(frame),
+        _ => 0,
+    };
+    (left + u16::from(opp.hitlag) + 4).clamp(GUARD_MIN_FRAMES, GUARD_FRAMES)
+}
+
+/// The input that starts guard `g`.
+fn guard_input(g: Guard) -> Input {
+    let (stick_x, stick_y, buttons) = match g {
+        Guard::Shield => (0, 0, Input::SHIELD),
+        Guard::Spot => (0, -100, Input::SHIELD),
+        Guard::Roll(dir) => (dir * 100, 0, Input::SHIELD),
+        Guard::AirDodge(x, y) => (x, y, Input::SHIELD),
+        Guard::Counter => (0, -TILT, Input::SPECIAL),
+    };
+    Input { stick_x, stick_y, buttons }
+}
+
+/// How good guard `g` played out: `None` if it got hit (or broke its shield, or, while
+/// recovering, didn't make it back); otherwise its base score, plus or minus the frames
+/// it is free before the attacker is, plus a landed counter.
+fn guard_score(g: Guard, out: &Outcome, main: &Platform, recovering: bool, from_x: Fx) -> Option<i32> {
+    if out.hit.is_some() || out.ko || (recovering && out.safe.is_none()) {
         return None;
     }
-    let data = mv.data();
-    let first = data.hitboxes.iter().map(|h| h.first).chain(data.grabbox.as_ref().map(|g| g.first)).min().unwrap_or(1);
-    Some(first.saturating_sub(1))
+    let mut s = match g {
+        Guard::Shield if out.shield < SHIELD_LOW => return None,
+        Guard::Shield => SHIELD_SCORE,
+        Guard::Counter => COUNTER_SCORE,
+        Guard::Spot => SPOT_DODGE_SCORE,
+        Guard::Roll(_) => ROLL_SCORE,
+        Guard::AirDodge(..) => AIR_DODGE_SCORE,
+    };
+    let to_ledge = |x: Fx| (x - main.left).min(main.right - x);
+    if let Guard::Roll(_) = g {
+        if to_ledge(out.x) < ROLL_LEDGE_MARGIN {
+            s -= LEDGE_ROLL_PENALTY;
+        } else if to_ledge(from_x) < CORNER && to_ledge(out.x) >= to_ledge(from_x) + CORNER_ESCAPE {
+            // Out of a corner, toward the middle.
+            s += CORNER_BONUS;
+        }
+    }
+    let advantage = (i32::from(out.opp_free) - i32::from(out.free)).clamp(-GUARD_ADVANTAGE, GUARD_ADVANTAGE);
+    // Frames to spare are only worth something within reach of the attacker (a shield
+    // pushed out of range has nothing to do with them); frames short always count.
+    let in_reach = out.gap <= PUNISH_RANGE;
+    let usable = if in_reach { advantage } else { advantage.min(0) };
+    // Free in time, and close enough, to hit back before the attacker can act.
+    let punish = in_reach && advantage >= PUNISH_FRAMES;
+    Some(s + usable * GUARD_PER_FRAME + if punish { PUNISH_BONUS } else { 0 } + if out.landed.is_some() { COUNTER_HIT_BONUS } else { 0 })
+}
+
+/// The DI stick for `launch` (one of eight directions at full tilt, or none) whose
+/// trajectory scores best by `di_score`: survival DI near a blast zone, recoverable
+/// launches and escaping the attacker otherwise.
+fn best_di(me: &Fighter, launch: Trajectory, attacker: Option<&Fighter>, stage: &Stage, main: &Platform) -> Input {
+    let hitstun = match me.state {
+        State::Hitstun { frames_left } => frames_left,
+        _ => 0,
+    };
+    let from = attacker.map(|a| (a.x, a.y));
+    let mut best = (i32::MIN, Input::default());
+    for d in 0..=8 {
+        let input = if d == 8 {
+            Input::default()
+        } else {
+            let axis = |v: Fx| (v * Fx::int(100)).floor_to_int().clamp(-100, 100) as i8;
+            Input { stick_x: axis(cos_deg(d * 45)), stick_y: axis(sin_deg(d * 45)), buttons: 0 }
+        };
+        let (sx, sy) = input.stick();
+        let angle = di_angle(launch.angle, sx, sy);
+        let s = di_score(me, Trajectory { angle, ..launch }, hitstun, from, stage, main);
+        if s > best.0 {
+            best = (s, input);
+        }
+    }
+    best.1
+}
+
+/// Follows `launch` from `me` (knockback decay and gravity, as `Fighter::take_hit` and
+/// physics do) and scores it: room left before the nearest blast zone (up to `DI_ROOM`;
+/// a KO scores far below anything else), how far offstage it ends, and how far from the
+/// attacker (at `from`) it is when hitstun ends.
+fn di_score(me: &Fighter, launch: Trajectory, hitstun: u16, from: Option<(Fx, Fx)>, stage: &Stage, main: &Platform) -> i32 {
+    let p = me.params;
+    let (cos, sin) = (cos_deg(launch.angle), sin_deg(launch.angle));
+    let (mut kbx, mut kby) = (launch.speed * cos, launch.speed * sin);
+    let (decay_x, decay_y) = ((KB_DECAY * cos).abs(), (KB_DECAY * sin).abs());
+    let (mut x, mut y, mut vy) = (me.x, me.y, Fx::ZERO);
+    let mut room = DI_ROOM;
+    let mut escape = None;
+    for f in 1..=LAUNCH_FRAMES {
+        vy = (vy - p.gravity).max(-p.max_fall);
+        kbx = kbx.approach(Fx::ZERO, decay_x);
+        kby = kby.approach(Fx::ZERO, decay_y);
+        let prev_y = y;
+        x += kbx;
+        y += vy + kby;
+        room = room.min(x - stage.blast_left).min(stage.blast_right - x).min(stage.blast_top - y).min(y - stage.blast_bottom);
+        if room <= Fx::ZERO {
+            // A KO: a later one is barely better.
+            return DI_KO + f as i32;
+        }
+        let distance = || from.map_or(Fx::ZERO, |(ax, ay)| Fx::hypot(x - ax, y - ay).min(DI_ESCAPE));
+        if f == u32::from(hitstun) {
+            escape = Some(distance());
+        }
+        let landed = vy + kby <= Fx::ZERO && stage.platforms.iter().any(|pl| prev_y >= pl.y && y <= pl.y && pl.contains_x(x));
+        if landed || (f >= u32::from(hitstun) && kbx == Fx::ZERO && kby == Fx::ZERO) {
+            escape.get_or_insert_with(distance);
+            break;
+        }
+    }
+    let off = (main.left - x).max(x - main.right).max(main.y - y).max(Fx::ZERO);
+    room.floor_to_int() * DI_PER_ROOM - off.floor_to_int() * DI_PER_OFFSTAGE + escape.unwrap_or(Fx::ZERO).floor_to_int() * DI_PER_ESCAPE
 }
 
 /// An opponent's projectile about to hit: frames until it does, within `INCOMING_FRAMES`.
-fn incoming(me: &Fighter, player: usize, world: &World) -> Option<u16> {
+fn incoming<'a>(me: &Fighter, player: usize, world: &'a World) -> Option<(u16, &'a Projectile)> {
     let s = &world.stage;
     world.projectiles.iter().filter(|p| p.owner != player).find_map(|p| {
         let data = p.data();
@@ -898,10 +1649,10 @@ fn incoming(me: &Fighter, player: usize, world: &World) -> Option<u16> {
             if let Some(pl) = landed {
                 // Only a blast or shatter hurts once it lands.
                 let burst = data.explosion.map(|e| e.radius).or(p.mv.data().shatter.map(|b| b.radius));
-                return burst.filter(|&r| overlaps(me, me.x, me.y, x, pl.y, r)).map(|_| k);
+                return burst.filter(|&r| overlaps(me, me.x, me.y, x, pl.y, r)).map(|_| (k, p));
             }
             if overlaps(me, me.x, me.y, x, y, radius) {
-                return Some(k);
+                return Some((k, p));
             }
         }
         None

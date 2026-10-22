@@ -85,7 +85,9 @@ If `cargo` isn't on PATH, prefix with `. "$HOME/.cargo/env";`.
   OS randomness inside `sim/` (a seeded PRNG stored in the struct, like `Cpu`'s, is fine).
   `World` must stay `Clone + PartialEq` (rollback snapshots).
 - **CPU players live in `sim/src/cpu.rs`** and only produce `Input`s; they never
-  change fighter state directly. `gdext` just calls `Cpu::think` for CPU slots.
+  change fighter state directly (to check a guard, recovery or chase they step a
+  *clone* of the `World`, never the real one). `gdext` just calls `Cpu::think` for CPU
+  slots.
 - **Menus only choose a `MatchSetup`** (stocks, stage, each port's character and
   CPU level). Their state and layout are in `gdext/src/menu.rs`, which has no Godot
   nodes and is unit tested there; `gdext/src/menu_view.rs` only draws it.
