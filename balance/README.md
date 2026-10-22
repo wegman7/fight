@@ -105,7 +105,13 @@ per-character script. What it still doesn't do, so read the numbers with it in m
   shield usually scores better. Most of its defense is air dodges and shields.
 - The DI heavily favours heavy characters (they live much longer with survival DI) and
   hurts light, floaty ones that die off the top, where DI barely helps. That is
-  character data, not an AI fault: the sim has DI for everyone.
+  character data, not an AI fault: the sim has DI for everyone, and the character
+  stats are tuned with it in (the heavies' weight and kill moves were trimmed, the
+  hobo made less floaty and harder-hitting).
+- The cast is balanced for level 9. Lower levels defend, punish and DI less, so slow,
+  heavy hits pay off far more and quick, light ones less: at level 5 the hobo wins
+  most of his matchups and the pug loses most of his. Read lower-level runs as a
+  sanity check, not a tuning target.
 - Flagged characters' rates say more about the AI than the character. Flags:
   `self-destructs` (over 10% of stocks lost unforced) and `timeouts` (well above the
   cast's rate) hold a character out of the loop; `whiffs` (hit rate far below the cast)

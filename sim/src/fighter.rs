@@ -94,7 +94,7 @@ impl FighterParams {
 
     /// The chef's height, a little heavier and slower on the ground, quicker to drift.
     pub const SAMURAI: FighterParams = FighterParams {
-        weight: 106,
+        weight: 103,
         walk_speed: Fx::ratio(98, 100),
         run_speed: Fx::ratio(135, 100),
         ground_accel: Fx::ratio(2, 10),
@@ -149,7 +149,7 @@ impl FighterParams {
     /// The heavyweight: heaviest of the lot, the slowest to run, and it falls fast
     /// and hard. Its hits land hard to make up for the slow startups.
     pub const SOLDIER: FighterParams = FighterParams {
-        weight: 122,
+        weight: 108,
         walk_speed: Fx::ratio(88, 100),
         run_speed: Fx::ratio(116, 100),
         ground_accel: Fx::ratio(2, 10),
@@ -173,10 +173,11 @@ impl FighterParams {
         knockback_scale: 100,
     };
 
-    /// The drunk hobo: floaty and loose. He falls slowly, drifts sideways in the air,
-    /// slides on the ground, and is slow to get going — his wobble lives in the moves.
+    /// The drunk hobo: floaty and loose, and a little lighter than the chef. He falls
+    /// the slowest of the cast, drifts sideways in the air, slides on the ground, and
+    /// is slow to get going — his wobble lives in the moves.
     pub const HOBO: FighterParams = FighterParams {
-        weight: 90,
+        weight: 95,
         walk_speed: Fx::ratio(93, 100),
         run_speed: Fx::ratio(126, 100),
         ground_accel: Fx::ratio(18, 100),
@@ -185,15 +186,15 @@ impl FighterParams {
         jump_h_speed: Fx::ratio(68, 100),
         air_accel: Fx::ratio(35, 1000),
         air_friction: Fx::ratio(15, 1000),
-        gravity: Fx::ratio(56, 1000),
-        max_fall: Fx::ratio(119, 100),
-        fast_fall: Fx::ratio(170, 100),
+        gravity: Fx::ratio(70, 1000),
+        max_fall: Fx::ratio(127, 100),
+        fast_fall: Fx::ratio(180, 100),
         jump_squat: 5,
-        full_hop: Fx::ratio(198, 100),
-        short_hop: Fx::ratio(126, 100),
-        double_jump: Fx::ratio(180, 100),
+        full_hop: Fx::ratio(221, 100),
+        short_hop: Fx::ratio(141, 100),
+        double_jump: Fx::ratio(201, 100),
         air_jumps: 1,
-        landing_lag: 5,
+        landing_lag: 4,
         height: Fx::int(12),
         radius: Fx::int(4),
         damage_scale: 100,

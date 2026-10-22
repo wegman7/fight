@@ -111,14 +111,19 @@ fn the_loop_buffs_the_loser_and_only_proposes() {
         ..TournamentConfig::default()
     };
     let tuner = TunerConfig { rounds: 1, sigmas: 1.0, ..TunerConfig::default() };
-    let rounds = tune(&t, &Tuning::default(), &tuner, |_| {});
+    // Handicap the hobo so he's the loser whatever the shipped balance is. The loop
+    // only moves damage and weight, so the knockback cut stays put.
+    let handicap = Knobs { damage: -tuner.max_total, weight: -tuner.max_total, knockback: -25, speed: 0 };
+    let start = Tuning::new(&[(Character::Hobo, handicap)]);
+    let rounds = tune(&t, &start, &tuner, |_| {});
     assert_eq!(rounds.len(), 2, "baseline plus one round");
     let base = &rounds[0].summary;
     let hobo = base.index(Character::Hobo).unwrap();
-    assert!(base.overall[hobo].rate() < 0.45, "the hobo loses this matchup under CPU play");
+    assert!(base.overall[hobo].rate() < 0.45, "the handicapped hobo loses this matchup under CPU play");
     assert!(matches!(rounds[0].verdicts[hobo], Verdict::Adjust(step) if step > 0), "{:?}", rounds[0].verdicts);
     let knobs = rounds[1].tuning.knobs(Character::Hobo);
-    assert!(knobs.damage > 0 && knobs.weight > 0, "{knobs:?}");
+    assert!(knobs.damage > handicap.damage && knobs.weight > handicap.weight, "{knobs:?}");
+    assert_eq!(knobs.knockback, handicap.knockback, "{knobs:?}");
     // The report shows it as a reviewable diff; the source is never touched.
     assert!(tuning_diff(&rounds[1].tuning).contains("FighterParams::HOBO"));
     let text = render(&rounds);

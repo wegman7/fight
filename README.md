@@ -124,7 +124,7 @@ dark shinobi shozoku with a draped face mask, forearm and shin wraps, split-toe 
 heavyweight: slow and falls fast, but hits hard — a masked operator in a combat helmet,
 goggles, ear-pro and a plate carrier hung with pouches, with a scoped carbine, grenades, a blast jump and a riot shield) and
 the **hobo** (a drunken-fist brawler: floaty and wobbly,
-attacking from odd angles — a bearded drifter in a beanie and a tattered, patched overcoat).
+attacking from odd angles with slow, heavy swings — a bearded drifter in a beanie and a tattered, patched overcoat).
 
 How each input works, with the chef's moves:
 
@@ -222,7 +222,7 @@ past the chef's fists, in exchange for slower startups:
 | Grab, pummel, throws | His own grab and dash grab, a rifle-butt pommel, then throw forward / over the shoulder behind (the kill throw) / toss up / slam down in front (pops them up for a combo) |
 
 The hobo's moves. He's floaty and loose, and his swings come out late and lurch through
-odd arcs — none of them are the chef's (even his grab is his own):
+odd arcs, but the big ones land harder than the chef's — none of them are the chef's (even his grab is his own):
 
 | Input | Hobo move |
 |---|---|

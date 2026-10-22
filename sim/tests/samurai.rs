@@ -128,7 +128,7 @@ fn forward_cut_at(distance: i32) -> i32 {
 
 #[test]
 fn forward_cut_hits_hardest_with_the_tip() {
-    assert_eq!(forward_cut_at(13), 11, "tip");
+    assert_eq!(forward_cut_at(13), 10, "tip");
     assert_eq!(forward_cut_at(5), 8, "near the hilt");
 }
 
@@ -273,7 +273,7 @@ fn cyclone_cuts_both_sides() {
         w.fighters[1].x = Fx::int(-40 + side);
         w.step(&[input(0, 100, Input::SPECIAL), NONE]);
         run(&mut w, 6, NONE, NONE);
-        assert_eq!(w.fighters[1].percent, 11, "side {side}");
+        assert_eq!(w.fighters[1].percent, 10, "side {side}");
         assert_eq!(w.fighters[1].kb_x.signum(), side.signum(), "sent away from him on side {side}");
     }
 }
