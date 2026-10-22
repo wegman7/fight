@@ -925,7 +925,7 @@ static PUG_RAM: MoveData = MoveData {
 static PUG_HOWL: MoveData = MoveData {
     name: "howl",
     total_frames: 44,
-    hitboxes: &[hit(10, 16, int(2), int(12), int(6), 13, 90, 30, 100)],
+    hitboxes: &[hit(10, 14, int(2), int(12), int(6), 13, 90, 30, 100)],
     charge_frame: Some(6),
     ..BASE
 };
@@ -934,7 +934,7 @@ static PUG_HOWL: MoveData = MoveData {
 static PUG_SHAKE: MoveData = MoveData {
     name: "shake",
     total_frames: 42,
-    hitboxes: &[hit(8, 10, int(6), int(3), int(5), 12, 30, 25, 100), hit(8, 10, int(-6), int(3), int(5), 12, 150, 25, 100)],
+    hitboxes: &[hit(8, 10, int(6), int(3), int(5), 11, 30, 25, 100), hit(8, 10, int(-6), int(3), int(5), 11, 150, 25, 100)],
     charge_frame: Some(4),
     ..BASE
 };
@@ -960,7 +960,7 @@ static PUG_AIR_HEADBUTT: MoveData = MoveData {
 static PUG_BUCK: MoveData = MoveData {
     name: "buck",
     total_frames: 32,
-    hitboxes: &[hit(6, 8, int(-6), int(4), half(9), 12, 140, 25, 100)],
+    hitboxes: &[hit(6, 8, int(-6), int(4), half(9), 11, 140, 25, 100)],
     landing: Landing::Lag(10),
     ..BASE
 };
@@ -978,7 +978,7 @@ static PUG_SNAP: MoveData = MoveData {
 static PUG_PANCAKE: MoveData = MoveData {
     name: "pancake",
     total_frames: 40,
-    hitboxes: &[hit(10, 14, int(0), int(0), int(6), 13, 270, 20, 90)],
+    hitboxes: &[hit(10, 14, int(0), int(0), int(6), 12, 270, 20, 90)],
     landing: Landing::Lag(18),
     ..BASE
 };
@@ -1162,8 +1162,8 @@ static SAMURAI_THRUST: MoveData = MoveData {
 /// A level cut at arm's length, strongest at the tip.
 static SAMURAI_FORWARD_CUT: MoveData = MoveData {
     name: "forward_cut",
-    total_frames: 30,
-    hitboxes: &[hit(7, 9, int(13), int(7), int(3), 11, 35, 30, 100), hit(7, 9, int(8), int(7), int(4), 8, 40, 25, 90)],
+    total_frames: 34,
+    hitboxes: &[hit(7, 9, int(13), int(7), int(3), 10, 35, 30, 100), hit(7, 9, int(8), int(7), int(4), 8, 40, 25, 90)],
     ..BASE
 };
 
@@ -1187,7 +1187,7 @@ static SAMURAI_LOW_CUT: MoveData = MoveData {
 static SAMURAI_DASH_CUT: MoveData = MoveData {
     name: "dash_cut",
     total_frames: 40,
-    hitboxes: &[hit(7, 11, int(10), int(6), int(5), 11, 45, 40, 70)],
+    hitboxes: &[hit(7, 11, int(10), int(6), int(5), 10, 45, 40, 70)],
     motion: &[Motion { first: 5, last: 11, vx: Some(Fx::int(2)), vy: None }],
     ..BASE
 };
@@ -1196,7 +1196,7 @@ static SAMURAI_DASH_CUT: MoveData = MoveData {
 static SAMURAI_CLEAVE: MoveData = MoveData {
     name: "cleave",
     total_frames: 56,
-    hitboxes: &[hit(17, 19, int(13), int(6), int(4), 19, 38, 34, 102), hit(17, 19, int(7), int(10), int(4), 15, 40, 30, 100)],
+    hitboxes: &[hit(17, 19, int(13), int(6), int(4), 17, 38, 34, 98), hit(17, 19, int(7), int(10), int(4), 15, 40, 30, 100)],
     charge_frame: Some(12),
     ..BASE
 };
@@ -1205,7 +1205,7 @@ static SAMURAI_CLEAVE: MoveData = MoveData {
 static SAMURAI_SKY_CUT: MoveData = MoveData {
     name: "sky_cut",
     total_frames: 48,
-    hitboxes: &[hit(12, 16, int(2), int(18), int(6), 15, 90, 32, 100), hit(11, 12, int(8), int(9), int(5), 13, 85, 30, 100)],
+    hitboxes: &[hit(12, 16, int(2), int(18), int(6), 14, 90, 32, 96), hit(11, 12, int(8), int(9), int(5), 12, 85, 30, 96)],
     charge_frame: Some(8),
     ..BASE
 };
@@ -1214,7 +1214,7 @@ static SAMURAI_SKY_CUT: MoveData = MoveData {
 static SAMURAI_SPIN_SWEEP: MoveData = MoveData {
     name: "spin_sweep",
     total_frames: 50,
-    hitboxes: &[hit(10, 11, int(12), int(2), int(4), 14, 30, 28, 98), hit(16, 17, int(-12), int(2), int(4), 15, 150, 28, 100)],
+    hitboxes: &[hit(10, 11, int(12), int(2), int(4), 13, 30, 28, 98), hit(16, 17, int(-12), int(2), int(4), 14, 150, 28, 100)],
     charge_frame: Some(6),
     ..BASE
 };
@@ -1223,17 +1223,17 @@ static SAMURAI_SPIN_SWEEP: MoveData = MoveData {
 static SAMURAI_AIR_SPIN: MoveData = MoveData {
     name: "air_spin",
     total_frames: 38,
-    hitboxes: &[hit(5, 8, int(8), int(9), int(5), 9, 45, 15, 95), hit(9, 12, int(-8), int(5), int(5), 8, 135, 15, 95)],
+    hitboxes: &[hit(5, 8, int(8), int(9), int(5), 8, 45, 15, 95), hit(9, 12, int(-8), int(5), int(5), 8, 135, 15, 95)],
     landing: Landing::Lag(12),
     ..BASE
 };
 
-/// A quick downward arc in front.
+/// A downward arc in front, long but a little slow to come out.
 static SAMURAI_AIR_CUT: MoveData = MoveData {
     name: "air_cut",
     total_frames: 36,
-    hitboxes: &[hit(6, 10, int(11), int(7), int(5), 10, 40, 22, 95)],
-    landing: Landing::Lag(12),
+    hitboxes: &[hit(8, 11, int(11), int(7), int(5), 9, 40, 22, 95)],
+    landing: Landing::Lag(15),
     ..BASE
 };
 
@@ -1241,15 +1241,15 @@ static SAMURAI_AIR_CUT: MoveData = MoveData {
 static SAMURAI_BACK_CUT: MoveData = MoveData {
     name: "back_cut",
     total_frames: 38,
-    hitboxes: &[hit(8, 11, int(-11), int(6), int(5), 13, 145, 26, 100)],
-    landing: Landing::Lag(14),
+    hitboxes: &[hit(8, 11, int(-11), int(6), int(5), 12, 145, 26, 100)],
+    landing: Landing::Lag(16),
     ..BASE
 };
 
 static SAMURAI_SKY_ARC: MoveData = MoveData {
     name: "sky_arc",
     total_frames: 36,
-    hitboxes: &[hit(5, 10, int(2), int(17), int(6), 10, 85, 25, 95)],
+    hitboxes: &[hit(5, 10, int(2), int(17), int(6), 9, 85, 25, 95)],
     landing: Landing::Lag(10),
     ..BASE
 };
@@ -1258,7 +1258,7 @@ static SAMURAI_SKY_ARC: MoveData = MoveData {
 static SAMURAI_PLUNGE_STAB: MoveData = MoveData {
     name: "plunge_stab",
     total_frames: 46,
-    hitboxes: &[hit(12, 16, int(1), int(-4), int(4), 14, 270, 20, 90)],
+    hitboxes: &[hit(12, 16, int(1), int(-4), int(4), 12, 270, 20, 90)],
     landing: Landing::Lag(22),
     ..BASE
 };
@@ -1319,8 +1319,8 @@ static SAMURAI_CYCLONE: MoveData = MoveData {
     name: "cyclone",
     total_frames: 46,
     hitboxes: &[
-        hit(4, 7, int(9), int(7), int(5), 11, 75, 45, 80),
-        hit(4, 7, int(-9), int(7), int(5), 11, 105, 45, 80),
+        hit(5, 7, int(9), int(7), int(5), 10, 75, 45, 80),
+        hit(5, 7, int(-9), int(7), int(5), 10, 105, 45, 80),
         hit(8, 18, int(8), int(9), int(5), 5, 80, 25, 60),
         hit(8, 18, int(-8), int(9), int(5), 5, 100, 25, 60),
     ],
@@ -1446,7 +1446,7 @@ static NINJA_DASH_SLICE: MoveData = MoveData {
 static NINJA_CHOP: MoveData = MoveData {
     name: "ninja_chop",
     total_frames: 42,
-    hitboxes: &[hit(12, 14, int(9), int(7), int(5), 13, 40, 30, 100)],
+    hitboxes: &[hit(12, 14, int(9), int(7), int(5), 14, 40, 30, 106)],
     charge_frame: Some(8),
     ..BASE
 };
@@ -1455,7 +1455,7 @@ static NINJA_CHOP: MoveData = MoveData {
 static NINJA_FLIP_KICK: MoveData = MoveData {
     name: "ninja_flip_kick",
     total_frames: 40,
-    hitboxes: &[hit(9, 12, int(2), int(14), int(6), 12, 88, 30, 100)],
+    hitboxes: &[hit(9, 12, int(2), int(14), int(6), 13, 88, 30, 110)],
     charge_frame: Some(6),
     ..BASE
 };
@@ -1661,7 +1661,7 @@ static SOLDIER_BUTT_STRIKE2: MoveData = MoveData {
 static SOLDIER_BAYONET: MoveData = MoveData {
     name: "soldier_bayonet",
     total_frames: 32,
-    hitboxes: &[hit(7, 9, int(12), int(7), int(3), 13, 35, 28, 100), hit(7, 9, int(8), int(7), int(4), 10, 40, 25, 90)],
+    hitboxes: &[hit(7, 9, int(12), int(7), int(3), 12, 35, 28, 100), hit(7, 9, int(8), int(7), int(4), 10, 40, 25, 90)],
     ..BASE
 };
 
@@ -1669,7 +1669,7 @@ static SOLDIER_BAYONET: MoveData = MoveData {
 static SOLDIER_RIFLE_UP: MoveData = MoveData {
     name: "soldier_rifle_up",
     total_frames: 32,
-    hitboxes: &[hit(7, 9, int(5), int(10), int(5), 9, 85, 32, 105), hit(10, 13, int(2), int(16), int(5), 9, 88, 32, 105)],
+    hitboxes: &[hit(7, 9, int(5), int(10), int(5), 8, 85, 32, 105), hit(10, 13, int(2), int(16), int(5), 8, 88, 32, 105)],
     ..BASE
 };
 
@@ -1685,7 +1685,7 @@ static SOLDIER_LEG_SWEEP: MoveData = MoveData {
 static SOLDIER_SHOULDER_CHARGE: MoveData = MoveData {
     name: "soldier_shoulder_charge",
     total_frames: 42,
-    hitboxes: &[hit(7, 11, int(7), int(6), int(5), 14, 45, 45, 75), hit(12, 18, int(6), int(6), int(4), 8, 55, 30, 55)],
+    hitboxes: &[hit(7, 11, int(7), int(6), int(5), 13, 45, 45, 75), hit(12, 18, int(6), int(6), int(4), 8, 55, 30, 55)],
     motion: &[Motion { first: 5, last: 14, vx: Some(Fx::int(2)), vy: None }],
     ..BASE
 };
@@ -1694,7 +1694,7 @@ static SOLDIER_SHOULDER_CHARGE: MoveData = MoveData {
 static SOLDIER_STOCK_SMASH: MoveData = MoveData {
     name: "soldier_stock_smash",
     total_frames: 52,
-    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 20, 38, 34, 103), hit(16, 18, int(7), int(7), int(4), 16, 40, 30, 100)],
+    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 17, 38, 34, 100), hit(16, 18, int(7), int(7), int(4), 16, 40, 30, 100)],
     charge_frame: Some(12),
     ..BASE
 };
@@ -1702,7 +1702,7 @@ static SOLDIER_STOCK_SMASH: MoveData = MoveData {
 static SOLDIER_BAYONET_UPPER: MoveData = MoveData {
     name: "soldier_bayonet_upper",
     total_frames: 48,
-    hitboxes: &[hit(12, 16, int(3), int(17), int(6), 17, 90, 34, 100), hit(11, 12, int(7), int(10), int(5), 15, 85, 32, 100)],
+    hitboxes: &[hit(13, 17, int(3), int(17), int(6), 14, 90, 32, 100), hit(12, 13, int(7), int(10), int(5), 14, 85, 30, 100)],
     charge_frame: Some(8),
     ..BASE
 };
@@ -1711,7 +1711,7 @@ static SOLDIER_BAYONET_UPPER: MoveData = MoveData {
 static SOLDIER_STOCK_SWEEP: MoveData = MoveData {
     name: "soldier_stock_sweep",
     total_frames: 46,
-    hitboxes: &[hit(9, 11, int(10), int(3), int(5), 15, 30, 28, 98), hit(15, 17, int(-10), int(3), int(5), 16, 150, 28, 100)],
+    hitboxes: &[hit(9, 11, int(10), int(3), int(5), 14, 30, 28, 98), hit(15, 17, int(-10), int(3), int(5), 15, 150, 28, 100)],
     charge_frame: Some(6),
     ..BASE
 };
@@ -1720,7 +1720,7 @@ static SOLDIER_STOCK_SWEEP: MoveData = MoveData {
 static SOLDIER_AIR_SPIN: MoveData = MoveData {
     name: "soldier_air_spin",
     total_frames: 38,
-    hitboxes: &[hit(5, 8, int(8), int(6), int(6), 11, 45, 15, 95), hit(9, 20, int(0), int(6), int(6), 6, 45, 8, 80)],
+    hitboxes: &[hit(5, 8, int(8), int(6), int(6), 10, 45, 15, 95), hit(9, 20, int(0), int(6), int(6), 6, 45, 8, 80)],
     landing: Landing::Lag(14),
     ..BASE
 };
@@ -1729,7 +1729,7 @@ static SOLDIER_AIR_SPIN: MoveData = MoveData {
 static SOLDIER_AIR_BAYONET: MoveData = MoveData {
     name: "soldier_air_bayonet",
     total_frames: 40,
-    hitboxes: &[hit(9, 12, int(11), int(7), int(4), 14, 40, 26, 95)],
+    hitboxes: &[hit(9, 12, int(11), int(7), int(4), 13, 40, 26, 95)],
     landing: Landing::Lag(16),
     ..BASE
 };
@@ -1738,7 +1738,7 @@ static SOLDIER_AIR_BAYONET: MoveData = MoveData {
 static SOLDIER_BACK_ELBOW: MoveData = MoveData {
     name: "soldier_back_elbow",
     total_frames: 36,
-    hitboxes: &[hit(7, 10, int(-7), int(7), int(5), 14, 145, 28, 100)],
+    hitboxes: &[hit(7, 10, int(-7), int(7), int(5), 13, 145, 28, 100)],
     landing: Landing::Lag(13),
     ..BASE
 };
@@ -1747,7 +1747,7 @@ static SOLDIER_BACK_ELBOW: MoveData = MoveData {
 static SOLDIER_AIR_UP: MoveData = MoveData {
     name: "soldier_air_up",
     total_frames: 34,
-    hitboxes: &[hit(6, 10, int(2), int(15), int(5), 11, 85, 27, 95)],
+    hitboxes: &[hit(6, 10, int(2), int(15), int(5), 10, 85, 27, 95)],
     landing: Landing::Lag(10),
     ..BASE
 };
@@ -1756,7 +1756,7 @@ static SOLDIER_AIR_UP: MoveData = MoveData {
 static SOLDIER_AIR_STOMP: MoveData = MoveData {
     name: "soldier_air_stomp",
     total_frames: 46,
-    hitboxes: &[hit(13, 16, int(1), int(-1), int(5), 15, 270, 20, 90)],
+    hitboxes: &[hit(13, 16, int(1), int(-1), int(5), 14, 270, 20, 90)],
     landing: Landing::Lag(20),
     ..BASE
 };
@@ -1896,7 +1896,8 @@ static SOLDIER_THROW_DOWN: MoveData = MoveData {
 // --- Hobo -------------------------------------------------------------------
 // A floaty, wobbly drunken brawler: the chef's height, but his swings come out late
 // and lurch through odd arcs. Startups run a few frames longer than the other cast
-// and several moves carry him forward as he over-commits to the swing.
+// and several moves carry him forward as he over-commits to the swing, but the big
+// swings (smashes, haymaker) hit harder than the chef's to make up for it.
 
 /// A swaying slap. Press attack again for a backhand, then a shove.
 static HOBO_SLAP: MoveData = MoveData {
@@ -1927,7 +1928,7 @@ static HOBO_SLAP3: MoveData = MoveData {
 static HOBO_PUNCH: MoveData = MoveData {
     name: "hobo_punch",
     total_frames: 28,
-    hitboxes: &[hit(8, 10, int(8), int(7), int(4), 9, 35, 22, 100)],
+    hitboxes: &[hit(8, 10, int(8), int(7), int(4), 10, 35, 22, 100)],
     motion: &[Motion { first: 7, last: 10, vx: Some(Fx::ONE), vy: None }],
     ..BASE
 };
@@ -1936,7 +1937,7 @@ static HOBO_PUNCH: MoveData = MoveData {
 static HOBO_UP_SWING: MoveData = MoveData {
     name: "hobo_up_swing",
     total_frames: 32,
-    hitboxes: &[hit(7, 14, int(2), int(14), int(5), 7, 85, 30, 110)],
+    hitboxes: &[hit(7, 14, int(2), int(14), int(5), 8, 85, 30, 110)],
     ..BASE
 };
 
@@ -1944,7 +1945,7 @@ static HOBO_UP_SWING: MoveData = MoveData {
 static HOBO_TRIP: MoveData = MoveData {
     name: "hobo_trip",
     total_frames: 24,
-    hitboxes: &[hit(6, 8, int(8), int(2), int(4), 6, 80, 30, 70)],
+    hitboxes: &[hit(6, 8, int(8), int(2), int(4), 7, 80, 30, 70)],
     ..BASE
 };
 
@@ -1953,7 +1954,7 @@ static HOBO_TRIP: MoveData = MoveData {
 static HOBO_STUMBLE: MoveData = MoveData {
     name: "hobo_stumble",
     total_frames: 40,
-    hitboxes: &[hit(8, 12, int(6), int(6), int(5), 10, 50, 40, 70), hit(13, 20, int(5), int(6), int(4), 6, 55, 30, 50)],
+    hitboxes: &[hit(8, 12, int(6), int(6), int(5), 11, 50, 40, 70), hit(13, 20, int(5), int(6), int(4), 6, 55, 30, 50)],
     motion: &[
         Motion { first: 4, last: 12, vx: Some(Fx::int(2)), vy: None },
         Motion { first: 13, last: 18, vx: Some(Fx::ONE), vy: None },
@@ -1967,7 +1968,7 @@ static HOBO_STUMBLE: MoveData = MoveData {
 static HOBO_BOTTLE_SWING: MoveData = MoveData {
     name: "hobo_bottle_swing",
     total_frames: 50,
-    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 16, 38, 30, 105)],
+    hitboxes: &[hit(16, 18, int(11), int(7), int(5), 18, 38, 30, 105)],
     charge_frame: Some(12),
     ..BASE
 };
@@ -1976,7 +1977,7 @@ static HOBO_BOTTLE_SWING: MoveData = MoveData {
 static HOBO_UP_HEAVE: MoveData = MoveData {
     name: "hobo_up_heave",
     total_frames: 48,
-    hitboxes: &[hit(12, 16, int(1), int(16), int(6), 14, 88, 32, 100)],
+    hitboxes: &[hit(12, 16, int(1), int(16), int(6), 17, 88, 32, 100)],
     charge_frame: Some(8),
     ..BASE
 };
@@ -1985,7 +1986,7 @@ static HOBO_UP_HEAVE: MoveData = MoveData {
 static HOBO_SPIN_FLAIL: MoveData = MoveData {
     name: "hobo_spin_flail",
     total_frames: 46,
-    hitboxes: &[hit(10, 12, int(8), int(2), int(5), 13, 30, 25, 100), hit(15, 17, int(-8), int(2), int(5), 14, 150, 25, 100)],
+    hitboxes: &[hit(10, 12, int(8), int(2), int(5), 14, 30, 25, 100), hit(15, 17, int(-8), int(2), int(5), 15, 150, 25, 100)],
     charge_frame: Some(6),
     ..BASE
 };
@@ -1996,8 +1997,8 @@ static HOBO_SPIN_FLAIL: MoveData = MoveData {
 static HOBO_FLAIL: MoveData = MoveData {
     name: "hobo_flail",
     total_frames: 38,
-    hitboxes: &[hit(5, 8, int(3), int(6), int(6), 8, 45, 10, 100), hit(9, 24, int(3), int(6), int(5), 5, 45, 5, 80)],
-    landing: Landing::Lag(16),
+    hitboxes: &[hit(5, 8, int(3), int(6), int(6), 9, 45, 10, 100), hit(9, 24, int(3), int(6), int(5), 5, 45, 5, 80)],
+    landing: Landing::Lag(14),
     ..BASE
 };
 
@@ -2005,8 +2006,8 @@ static HOBO_FLAIL: MoveData = MoveData {
 static HOBO_HAYMAKER: MoveData = MoveData {
     name: "hobo_haymaker",
     total_frames: 42,
-    hitboxes: &[hit(10, 13, int(7), int(6), half(9), 12, 40, 25, 95)],
-    landing: Landing::Lag(18),
+    hitboxes: &[hit(9, 12, int(7), int(6), half(9), 15, 40, 25, 95)],
+    landing: Landing::Lag(16),
     ..BASE
 };
 
@@ -2014,16 +2015,16 @@ static HOBO_HAYMAKER: MoveData = MoveData {
 static HOBO_BACKHAND: MoveData = MoveData {
     name: "hobo_backhand",
     total_frames: 36,
-    hitboxes: &[hit(8, 11, int(-7), int(6), half(9), 12, 140, 25, 100)],
-    landing: Landing::Lag(14),
+    hitboxes: &[hit(8, 11, int(-7), int(6), half(9), 13, 140, 25, 100)],
+    landing: Landing::Lag(12),
     ..BASE
 };
 
 static HOBO_UP_FLAIL: MoveData = MoveData {
     name: "hobo_up_flail",
     total_frames: 34,
-    hitboxes: &[hit(6, 10, int(1), int(15), int(5), 9, 85, 25, 95)],
-    landing: Landing::Lag(12),
+    hitboxes: &[hit(6, 10, int(1), int(15), int(5), 10, 85, 25, 95)],
+    landing: Landing::Lag(10),
     ..BASE
 };
 
@@ -2031,7 +2032,7 @@ static HOBO_UP_FLAIL: MoveData = MoveData {
 static HOBO_STOMP: MoveData = MoveData {
     name: "hobo_stomp",
     total_frames: 46,
-    hitboxes: &[hit(13, 16, int(1), int(-1), half(9), 13, 270, 20, 90)],
+    hitboxes: &[hit(13, 16, int(1), int(-1), half(9), 14, 270, 20, 90)],
     landing: Landing::Lag(22),
     ..BASE
 };
