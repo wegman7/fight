@@ -14,11 +14,14 @@ pub const AI_CAVEAT: &str = "\
 CPU-vs-CPU results measure each character *as the CPU plays it*, not the character's
 ceiling. The CPU (sim/src/cpu.rs) picks moves from the move data (hitboxes, motion,
 projectiles and the knockback formula: smash attacks to KO, projectiles at range,
-throws toward the ledge), anti-airs, edge-guards and recovers. It never dodges, DIs,
-charges smash attacks or runs hand-made combos, and its recovery is plain, so
-evasive, combo-heavy characters are likely undersold and hard hitters oversold; see
-the Move use table for what each rate measures. Flagged characters' rates say more
-about the AI (or a ledge/recovery bug) than the character: fix those before tuning.";
+throws toward the ledge), anti-airs, edge-guards, shields and dodges what it sees coming
+(10 frames into an attack at level 9) and punishes it, DIs every launch, chases launches
+with an aerial and mixes up its recovery (air dodge, high, low, ledge). It doesn't
+charge smash attacks, run hand-made combo routes, tech, SDI or anticipate an attack
+before it starts, so slow-starting moves are easier to answer than against a person who
+guesses; see the Defense and Move use tables for what each rate measures. Flagged
+characters' rates say more about the AI (or a ledge/recovery bug) than the character:
+fix those before tuning.";
 
 fn pct(x: f64) -> String {
     if x.is_nan() { "-".into() } else { format!("{:.1}", x * 100.0) }
@@ -134,7 +137,45 @@ pub fn round_tables(round: &Round) -> String {
          moveset slots used for at least {:.1}% of its moves (of {SLOTS}).\n",
         MOVE_USE_THRESHOLD * 100.0
     );
+    out.push_str(&defense_table(round));
+    out.push('\n');
     out.push_str(&move_table(round));
+    out
+}
+
+/// How each character's CPU defends: dodges and shields per minute, and DI.
+fn defense_table(round: &Round) -> String {
+    let s = &round.summary;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "{:<10}{:>7}{:>7}{:>7}{:>8}{:>9}{:>8}{:>7}{:>7}",
+        "Defense", "spot", "roll", "airdg", "shield", "blocked", "breaks", "OoS%", "DI%"
+    );
+    for (i, c) in s.characters.iter().enumerate() {
+        let p = &s.play[i];
+        let d = &p.defense;
+        let _ = writeln!(
+            out,
+            "{:<10}{:>7.2}{:>7.2}{:>7.2}{:>8.2}{:>9.2}{:>8.2}{:>7}{:>7}",
+            c.name(),
+            p.per_minute(d.spot_dodges),
+            p.per_minute(d.rolls),
+            p.per_minute(d.air_dodges),
+            p.per_minute(d.shields),
+            p.per_minute(d.blocked),
+            d.shield_breaks as f64 / p.games.max(1) as f64,
+            pct(p.out_of_shield_rate()),
+            pct(p.di_rate())
+        );
+    }
+    let _ = writeln!(
+        out,
+        "spot, roll, airdg, shield (times it put shield up), blocked (hits on its shield): per \
+         minute. breaks: shield breaks per game. OoS%: shields it acted straight out of (grab, \
+         jump, up special, up smash). DI%: launches it DI'd (stick out of the deadzone on the \
+         first hitstun frame)."
+    );
     out
 }
 
@@ -310,7 +351,8 @@ pub fn to_json(rounds: &[Round]) -> String {
                     s.stages.iter().zip(&s.by_stage[i]).map(|(st, sc)| format!("{}:{}", json_str(st.name()), score_json(sc))).collect();
                 format!(
                     "{{\"name\":{},\"knobs\":{{\"damage\":{},\"knockback\":{},\"weight\":{},\"speed\":{}}},\"overall\":{},\"by_stage\":{{{}}},\
-                     \"play\":{{\"games\":{},\"self_destruct_rate\":{},\"bottom_ko_rate\":{},\"failed_recovery_rate\":{},\"offstage_ko_rate\":{},\"recovery_reach\":{},\"accuracy\":{},\"damage_per_minute\":{},\"timeout_rate\":{},\"moves_used\":{},\"move_use\":{{{}}}}},\
+                     \"play\":{{\"games\":{},\"self_destruct_rate\":{},\"bottom_ko_rate\":{},\"failed_recovery_rate\":{},\"offstage_ko_rate\":{},\"recovery_reach\":{},\"accuracy\":{},\"damage_per_minute\":{},\"timeout_rate\":{},\"moves_used\":{},\"move_use\":{{{}}},\
+                     \"defense\":{{\"spot_dodges\":{},\"rolls\":{},\"air_dodges\":{},\"shields\":{},\"blocked\":{},\"shield_breaks\":{},\"out_of_shield\":{},\"launches\":{},\"di\":{}}}}},\
                      \"ai_flags\":[{}],\"verdict\":{}}}",
                     json_str(c.name()),
                     k.damage,
@@ -326,6 +368,15 @@ pub fn to_json(rounds: &[Round]) -> String {
                     json_num(p.timeout_rate()),
                     p.moves_used(),
                     Moveset::SLOT_NAMES.iter().enumerate().map(|(slot, n)| format!("{}:{}", json_str(n), json_num(p.move_share(slot)))).collect::<Vec<_>>().join(","),
+                    p.defense.spot_dodges,
+                    p.defense.rolls,
+                    p.defense.air_dodges,
+                    p.defense.shields,
+                    p.defense.blocked,
+                    p.defense.shield_breaks,
+                    p.defense.out_of_shield,
+                    p.defense.launches,
+                    p.defense.di,
                     flags.join(","),
                     json_str(&verdict_text(&round.verdicts[i]))
                 )

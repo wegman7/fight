@@ -147,6 +147,7 @@ How each input works, with the chef's moves:
 | Shield | Jump / attack or grab / up + special / up smash | Jump, grab, up special or up smash straight out of shield |
 | Shield | Stick sideways / down | Roll forward or back / spot dodge, both invincible partway through. Pressing shield with the stick already held does the same. |
 | Air | Shield (+ direction) | Air dodge: in place, or a quick dash that way. Once per trip through the air. |
+| Launched by a hit | Hold a direction as hitlag ends | DI (directional influence), Melee-style: the stick on your first frame of hitstun turns the launch up to 18° toward it, the more the more perpendicular it is to the launch. Hold up and toward the stage to survive a sideways hit; hold toward the stage to survive one sending you up. |
 
 Falling past a solid platform's ledge grabs it (soft, pass-through platforms have no
 grabbable edges), whichever way you face. A solid platform's sides are solid below its
@@ -283,9 +284,9 @@ joypad's name to the console at startup and whenever one connects.
 - Moves, dodges and frame data: `sim/src/moves.rs`, the chef's first, then the pug's, then the samurai's, then the ninja's, then the soldier's, then the hobo's (reading inputs into a move slot is in `Fighter::step`)
 - Stage layouts and blast zones: `StageId` (the selectable list) and `Stage::battlefield()` / `flat()` / `single_platform()` in `sim/src/stage.rs`. How big stages are next to the fighters: `STAGE_SCALE` there (layout only; blast zones are in fighter units)
 - Stage look (boardwalk on a floating rock, driftwood rafts): `art/stage/build_stage.py` → `godot/models/stage.glb` and `raft.glb`, textured by `godot/shaders/wood.gdshader` and `stone.gdshader`
-- Knockback / hitstun / hitlag formulas: bottom of `sim/src/fighter.rs`. Shield, grab and smash-charge numbers: constants near the top.
+- Knockback / hitstun / hitlag formulas and DI (`di_angle`): bottom of `sim/src/fighter.rs`. Shield, grab and smash-charge numbers: constants near the top.
 - Hits, grabs, throws and projectiles between fighters: `World` in `sim/src/world.rs`
-- CPU opponent: `sim/src/cpu.rs` (`LEVELS` holds the difficulty knobs for levels 1-9; `CpuLevel::EASY` is level 3)
+- CPU opponent: `sim/src/cpu.rs` (`LEVELS` holds the difficulty knobs for levels 1-9; `CpuLevel::EASY` is level 3). From level 4 or so it shields, dodges and air-dodges attacks it sees coming and punishes them, DIs its launches, chases launches with aerials and mixes up its recovery; level 9 reacts 10 frames into an attack. Level 1 barely defends and never DIs.
 - Menus: `gdext/src/menu.rs` (state, layout, what each press does) and `gdext/src/menu_view.rs` (drawing)
 - Background music: `gdext/src/music.rs` loads and loops `godot/music/untitled.mp3` (menus) and `godot/music/rising_motif.mp3` (matches)
 - Controls, camera, visuals: `gdext/src/lib.rs`
@@ -300,8 +301,9 @@ joypad's name to the console at startup and whenever one connects.
 
 ## Not built yet
 
-Tap jump (up to jump), DI, teching, tilting the shield, perfect
+Tap jump (up to jump), SDI (smash DI: nudging your position during hitlag) and
+DI on grounded slides, teching, tilting the shield, perfect
 shield, pivots, aerial grabs, hit flashes on the pug's fur (only its `Body` collar tints), animation blending, move data in hot-reloadable
-files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that dodge,
-DI or follow hand-made combos, stages that look different from each other
+files, timed matches, teams, costumes, a results screen, a "3, 2, 1, GO!" countdown, CPUs that
+anticipate attacks or follow hand-made combo routes, stages that look different from each other
 (all three use the same boardwalk and rafts), rollback netcode.

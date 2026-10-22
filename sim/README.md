@@ -33,11 +33,11 @@ world.step(&[p1_input, p2_input]);
 | `fixed.rs` | `Fx` Q16.16 fixed-point type, `sin_deg` / `cos_deg` lookup table |
 | `input.rs` | `Input`: stick (-100..=100) and button bits (attack, jump, special, shield, grab, smash). The only thing entering the sim. |
 | `character.rs` | `Character` (Chef, Pug, Samurai, Ninja, Soldier, Hobo): each one's `FighterParams`, its `Moveset` (which move each input starts) and `moves()` (moveset plus follow-ups) |
-| `fighter.rs` | `FighterParams` (tuning, one const per character, including the whole-character balance knobs `damage_scale` / `knockback_scale`: percent of the damage and knockback its hits deal), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics (solid platforms' sides stop an airborne fighter below the top: `stop_at_stage_side`), ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()` |
+| `fighter.rs` | `FighterParams` (tuning, one const per character, including the whole-character balance knobs `damage_scale` / `knockback_scale`: percent of the damage and knockback its hits deal), `State` machine, input reading (buffers, smash flicks), which move each input picks (and the up-special reversal: a back tilt on its first `UP_SPECIAL_TURN_FRAMES`), movement physics (solid platforms' sides stop an airborne fighter below the top: `stop_at_stage_side`), ledge hang and getups (`LedgeHang` / `LedgeClimb` / `LedgeRoll` / `LedgeAttack`), jump takeoff speed (`liftoff_vx`), shield/grab/charge constants, `knockback()`, trajectory DI (`di_angle`, `world_angle`, `Fighter::di_pending`) |
 | `moves.rs` | Frame data: every attack, special, grab and throw as `MoveData` (hitboxes, grab boxes, command grabs, scripted motion, projectiles and their charge growth, shattering projectiles, throws, landing behaviour, charge frame, jab combos, counters), plus dodge timings (`DodgeData`) |
 | `stage.rs` | Platforms, blast zones, spawn points. `StageId` lists the selectable stages (`ALL`, `name()`, `stage()`): Boardwalk (`Stage::battlefield()`), Sandbar (`flat()`), Driftwood (`single_platform()`). |
 | `world.rs` | `World::step`: fighters → grab bookkeeping → ledge occupancy (`sync_ledges`: one per edge, a fresh grab steals it) → throws → projectiles → hits and grabs (shields absorb hits) → blast zones |
-| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks or runs in to its own reach, picks moves from the move data (every hitbox, grab box, scripted motion and projectile is played forward against where it predicts the opponent will be, and scored on damage, speed, end lag and whether the knockback formula says the launch KOs or leaves the opponent offstage), anti-airs or waits under an airborne opponent rather than chasing its jumps, edge-guards from level 4 (ground moves and projectiles from the ledge; from level 7 it also jumps off after the recovering opponent, keeping a jump to come back with), picks throws the same way, shields attacks and projectiles (counters at high levels), mixes up ledge getups, and recovers with double jump then up special, and mashes out of grabs. Moves are chosen by input slot (`Slot`) from `Character::moveset()`, never by name: `evaluate` / `simulate` play a move forward against the opponent's predicted path (`predict`), `score` and `launch` rate the hit. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (reaction time; how often it approaches, attacks, grabs and shields; `judgement`: how often it takes the best-scoring option instead of any that connects; `edge_guard` and `offstage`). `EASY` is level 3. Plans that take longer than a level's reaction time (hops, shielding, jumps) are finished before it re-plans. Its RNG has a fixed seed per port; `with_seed` gives it another (deterministic) one. |
+| `cpu.rs` | `Cpu` computer opponent: reads the `World`, returns an `Input`. It walks or runs in to its own reach, picks moves from the move data (every hitbox, grab box, scripted motion and projectile is played forward against where it predicts the opponent will be, and scored on damage, speed, end lag and whether the knockback formula says the launch KOs or leaves the opponent offstage), anti-airs or waits under an airborne opponent rather than chasing its jumps, edge-guards from level 4 (ground moves and projectiles from the ledge; from level 7 it also jumps off after the recovering opponent, keeping a jump to come back with), picks throws the same way, mixes up ledge getups and mashes out of grabs. It defends (`guard`): once it has seen an attack for `react` frames (or a projectile is about to arrive) it plays a copy of the world forward (`rollout`) with each guard it has (`Guard`: shield, spot dodge, rolls, air dodges, its counter) and takes one that isn't hit (`guard_score`: shield health kept, frames free before the attacker within punish reach, out of a corner); out of shield it grabs, up-smashes or up-specials an attacker in its end lag (`out_of_shield`). It DIs each launch (`best_di` / `di_score`: room before a blast zone, how far offstage it ends, distance from the attacker), chases a launched opponent with the hop whose aerial a rollout lands (`chase`), and picks a `Recovery` per trip offstage by playing candidates out (`pick_recovery`: plain, high, low, an air dodge in near the ledge or for distance, drifting to the ledge), then follows it (`recover`). Moves are chosen by input slot (`Slot`) from `Character::moveset()`, never by name: `evaluate` / `simulate` play a move forward against the opponent's predicted path (`predict`), `score` and `launch` rate the hit. Difficulty knobs in `CpuLevel`: `CpuLevel::level(1..=9)` from the `LEVELS` table (plan time; `react`: how many frames into an attack it can answer it; how often it approaches, attacks, grabs, defends and dodges; `judgement`: how often it takes the best-scoring option instead of any that works; `edge_guard`, `offstage`; `di`; `recovery_mix`). `EASY` is level 3. Plans that take longer than a level's reaction time (hops, guards, jumps) are finished before it re-plans; it starts new plans only when it can act, so nothing it presses is buffered through lag. Rollouts run on clones of the world and of the CPU (`simulating`, which never rolls out itself), so it still only reads the `World` and returns an `Input`. Its RNG has a fixed seed per port; `with_seed` gives it another (deterministic) one. |
 
 ## How a move works
 
@@ -78,6 +78,18 @@ Which move an input starts depends on the fighter's `Character`: `Fighter::step`
 reads the input, then picks the slot from `character.moveset()`.
 
 Dodges are `State::Dodge { kind, frame }` with timings in `DodgeData`.
+
+DI (directional influence) is Melee's trajectory DI. A hit that launches (anything but
+a grounded slide under `GROUNDED_KB_THRESHOLD`) leaves its launch in
+`Fighter::di_pending` as a `Trajectory` (world angle, 0 = right and 90 = up, plus speed).
+On the fighter's first frame of hitstun (the frame after hitlag ends; throws have no
+hitlag, so the frame after the throw), the stick held that frame turns the launch by
+`di_angle`: up to `MAX_DI_DEGREES` (18°) toward the stick, scaled by the cross product of
+the launch direction and the stick (so a perpendicular stick turns it fully, one along
+the launch line not at all, and a stick in the deadzone does nothing). Speed and hitstun
+don't change. It's read once and cleared; later stick input does nothing. Humans and
+CPUs DI the same way. There is no SDI (nudging your position during hitlag) or DI on
+grounded slides.
 
 Smash-attack input: the stick goes from neutral to 0.8 or more within 3 frames of
 the attack press, or the press is the `SMASH` button. A tilt is the same direction
@@ -136,9 +148,14 @@ recovers with and without a double jump, reverses its up special toward the stag
 higher levels attack more, mashes out of grabs, grabs, shields, stays deterministic; two
 top CPUs on a side platform keep fighting, it doesn't chase a jumping opponent's jumps,
 level 9 edge-guards and level 1 doesn't, smash attacks at kill percent, projectiles at
-range, throws toward the near ledge, every character uses a wide part of its moveset)
-live in `tests/cpu.rs`. `tests/gameplay.rs` also pins the stage's solid sides (a recovery
-drifting in below the top grabs the ledge instead of falling through the stage).
+range, throws toward the near ledge, every character uses a wide part of its moveset;
+level 9 shields or dodges a telegraphed smash, punishes a whiffed one, DIs to survive a
+hit that KOs without DI, air-dodges through an edge-guard, air-dodges in from farther
+out, mixes up its recovery and chases a launched opponent, and level 1 rarely does any
+of it) live in `tests/cpu.rs`. `tests/gameplay.rs` also pins the stage's solid sides (a recovery
+drifting in below the top grabs the ledge instead of falling through the stage) and DI
+(the 18° turn and its scaling, read on the first hitstun frame only, survival DI living
+to a higher percent).
 The helpers at the top of `gameplay.rs` (`world()`, `press()`, `stick()`,
 `run()`) keep tests short. The pattern is: set up, feed inputs frame by frame,
 then assert.
@@ -172,5 +189,6 @@ The sim is fast and deterministic, so balance is measured by letting CPUs fight:
 stage and prints a win-rate matrix with error bars; `--tune N` adds a buff/nerf loop
 that proposes changes to `damage_scale` and `weight` as a diff. The harness lives in
 its own crate, [`balance/`](../balance/README.md), and only uses the sim's public API.
-Its results measure each character as the CPU plays it (no dodges, DI or hand-made
-combos, a plain recovery), so read its AI flags, move-use table and caveats before acting.
+Its results measure each character as the CPU plays it (it reacts to what it sees but
+never guesses, and has no hand-made combo routes), so read its AI flags, Defense and
+move-use tables and caveats before acting.

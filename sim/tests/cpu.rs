@@ -1,4 +1,4 @@
-use fight_sim::{Character, Cpu, CpuLevel, Event, Fighter, Fx, Input, MoveId, Stage, StageId, State, World};
+use fight_sim::{Character, Cpu, CpuLevel, DodgeKind, Event, Fighter, Fx, Input, MoveId, Stage, StageId, State, World};
 
 fn world() -> World {
     World::new(Stage::battlefield(), &[Character::Chef; 2], 3)
@@ -171,28 +171,41 @@ fn cpu_facing_away_from_the_stage_reverses_its_up_special_toward_it() {
 #[test]
 fn easy_cpu_grabs_and_throws_sometimes() {
     // Plenty of stocks: the CPU takes three off an idle dummy well inside two minutes.
-    let (mut w, mut cpu) = (World::new(Stage::battlefield(), &[Character::Chef; 2], 99), Cpu::easy(1));
+    // Grabs are a small share of an easy CPU's openings, so a few seeds' worth.
     let (mut grabs, mut throws) = (0, 0);
-    for _ in 0..60 * 120 {
-        let input = cpu.think(&w);
-        w.step(&[idle(&w), input]);
-        grabs += w.events.iter().filter(|e| matches!(e, Event::Grab { attacker: 1, .. })).count();
-        throws += matches!(w.fighters[1].state, State::Attack { mv: MoveId::FThrow | MoveId::BThrow | MoveId::UThrow | MoveId::DThrow, frame: 1, .. }) as usize;
+    for seed in 0..3 {
+        let (mut w, mut cpu) = (World::new(Stage::battlefield(), &[Character::Chef; 2], 99), Cpu::easy(1).with_seed(seed));
+        for _ in 0..60 * 120 {
+            let input = cpu.think(&w);
+            w.step(&[idle(&w), input]);
+            grabs += w.events.iter().filter(|e| matches!(e, Event::Grab { attacker: 1, .. })).count();
+            throws += matches!(w.fighters[1].state, State::Attack { mv: MoveId::FThrow | MoveId::BThrow | MoveId::UThrow | MoveId::DThrow, frame: 1, .. }) as usize;
+        }
     }
-    assert!(grabs > 0 && throws > 0, "{grabs} grabs, {throws} throws in 2 minutes");
+    assert!(grabs > 0 && throws > 0, "{grabs} grabs, {throws} throws in 3 x 2 minutes");
 }
 
 #[test]
 fn easy_cpu_shields_some_attacks() {
-    let (mut w, mut cpu) = (world(), Cpu::easy(1));
-    w.fighters[1].x = Fx::int(-30);
+    // An easy CPU reacts 25 frames into an attack, so it can't shield a jab (out on
+    // frame 2) on reaction, but it sees a charged smash coming. Every 100 frames P1
+    // turns toward it and charges one (held 30 frames) from where it stands. It defends
+    // under a fifth of the attacks it sees, and few of them reach it, so ten seeds' worth.
     let mut shielded = 0;
-    for f in 0..60 * 60 {
-        // P1 keeps jabbing from where it stands.
-        let p1 = Input { buttons: if f % 30 == 0 { Input::ATTACK } else { 0 }, ..Input::default() };
-        let input = cpu.think(&w);
-        w.step(&[p1, input]);
-        shielded += w.events.iter().filter(|e| matches!(e, Event::ShieldHit { defender: 1, .. })).count();
+    for seed in 0..10 {
+        let (mut w, mut cpu) = (world(), Cpu::easy(1).with_seed(seed));
+        w.fighters[1].x = Fx::int(-30);
+        for f in 0..60 * 60 {
+            let toward = if w.fighters[1].x < w.fighters[0].x { -30 } else { 30 };
+            let p1 = match f % 100 {
+                0..2 => Input { stick_x: toward, ..Input::default() },
+                2..32 => Input { buttons: Input::SMASH, ..Input::default() },
+                _ => Input::default(),
+            };
+            let input = cpu.think(&w);
+            w.step(&[p1, input]);
+            shielded += w.events.iter().filter(|e| matches!(e, Event::ShieldHit { defender: 1, .. })).count();
+        }
     }
     assert!(shielded > 0, "never shielded");
 }
@@ -214,15 +227,17 @@ fn easy_cpu_pug_ear_copters_back_without_air_jumps() {
         let (mut w, mut cpu) = (pug_cpu_world(), Cpu::easy(1));
         let f = &mut w.fighters[1];
         (f.x, f.y, f.grounded_on, f.state, f.air_jumps_left) = (Fx::int(x), Fx::int(-15), None, State::Air, 0);
-        let mut used_ear_copter = false;
+        let (mut used_ear_copter, mut landed) = (false, false);
         for _ in 0..300 {
             let input = cpu.think(&w);
             w.step(&[Input::default(), input]);
             used_ear_copter |= matches!(w.fighters[1].state, State::Attack { mv: MoveId::PugEarCopter, .. });
+            // Once back, it may be mid-hop at the end, so look for any landing.
+            landed |= w.fighters[1].grounded();
         }
         assert!(used_ear_copter, "from x={x}");
         assert_eq!(w.fighters[1].stocks, 3, "fell from x={x}");
-        assert!(w.fighters[1].grounded(), "not back on stage from x={x}");
+        assert!(landed, "not back on stage from x={x}");
     }
 }
 
@@ -545,4 +560,221 @@ fn every_characters_cpu_uses_a_wide_part_of_its_moveset() {
         let distinct = used.iter().filter(|&&n| n > 0).count();
         assert!(distinct >= 14, "{character:?} used {distinct} of its 24 move slots: {used:?}");
     }
+}
+
+// --- Defense: guarding, punishing, DI, air dodges ----------------------------
+
+/// What a CPU at `level` did against P1's forward smash, charged `charge` frames: P1 at
+/// x 0 facing right, the CPU standing `gap` in front of it, stuck in `lag` frames of
+/// landing lag (so it can't just hit P1 first).
+#[derive(Default, Debug)]
+struct SmashTrial {
+    /// The smash hit it.
+    hit: bool,
+    /// It shielded the smash or dodged.
+    guarded: bool,
+    /// It hit P1 before P1 could act again after the smash.
+    punished: bool,
+}
+
+fn smash_trial(level: u8, seed: u32, gap: i32, charge: u32, lag: u8) -> SmashTrial {
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+    (w.fighters[0].x, w.fighters[0].facing) = (Fx::int(0), 1);
+    (w.fighters[1].x, w.fighters[1].facing) = (Fx::int(gap), -1);
+    if lag > 0 {
+        w.fighters[1].state = State::Landing { frames_left: lag };
+    }
+    let mut cpu = Cpu::with_level(1, level).with_seed(seed);
+    let mut t = SmashTrial::default();
+    let mut smash_over = false;
+    for f in 0..120 {
+        let p1 = if f <= charge { Input { buttons: Input::SMASH, ..Input::default() } } else { Input::default() };
+        let input = cpu.think(&w);
+        w.step(&[p1, input]);
+        let smashing = matches!(w.fighters[0].state, State::Attack { mv: MoveId::FSmash, .. });
+        for e in &w.events {
+            match e {
+                Event::Hit { attacker: 0, defender: 1, .. } => t.hit = true,
+                Event::ShieldHit { defender: 1, .. } => t.guarded = true,
+                Event::Hit { attacker: 1, defender: 0, .. } if !smash_over => t.punished = true,
+                _ => {}
+            }
+        }
+        t.guarded |= matches!(w.fighters[1].state, State::Dodge { .. });
+        smash_over |= f > 2 && !smashing;
+    }
+    t
+}
+
+#[test]
+fn top_cpu_shields_or_dodges_a_telegraphed_smash_attack() {
+    // Free 2 frames before an uncharged smash hits (it sees it from frame 10), or as a
+    // charged one is still being held.
+    let trials: Vec<SmashTrial> =
+        (0..10).map(|seed| smash_trial(9, seed, 9, 0, 12)).chain((0..10).map(|seed| smash_trial(9, seed, 9, 30, 20))).collect();
+    let safe = trials.iter().filter(|t| !t.hit).count();
+    let guarded = trials.iter().filter(|t| t.guarded).count();
+    assert!(safe >= 16, "a level-9 CPU took the smash in {} of 20 tries: {trials:?}", 20 - safe);
+    assert!(guarded >= 14, "it shielded or dodged in {guarded} of 20: {trials:?}");
+}
+
+#[test]
+fn top_cpu_punishes_a_whiffed_smash_attack() {
+    // P1 swings an uncharged smash at nothing, just out of its reach: the CPU hits it
+    // in the end lag (the smash has 48 frames, hitting on 14-16).
+    let trials: Vec<SmashTrial> = (0..10).map(|seed| smash_trial(9, seed, 24, 0, 0)).collect();
+    let punished = trials.iter().filter(|t| t.punished && !t.hit).count();
+    assert!(punished >= 7, "a level-9 CPU punished a whiffed smash in {punished} of 10: {trials:?}");
+}
+
+/// The chef's forward smash from near the right ledge on P2 at `percent`, P2 holding
+/// nothing until the hit lands; from then on `cpu` (if any) drives P2. Whether P2
+/// was KO'd.
+fn launched(percent: i32, mut cpu: Option<Cpu>) -> bool {
+    let mut w = World::new(Stage::battlefield(), &[Character::Chef; 2], 3);
+    (w.fighters[0].x, w.fighters[0].facing) = (Fx::int(30), 1);
+    (w.fighters[1].x, w.fighters[1].percent) = (Fx::int(38), percent);
+    let mut hit = false;
+    for f in 0..300 {
+        let p1 = if f == 0 { Input { stick_x: 60, buttons: Input::SMASH, ..Input::default() } } else { Input::default() };
+        let p2 = match cpu.as_mut() {
+            Some(c) if hit => c.think(&w),
+            _ => Input::default(),
+        };
+        w.step(&[p1, p2]);
+        hit |= w.events.iter().any(|e| matches!(e, Event::Hit { defender: 1, .. }));
+        if w.events.contains(&Event::Ko { fighter: 1 }) {
+            return true;
+        }
+    }
+    assert!(hit, "the smash never hit");
+    false
+}
+
+#[test]
+fn top_cpu_dis_to_survive_a_hit_that_would_ko_without_di() {
+    // At 75% the smash from there KOs with no DI (see `survival_di_lives_to_a_higher_percent`).
+    assert!(launched(75, None), "no DI: should KO");
+    let survived = (0..10).filter(|&seed| !launched(75, Some(Cpu::with_level(1, 9).with_seed(seed)))).count();
+    assert!(survived >= 8, "a level-9 CPU survived {survived} of 10");
+}
+
+/// P2 drifting back in from just past the right ledge, a little above it, as P1 swings
+/// a forward smash off the ledge where P2's fall takes it (frames 14-16). Returns (air
+/// dodged, hit, stocks lost).
+fn edge_guard_dodge_trial(level: u8, seed: u32) -> (bool, bool, bool) {
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+    let right = w.stage.platforms[0].right;
+    (w.fighters[0].x, w.fighters[0].facing) = (right - Fx::int(4), 1);
+    let f = &mut w.fighters[1];
+    (f.x, f.y, f.grounded_on, f.state, f.vx) = (right + Fx::int(18), Fx::int(12), None, State::Air, Fx::ratio(-8, 10));
+    let mut cpu = Cpu::with_level(1, level).with_seed(seed);
+    let (mut dodged, mut hit) = (false, false);
+    for frame in 0..300 {
+        let p1 = if frame == 0 { Input { buttons: Input::SMASH, ..Input::default() } } else { Input::default() };
+        let input = cpu.think(&w);
+        w.step(&[p1, input]);
+        dodged |= matches!(w.fighters[1].state, State::Dodge { kind: DodgeKind::Air | DodgeKind::AirDirectional, .. });
+        hit |= w.events.iter().any(|e| matches!(e, Event::Hit { defender: 1, .. }));
+    }
+    (dodged, hit, w.fighters[1].stocks < 3)
+}
+
+#[test]
+fn top_cpu_air_dodges_through_an_edge_guard() {
+    // Without a dodge the smash meets it on its way in; the low CPU shows that.
+    let low_hits = (0..10).filter(|&seed| edge_guard_dodge_trial(1, seed).1).count();
+    assert!(low_hits >= 8, "the edge-guard should land on a CPU that doesn't dodge: {low_hits} of 10");
+    let trials: Vec<_> = (0..10).map(|seed| edge_guard_dodge_trial(9, seed)).collect();
+    let through = trials.iter().filter(|&&(dodged, hit, lost)| dodged && !hit && !lost).count();
+    assert!(through >= 7, "a level-9 CPU air-dodged through it and made it back in {through} of 10: {trials:?}");
+}
+
+#[test]
+fn level_1_cpu_rarely_defends_dis_or_air_dodges() {
+    let guarded = (0..20).filter(|&seed| smash_trial(1, seed, 9, 0, 12).guarded || smash_trial(1, seed, 9, 30, 20).guarded).count();
+    assert!(guarded <= 2, "a level-1 CPU guarded a smash in {guarded} of 20 pairs of tries");
+    let survived = (0..10).filter(|&seed| !launched(75, Some(Cpu::with_level(1, 1).with_seed(seed)))).count();
+    assert_eq!(survived, 0, "a level-1 CPU DI'd out of a KO");
+    let dodged = (0..10).filter(|&seed| edge_guard_dodge_trial(1, seed).0).count();
+    assert!(dodged <= 1, "a level-1 CPU air-dodged an edge-guard {dodged} times in 10");
+}
+
+/// The soldier (the shortest recovery) starting `dx` past the right ledge at stage
+/// height, falling, recovering at `level`. Returns (made it, air-dodged, hung from the ledge).
+fn far_recovery(level: u8, seed: u32, dx: i32) -> (bool, bool, bool) {
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef, Character::Soldier], 3);
+    let right = w.stage.platforms[0].right;
+    let f = &mut w.fighters[1];
+    (f.x, f.y, f.grounded_on, f.state) = (right + Fx::int(dx), Fx::int(0), None, State::Air);
+    let mut cpu = Cpu::with_level(1, level).with_seed(seed);
+    let (mut dodged, mut hung) = (false, false);
+    for _ in 0..300 {
+        let input = cpu.think(&w);
+        w.step(&[Input::default(), input]);
+        dodged |= matches!(w.fighters[1].state, State::Dodge { kind: DodgeKind::AirDirectional, .. });
+        hung |= w.fighters[1].state == State::LedgeHang;
+    }
+    (w.fighters[1].stocks == 3, dodged, hung)
+}
+
+#[test]
+fn top_cpu_air_dodges_in_to_recover_from_farther_out() {
+    // 90 units out is past the soldier's jump-and-up-special reach (the plain recovery a
+    // level-1 CPU uses), but an air dodge toward the stage first covers the rest.
+    for seed in 0..5 {
+        assert!(!far_recovery(1, seed, 90).0, "level 1 made it back from 90 out (seed {seed}): the test is too easy");
+        let (made_it, dodged, _) = far_recovery(9, seed, 90);
+        assert!(made_it && dodged, "level 9 didn't air-dodge back (seed {seed}): made it {made_it}, dodged {dodged}");
+    }
+}
+
+#[test]
+fn top_cpu_mixes_up_its_recovery() {
+    // From a comfortable 30 units out the plain recovery always works; level 9 still
+    // varies it (air dodge in, ledge hang, high or low), level 1 never does.
+    let paths = |level| {
+        let mut seen: Vec<(bool, bool)> = Vec::new();
+        for seed in 0..20 {
+            let (made_it, dodged, hung) = far_recovery(level, seed, 30);
+            assert!(made_it, "level {level} fell from 30 out (seed {seed})");
+            if !seen.contains(&(dodged, hung)) {
+                seen.push((dodged, hung));
+            }
+        }
+        seen.len()
+    };
+    assert_eq!(paths(1), 1, "level 1 recovers one way");
+    assert!(paths(9) >= 2, "level 9 recovered only one way");
+}
+
+/// P2 at `level` up-tilts P1 (at `percent`) into the air, then plays on: whether it
+/// lands another hit while P1 is still airborne from that launch.
+fn follow_up(level: u8, seed: u32, percent: i32) -> bool {
+    let mut w = World::new(StageId::Sandbar.stage(), &[Character::Chef; 2], 3);
+    (w.fighters[0].x, w.fighters[0].percent) = (Fx::int(0), percent);
+    (w.fighters[1].x, w.fighters[1].facing) = (Fx::int(6), -1);
+    let mut cpu = Cpu::with_level(1, level).with_seed(seed);
+    let mut launched = false;
+    for f in 0..120 {
+        let input = if launched { cpu.think(&w) } else if f == 0 { Input { stick_y: 60, buttons: Input::ATTACK, ..Input::default() } } else { Input::default() };
+        w.step(&[Input::default(), input]);
+        let hit = w.events.iter().any(|e| matches!(e, Event::Hit { attacker: 1, .. }));
+        if launched && hit {
+            return true;
+        }
+        launched |= hit;
+        if launched && w.fighters[0].grounded() && !matches!(w.fighters[0].state, State::Hitstun { .. }) {
+            return false;
+        }
+    }
+    false
+}
+
+#[test]
+fn top_cpu_chases_a_launched_opponent_with_a_follow_up() {
+    let top = (0..10).filter(|&seed| follow_up(9, seed, 40)).count();
+    let low = (0..10).filter(|&seed| follow_up(1, seed, 40)).count();
+    assert!(top >= 6, "level 9 followed up {top} of 10 times");
+    assert!(top > low + 3, "level 9 followed up {top} of 10, level 1 {low}");
 }

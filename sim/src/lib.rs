@@ -17,7 +17,7 @@ pub mod world;
 
 pub use character::{Character, Moveset};
 pub use cpu::{Cpu, CpuLevel};
-pub use fighter::{Fighter, FighterParams, SHIELD_MAX, STATE_ANIMS, State};
+pub use fighter::{Fighter, FighterParams, MAX_DI_DEGREES, SHIELD_MAX, STATE_ANIMS, State, Trajectory, di_angle, world_angle};
 pub use fixed::Fx;
 pub use input::Input;
 pub use moves::{Counter, DodgeKind, Explosion, Hitbox, MoveData, MoveId, Shatter};

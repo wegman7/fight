@@ -44,7 +44,18 @@
   `score`), never by `MoveId` or character: don't special-case a character there. A new
   move in a moveset is used automatically; if the CPU misjudges it, fix the generic
   model (prediction, motion, scoring), not that move. Keep `CpuLevel` scaling: levels
-  1-3 never edge-guard, and only level 7+ goes offstage after an opponent.
+  1-3 never edge-guard, and only level 7+ goes offstage after an opponent; level 1
+  almost never defends and never DIs (`level_1_cpu_rarely_defends_dis_or_air_dodges`).
+- Guards, recoveries and chases are checked with rollouts (`Cpu::rollout`): a clone of
+  the `World` stepped with a clone of the CPU (`simulating`, which never rolls out
+  itself, so there's no recursion). Keep them bounded (`GUARD_FRAMES`,
+  `RECOVERY_FRAMES`, `CHASE_FRAMES`) and triggered rarely (a threat seen, a trip
+  offstage, a launch): they're most of the harness's run time. A rollout reads; it
+  never touches the real world.
+- The CPU reacts only to what it has seen for `react` frames (`Cpu::watch` counts real
+  frames, so charging and hitlag count). Don't let it read an attack before it starts,
+  and keep level 9's `react` human (10): a faster one makes every slow-starting kit
+  look bad in the balance harness.
 - Solid platforms have solid sides (`Fighter::stop_at_stage_side`): an airborne fighter
   can't enter one's x range below its top. A ledge or recovery change keeps
   `drifting_in_below_the_top_grabs_the_ledge_instead_of_slipping_under` passing, and
@@ -58,6 +69,9 @@
   fighter deals, applied once in `World::apply_throws` and where `resolve_hits` applies
   each strike. Every new damage source must go through those paths (a `Strike` or a
   throw) so the knobs cover it. At 100 they change nothing.
+- Every launch goes through `Fighter::take_hit`, which leaves it in `di_pending` for
+  trajectory DI on the first hitstun frame (`di_angle`). Don't set `kb_x`/`kb_y` for a
+  hit anywhere else, or it can't be DI'd. The DI tests in `tests/gameplay.rs` pin it.
 - Balance is measured with the `balance/` crate (CPU-vs-CPU, see `balance/README.md`).
   It overrides `Fighter::params` after `World::new` and reseeds CPUs with
   `Cpu::with_seed`; keep both working. A CPU change shifts its results: re-run it.

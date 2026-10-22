@@ -1,6 +1,6 @@
 //! One CPU-vs-CPU match, start to finish, on the headless sim.
 
-use fight_sim::{Character, Cpu, Event, Fighter, Fx, Moveset, Platform, State, StageId, World};
+use fight_sim::{Character, Cpu, DodgeKind, Event, Fighter, Fx, Moveset, Platform, StageId, State, World};
 
 use crate::tuning::Tuning;
 
@@ -60,6 +60,41 @@ pub struct MatchResult {
     pub attacks: [u32; 2],
     /// Hits each port landed (shielded ones excluded).
     pub hits: [u32; 2],
+    /// How each port defended.
+    pub defense: [Defense; 2],
+}
+
+/// One port's defensive play in a match: dodges, shielding and DI.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Defense {
+    pub spot_dodges: u32,
+    pub rolls: u32,
+    pub air_dodges: u32,
+    /// Times it put its shield up (not counting shield stun turning back into shield).
+    pub shields: u32,
+    /// Hits it blocked with its shield.
+    pub blocked: u32,
+    pub shield_breaks: u32,
+    /// Actions straight out of shield: grabs, jumps, up specials, up smashes.
+    pub out_of_shield: u32,
+    /// Launches it could DI (an airborne launch's first hitstun frame) ...
+    pub launches: u32,
+    /// ... and how many of them it DI'd (stick out of the deadzone on that frame).
+    pub di: u32,
+}
+
+impl Defense {
+    pub fn add(&mut self, o: &Defense) {
+        self.spot_dodges += o.spot_dodges;
+        self.rolls += o.rolls;
+        self.air_dodges += o.air_dodges;
+        self.shields += o.shields;
+        self.blocked += o.blocked;
+        self.shield_breaks += o.shield_breaks;
+        self.out_of_shield += o.out_of_shield;
+        self.launches += o.launches;
+        self.di += o.di;
+    }
 }
 
 impl MatchResult {
@@ -97,9 +132,21 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
         let was_attacking: Vec<bool> = world.fighters.iter().map(|f| matches!(f.state, State::Attack { .. })).collect();
         let was_move: Vec<_> = world.fighters.iter().map(|f| if let State::Attack { mv, .. } = f.state { Some(mv) } else { None }).collect();
         let was_low: Vec<bool> = world.fighters.iter().map(|f| f.y < world.stage.blast_bottom + BOTTOM_MARGIN).collect();
+        let was_state: Vec<State> = world.fighters.iter().map(|f| f.state).collect();
+        // The frame a launch is DI'd: it's pending and hitlag is over.
+        let di_frame: Vec<bool> = world.fighters.iter().map(|f| f.di_pending.is_some() && f.hitlag == 0).collect();
         let inputs = [cpus[0].think(&world), cpus[1].think(&world)];
         world.step(&inputs);
 
+        for (i, f) in world.fighters.iter().enumerate() {
+            tally_defense(&mut result.defense[i], was_state[i], f.state);
+            if di_frame[i] {
+                let d = &mut result.defense[i];
+                d.launches += 1;
+                let (sx, sy) = inputs[i].stick();
+                d.di += (Fx::hypot(sx, sy) >= DI_DEADZONE) as u32;
+            }
+        }
         for (i, f) in world.fighters.iter().enumerate() {
             if !was_attacking[i] && matches!(f.state, State::Attack { .. }) {
                 result.attacks[i] += 1;
@@ -122,6 +169,8 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
                     last_hit[defender] = Some(world.frame);
                     hit_offstage[defender] = offstage(&world.fighters[defender], &main);
                 }
+                Event::ShieldHit { defender, .. } => result.defense[defender].blocked += 1,
+                Event::ShieldBreak { fighter } => result.defense[fighter].shield_breaks += 1,
                 Event::Ko { fighter } => {
                     if last_hit[fighter].is_none_or(|t| world.frame - t > SELF_DESTRUCT_WINDOW) {
                         result.self_destructs[fighter] += 1;
@@ -158,6 +207,24 @@ pub fn run_match(config: &MatchConfig, tuning: &Tuning) -> MatchResult {
         _ => None,
     };
     result
+}
+
+/// A stick this far from center on the DI frame counts as DI (the sim's deadzone).
+const DI_DEADZONE: Fx = Fx::ratio(2, 10);
+
+/// Counts the defensive option a fighter just started, from its state change.
+fn tally_defense(d: &mut Defense, was: State, now: State) {
+    let shielding = |s: State| matches!(s, State::Shield | State::ShieldStun { .. });
+    match now {
+        State::Dodge { kind, frame: 1 } => match kind {
+            DodgeKind::Spot => d.spot_dodges += 1,
+            DodgeKind::RollForward | DodgeKind::RollBack => d.rolls += 1,
+            DodgeKind::Air | DodgeKind::AirDirectional => d.air_dodges += 1,
+        },
+        State::Shield if !shielding(was) => d.shields += 1,
+        State::Attack { .. } | State::JumpSquat { .. } if shielding(was) => d.out_of_shield += 1,
+        _ => {}
+    }
 }
 
 /// Offstage or hanging from the ledge (where a hit is an edge-guard).
